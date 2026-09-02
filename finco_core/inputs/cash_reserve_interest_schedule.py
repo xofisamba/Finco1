@@ -40,11 +40,21 @@ DSRA authority (I.6):
     When ELIGIBLE + non-UNRESOLVED authority is claimed, exact period-axis
     coverage is required; missing periods or invalid values → UNRESOLVED.
 
-Opening cash (I.7):
+Opening cash (I.7 / K.4):
     opening_cash_keur: float | None — must be explicitly provided.
     None with authoritative increments → UNRESOLVED schedule authority.
-    Source-proven zero: TUHO CF!F135 = null (construction period 0 cash = 0).
+    null ≠ zero: workbook CF!F135 = null (blank cell, NOT an explicit zero).
+    Caller must pass 0.0 only after proving the project starts with zero cash;
+    a workbook null is UNKNOWN, not source-proven zero.
     Bool, NaN, Inf → UNRESOLVED regardless of claimed authority.
+
+Fixed-point boundary (K.10):
+    This builder is a pure function of policy, authoritative_period_cash_increments,
+    and opening_cash_keur. It does NOT model the causal feedback loop where interest
+    income increases CFADS/FCF, which changes the cash increment, which changes next
+    period's interest. Fixed-point iteration is the caller's responsibility.
+    The distributable-profit accounting cap (CF113 Max formula) is also NOT
+    implemented here — CASH_RESERVE_INTEREST_DISTRIBUTABLE_PROFIT_CAP_AUTHORITY_BLOCKED.
 
 Day fraction (I.8):
     Uses canonical period.day_fraction when available on the period object.
@@ -54,12 +64,23 @@ Authority validation (I.9):
     Only recognised authority strings are accepted.
     Unknown value → ValueError (caller must pass a valid authority).
 
-Period-axis validation (J.7):
+Period-axis validation (J.7 / K.5):
     Duplicate period indices → UNRESOLVED (set() alone loses duplicates).
     Period axis of unrestricted_cash_schedule must exactly match the
-    periods tuple passed to build_cash_reserve_interest_schedules.
-    A SOURCE_PROVEN schedule with a missing or mismatched cash period
-    must not silently produce zero interest income.
+    periods tuple passed to build_cash_reserve_interest_schedules in BOTH
+    element identity AND ordering (ordered tuple comparison, not set equality).
+    A SOURCE_PROVEN schedule with a missing, extra, or differently-ordered
+    period axis must not silently produce zero interest income.
+
+DSRA construction gate (K.6):
+    Source formula P&L!H19 has (H$3>0) guard — Year > 0 means post-construction only.
+    Construction periods (is_operation=False) must not accrue DSRA interest.
+    The per-period loop gates DSRA accrual on period.is_operation.
+
+Balance convention (K.7):
+    Only OPENING balance convention is source-proven (prior-period closing).
+    CLOSING and AVERAGE are not implemented. build_cash_reserve_interest_schedules
+    fails closed (forces UNRESOLVED) when policy.balance_convention != OPENING.
 """
 from __future__ import annotations
 
@@ -339,9 +360,34 @@ def build_cash_reserve_interest_schedules(
             total_financing_income_keur=0.0,
         )
 
-    # J.7: cash schedule period axis must exactly match the interest-calculation axis.
-    schedule_index_set = {b.period_index for b in unrestricted_cash_schedule.period_balances}
-    cash_axis_mismatch = schedule_index_set != interest_period_set
+    # K.5: cash schedule period axis must match in both elements AND ordering.
+    # Set equality is insufficient — [0,2,1] vs [0,1,2] share the same set.
+    schedule_index_tuple = tuple(b.period_index for b in unrestricted_cash_schedule.period_balances)
+    interest_period_tuple = tuple(p.period_index for p in periods)  # type: ignore[attr-defined]
+    cash_axis_mismatch = schedule_index_tuple != interest_period_tuple
+
+    # K.7: Only OPENING balance convention is source-proven. Fail closed on others.
+    if policy.balance_convention.value != "opening":
+        return CashReserveInterestSchedules(
+            period_results=tuple(
+                CashReserveInterestPeriodResult(
+                    period_index=p.period_index,  # type: ignore[attr-defined]
+                    period_start=p.period_start,  # type: ignore[attr-defined]
+                    period_end=p.period_end,  # type: ignore[attr-defined]
+                    eligible_unrestricted_cash_keur=0.0,
+                    eligible_dsra_keur=0.0,
+                    balance_convention=policy.balance_convention.value,
+                    annual_rate=0.0,
+                    day_count_convention=policy.day_count_convention.value,
+                    day_fraction=0.0,
+                    calculated_financing_income_keur=0.0,
+                    authority="UNRESOLVED",
+                )
+                for p in periods
+            ),
+            authority="UNRESOLVED",
+            total_financing_income_keur=0.0,
+        )
 
     # H.4 / I.9: weakest upstream authority.
     dsra_eligible = policy.eligible_dsra == EligibilityStatus.ELIGIBLE
@@ -417,12 +463,12 @@ def build_cash_reserve_interest_schedules(
             else 0.0
         )
 
-        # J.7: When DSRA is eligible and authority is claimed, the axis was already
-        # validated above. Here dsra_balance_by_period is known to cover all indices.
-        # Missing lookup should not silently produce 0.0 under authoritative execution;
-        # use 0.0 only for INELIGIBLE accounts or when dsra is None (UNRESOLVED path).
+        # J.7 / K.6: DSRA eligible and axis-validated; gate on is_operation (K.6).
+        # Source: P&L!H19 has (H$3>0) guard — construction periods must not accrue.
         if policy.eligible_dsra == EligibilityStatus.ELIGIBLE and dsra_balance_by_period is not None:
-            dsra_raw = dsra_balance_by_period[idx]  # KeyError would be a bug (axis validated above)
+            p_is_operation: bool = getattr(p, "is_operation", False)
+            # KeyError would be a bug (axis validated above); construction → 0.0 per source gate
+            dsra_raw = dsra_balance_by_period[idx] if p_is_operation else 0.0
         else:
             dsra_raw = 0.0
         dsra_eligible_keur = dsra_raw if policy.eligible_dsra == EligibilityStatus.ELIGIBLE else 0.0
