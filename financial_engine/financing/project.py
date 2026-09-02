@@ -897,6 +897,7 @@ def run_project_financing_model(
     convergence_tolerance_keur: float = 1e-7,
     maximum_iterations: int = 50,
     _typed_shl_context: _TypedConstructionShlContext | None = None,
+    _u2_period_financing_income: "tuple | None" = None,
 ) -> ProjectFinancingResult:
     """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
     fin = project_inputs.financing
@@ -1139,6 +1140,15 @@ def run_project_financing_model(
                     ),
                 ),
             )
+        # U2 Phase L: inject cash-reserve financing income into tax input
+        if _u2_period_financing_income and capacity_model_input.tax is not None:
+            capacity_model_input = replace(
+                capacity_model_input,
+                tax=replace(
+                    capacity_model_input.tax,
+                    period_financing_income=_u2_period_financing_income,
+                ),
+            )
         capacity_result = run_senior_debt_model(capacity_model_input)
         if capacity_result.senior_debt is None:
             raise RuntimeError("G2A DSCR capacity result is unavailable")
@@ -1172,6 +1182,15 @@ def run_project_financing_model(
                     post_construction_principal_contribution_keur=(
                         _iter_post_construction_principal
                     ),
+                ),
+            )
+        # U2 Phase L: inject cash-reserve financing income into funded tax input
+        if _u2_period_financing_income and funded_model_input.tax is not None:
+            funded_model_input = replace(
+                funded_model_input,
+                tax=replace(
+                    funded_model_input.tax,
+                    period_financing_income=_u2_period_financing_income,
                 ),
             )
         model_result = run_senior_debt_model(funded_model_input)
