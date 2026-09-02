@@ -329,6 +329,7 @@ def _run_with_construction_idc(
     baseline_commit_sha: str,
     outer_tolerance_keur: float,
     outer_max_iterations: int,
+    _u2_period_financing_income: "tuple | None" = None,
 ) -> "ProjectFinancingResult":
     """Outer G2A / construction IDC fixed point for construction_financing.enabled=True.
 
@@ -512,6 +513,7 @@ def _run_with_construction_idc(
         _typed_shl_context=(
             _seed_shl_context if _seed_shl_context.accrual_enabled else None
         ),
+        _u2_period_financing_income=_u2_period_financing_income,
     )
 
     # Neutral seed: inner_result from step 1 is used directly as the starting state.
@@ -572,6 +574,7 @@ def _run_with_construction_idc(
                 if _iteration_shl_context.accrual_enabled
                 else None
             ),
+            _u2_period_financing_income=_u2_period_financing_income,
         )
 
         # Check outer convergence across all material state components.
@@ -647,6 +650,7 @@ def _run_with_construction_idc(
         _typed_shl_context=(
             _verify_shl_context if _verify_shl_context.accrual_enabled else None
         ),
+        _u2_period_financing_income=_u2_period_financing_income,
     )
     _idempotence_residual = max(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
@@ -916,6 +920,7 @@ def run_project_financing_model(
             baseline_commit_sha=baseline_commit_sha,
             outer_tolerance_keur=convergence_tolerance_keur,
             outer_max_iterations=maximum_iterations,
+            _u2_period_financing_income=_u2_period_financing_income,
         )
         return result
 

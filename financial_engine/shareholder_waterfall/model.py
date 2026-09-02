@@ -258,7 +258,7 @@ def run_project_shareholder_waterfall_model(
     # U2 Phase L: accounting cap parameters
     _share_capital_keur = getattr(fin, "share_capital_keur", 0.0) or 0.0
     _legal_reserve_cap = getattr(tax, "legal_reserve_cap", 0.0) or 0.0
-    _dividend_wht_rate = getattr(fin, "dividend_wht_rate", 0.0) or 0.0
+    _dividend_wht_rate = getattr(tax, "wht_sponsor_dividends", 0.0) or 0.0
     _cash_reserve_policy = getattr(project_inputs, "cash_reserve_interest_policy", None)
 
     # U2 Phase L: outer fixed-point state
@@ -930,9 +930,17 @@ def run_project_shareholder_waterfall_model(
             for _ti, _t_idx in enumerate(_ta.period_indices):
                 _cit_by_idx[_t_idx] = _ta.tax_keur[_ti]
 
+        # M.5: COD opening equity state from construction P&L
+        # Construction book net income = -(SHL PIK + pre-operational opex)
+        # IDC/bank fees/commitment fees are capitalized → not expensed → not in P&L
+        _shl_pik = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+        _const_pl = getattr(project_inputs.tax, "construction_pl", None)
+        _pre_op_opex = getattr(_const_pl, "pre_operational_opex_keur", 0.0) if _const_pl else 0.0
+        _construction_net_income = -(_shl_pik + _pre_op_opex)
+        _eq_retained = _construction_net_income  # greenfield: pre-project RE = 0
+        _eq_reserve = 0.0  # legal reserve starts at 0 for greenfield
+
         # Forward pass: carry equity state and unrestricted cash
-        _eq_reserve = 0.0
-        _eq_retained = 0.0
         _uc_carry = 0.0   # unrestricted cash opening for this iteration's first period
         _new_uc_closing: dict[int, float] = {}
         _new_gd: dict[int, float] = {}
@@ -952,7 +960,8 @@ def run_project_shareholder_waterfall_model(
             _sint = _senior_int_by_idx.get(_idx, 0.0)
             _shl_g = _wp.shl_gross_interest_keur
             _cit = _cit_by_idx.get(_idx, 0.0)
-            _net_income = _ebitda - _depr - _sint - _shl_g - _cit
+            _fi_income = _fi_by_idx.get(_idx, 0.0)  # current iteration financing income
+            _net_income = _ebitda - _depr + _fi_income - _sint - _shl_g - _cit
 
             _fcf_div = _wp.legal_equity_distribution_keur
 
@@ -1010,6 +1019,7 @@ def run_project_shareholder_waterfall_model(
                 change_in_unrestricted_cash_keur=_change_uc,
                 unrestricted_cash_closing_keur=_uc_closing,
                 pure_equity_net_cashflow_keur=_net_div,
+                total_sponsor_net_cashflow_keur=_net_div + _wp.shl_cash_interest_receipt_keur + _wp.shl_principal_receipt_keur,
             ))
             _uc_carry = _uc_closing
 
@@ -1045,16 +1055,21 @@ def run_project_shareholder_waterfall_model(
                         _wp_match.change_in_unrestricted_cash_keur
                         if _wp_match is not None else 0.0
                     )
+            # M.10: Greenfield opening unrestricted cash = 0 (all construction sources go to Uses/reserves)
+            # Authority: ProjectFinancingResult.construction_funding sources fully allocated to project Uses.
+            _opening_uc = 0.0  # GREENFIELD_ZERO_OPENING_UNRESTRICTED_CASH
             _uc_sched = build_unrestricted_cash_schedule(
                 periods=model_result.periods,
                 authority="SOURCE_PROVEN",
                 authoritative_period_cash_increments=_all_increments,
-                opening_cash_keur=0.0,
+                opening_cash_keur=_opening_uc,
             )
             _fi_schedule = build_cash_reserve_interest_schedules(
                 periods=model_result.periods,
                 policy=_cash_reserve_policy,
                 unrestricted_cash_schedule=_uc_sched,
+                dsra_balance_by_period=dsra_opening_by_idx if dsra_opening_by_idx else None,
+                dsra_balance_authority="SOURCE_PROVEN" if dsra_opening_by_idx else None,
             )
             for _fr in _fi_schedule.period_results:
                 if _fr.calculated_financing_income_keur != 0.0:
@@ -1089,6 +1104,23 @@ def run_project_shareholder_waterfall_model(
         if _converged:
             break
 
+    # M.11: Final idempotence — re-run financing with converged FI vector, use that result
+    _fi_inputs_final: tuple = tuple(
+        PeriodFinancingIncomeInput(
+            period_index=idx,
+            financing_income_keur=val,
+            authority="SOURCE_PROVEN",
+        )
+        for idx, val in _fi_by_idx.items()
+        if val != 0.0
+    )
+    financing = run_project_financing_model(
+        project_inputs,
+        source_id=source_id,
+        baseline_commit_sha=baseline_commit_sha,
+        _u2_period_financing_income=_fi_inputs_final if _fi_inputs_final else None,
+    )
+
     # ── Attach fi_schedule to financing result ────────────────────────────────
     if _fi_schedule is not None:
         financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_fi_schedule)
@@ -1108,7 +1140,7 @@ def run_project_shareholder_waterfall_model(
     total_gross_div = sum(p.gross_dividend_paid_keur for p in waterfall_periods)
     total_net_div = sum(p.net_dividend_received_keur for p in waterfall_periods)
     total_covenant_locked = sum(p.covenant_locked_keur for p in waterfall_periods)
-    total_sponsor_receipts = total_distributions + total_shl_int_recd + total_shl_prin_recd
+    total_sponsor_receipts = total_net_div + total_shl_int_recd + total_shl_prin_recd
     total_dsrf_fee = sum(p.dsrf_commitment_fee_keur for p in waterfall_periods)
     # Sum of positive DA closings = total locked cash in DA (shortfall negatives excluded)
     total_da_locked = sum(
@@ -1178,7 +1210,7 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_moic=ts_moic,
         total_sponsor_moic_status=ts_moic_status,
         total_legal_equity_contributed_keur=total_le,
-        total_legal_equity_distributions_keur=total_distributions,
+        total_legal_equity_distributions_keur=total_gross_div,
         total_sponsor_contributed_keur=total_sponsor_contrib,
         total_sponsor_receipts_keur=total_sponsor_receipts,
         deductible_shl_covenant_feedback_status=deductible_feedback_status,
@@ -1207,7 +1239,7 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_contributed_keur=total_sponsor_contrib,
         total_shl_cash_interest_received_keur=total_shl_int_recd,
         total_shl_principal_received_keur=total_shl_prin_recd,
-        total_legal_equity_distributions_keur=total_distributions,
+        total_legal_equity_distributions_keur=total_gross_div,
         total_covenant_locked_keur=total_covenant_locked,
         total_sponsor_receipts_keur=total_sponsor_receipts,
         total_gross_dividend_paid_keur=total_gross_div,
