@@ -64,13 +64,20 @@ Authority validation (I.9):
     Only recognised authority strings are accepted.
     Unknown value → ValueError (caller must pass a valid authority).
 
-Period-axis validation (J.7 / K.5):
+Period-axis validation (J.7 / K.5 / L.13):
     Duplicate period indices → UNRESOLVED (set() alone loses duplicates).
     Period axis of unrestricted_cash_schedule must exactly match the
     periods tuple passed to build_cash_reserve_interest_schedules in BOTH
     element identity AND ordering (ordered tuple comparison, not set equality).
     A SOURCE_PROVEN schedule with a missing, extra, or differently-ordered
     period axis must not silently produce zero interest income.
+
+    Full period identity validation (L.13):
+    Each position in the ordered tuple must match on ALL THREE dimensions:
+        (period_index, period_start, period_end)
+    Same index with different start/end dates → UNRESOLVED.
+    Same axis ordering with different dates → UNRESOLVED.
+    This prevents silent mismatches from calendar-shifted schedule objects.
 
 DSRA construction gate (K.6):
     Source formula P&L!H19 has (H$3>0) guard — Year > 0 means post-construction only.
@@ -360,11 +367,20 @@ def build_cash_reserve_interest_schedules(
             total_financing_income_keur=0.0,
         )
 
-    # K.5: cash schedule period axis must match in both elements AND ordering.
-    # Set equality is insufficient — [0,2,1] vs [0,1,2] share the same set.
-    schedule_index_tuple = tuple(b.period_index for b in unrestricted_cash_schedule.period_balances)
-    interest_period_tuple = tuple(p.period_index for p in periods)  # type: ignore[attr-defined]
-    cash_axis_mismatch = schedule_index_tuple != interest_period_tuple
+    # K.5 / L.13: full period identity validation.
+    # Index ordering must match (K.5). Additionally all three components of each
+    # period's identity must match exactly — same index with different start/end dates
+    # produces wrong day_fraction and must not silently pass (L.13).
+    schedule_balances = unrestricted_cash_schedule.period_balances
+    interest_period_tuple = tuple(
+        (p.period_index, p.period_start, p.period_end)  # type: ignore[attr-defined]
+        for p in periods
+    )
+    schedule_identity_tuple = tuple(
+        (b.period_index, b.period_start, b.period_end)
+        for b in schedule_balances
+    )
+    cash_axis_mismatch = schedule_identity_tuple != interest_period_tuple
 
     # K.7: Only OPENING balance convention is source-proven. Fail closed on others.
     if policy.balance_convention.value != "opening":

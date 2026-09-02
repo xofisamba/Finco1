@@ -1,78 +1,100 @@
 {
   "_meta": {
-    "correction": "U2 Phase L — L.1F Source Evidence",
-    "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION",
-    "note": "User manually inspected both workbooks and supplied cell formulas. This file records row-mapping evidence distinguishing DA (covenant gate) from unrestricted-cash (dividend residual) for both projects.",
+    "correction": "U2 Phase L — L.1F Source Evidence (A.1/A.2 corrected)",
+    "provenance": "MANUAL_WORKBOOK_VERIFICATION",
+    "note": "User manually inspected both workbooks and supplied cell formulas. This file records row-mapping evidence distinguishing DA (covenant gate) from unrestricted-cash (dividend residual) for both projects. Provenance is MANUAL_WORKBOOK_VERIFICATION — not automated openpyxl extraction.",
     "extraction_date": "2026-09-02"
   },
 
   "tuho": {
     "project": "TUHO Wind 1 (20260330_TUHO_BP.xlsm)",
     "cf_sheet": "CF",
+    "da_block": {
+      "note": "TUHO DOES have a Distribution Account block at CF98-CF100. This is a distinct covenant/gating stage that precedes the dividend/unrestricted-cash stage.",
+      "CF98": {
+        "label": "Distribution Account",
+        "identity": "distribution_account_available",
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
+      },
+      "CF99": {
+        "label": "Free Cash Flow for Distribution",
+        "identity": "distribution_account_release",
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
+      },
+      "CF100": {
+        "label": "Distribution Account Balance",
+        "identity": "distribution_account_closing",
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
+      },
+      "authority": "MANUAL_WORKBOOK_VERIFICATION"
+    },
     "dividend_cash_block": {
+      "note": "CF106+ is a LATER stage — Free Cash Flow for dividends and unrestricted-cash accounting. This is distinct from the DA/covenant stage at CF98-100.",
       "CF106": {
         "label": "FCF for dividends",
         "formula_pattern": "AU102 + SUM(AU103:AU104)",
         "period_au_value_keur": 5155.085477565507,
         "identity": "free_cash_flow_for_dividends",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF107": {
         "label": "Net income",
         "formula_pattern": "='P&L'!AU46",
         "period_au_value_keur": 3369.521268,
         "identity": "net_income_pnl",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF108": {
         "label": "Cash available for dividend",
         "formula_pattern": "AT135 + AU102 + SUM(AU103:AU104)",
         "formula_meaning": "prior_unrestricted_cash_closing + fcf_for_dividends",
         "period_au_value_keur": 5155.085477565507,
-        "note": "AT135=0 (prior cash=0 at period AU). CF108=CF106 when prior cash=0.",
+        "note": "AT135=0 (prior cash=0 at period AU). CF108=CF106 when prior cash=0. This is the unrestricted-cash-available row, NOT the DA block (CF98-100).",
         "identity": "unrestricted_cash_available_for_dividend",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF113": {
         "label": "Accounting/cash Max",
         "formula_pattern": "MAX(0; MIN(accounting_cap; CF108))",
         "identity": "accounting_cash_dividend_capacity",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF115": {
         "label": "Distributable",
         "identity": "distributable_dividend",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF120": {
         "label": "Gross Dividends",
         "identity": "gross_dividend_paid",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF122": {
         "label": "Change in unrestricted cash",
         "formula_pattern": "CF106 - CF120",
         "identity": "change_in_unrestricted_cash",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF135": {
         "label": "Unrestricted cash closing",
         "formula_pattern": "F135 + G122",
         "period_au_value_keur": 550.0,
         "identity": "unrestricted_cash_closing",
-        "authority": "SOURCE_PROVEN_FORMULA"
+        "provenance": "SOURCE_PROVEN_FORMULA"
       }
-    },
-    "da_block_absent": {
-      "note": "TUHO does not have a separate Distribution Account (CF108-CF110 DA block). CF108 in TUHO IS the cash-available-for-dividend row, not a DA roll-forward.",
-      "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
     },
     "wht": {
       "B118_cell": "CF!B118",
       "value": 0.00,
       "label": "Dividend WHT rate",
-      "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION",
-      "note": "CF!B118 links to Inputs dividend WHT = 0.00%. Factory updated L.1B."
+      "provenance": "MANUAL_WORKBOOK_VERIFICATION",
+      "note": "CF!B118 links to Inputs dividend WHT = 0.00%. This is the dividend WHT authority — distinct from P&L B21 (financing-income WHT). Factory updated L.1B."
+    },
+    "b21_note": {
+      "label": "P&L B21 is financing-income WHT (Interests from Reserve/Cash withholding), NOT dividend WHT.",
+      "B21_value": 0.0,
+      "note": "P&L B21 = 0.00 is a different concept from CF!B118. Do not use B21 as dividend-WHT evidence.",
+      "authority": "SOURCE_PROVEN_FORMULA"
     }
   },
 
@@ -85,17 +107,17 @@
         "label": "DA available",
         "formula_pattern": "SUM(G94,G95,G106)+F110",
         "identity": "distribution_account_available",
-        "authority": "SOURCE_PROVEN_FORMULA"
+        "provenance": "SOURCE_PROVEN_FORMULA"
       },
       "CF109_da": {
         "label": "DA release (gate output)",
         "identity": "distribution_account_release",
-        "authority": "SOURCE_PROVEN_FORMULA"
+        "provenance": "SOURCE_PROVEN_FORMULA"
       },
       "CF110_da": {
         "label": "DA closing balance",
         "identity": "distribution_account_closing",
-        "authority": "SOURCE_PROVEN_FORMULA"
+        "provenance": "SOURCE_PROVEN_FORMULA"
       }
     },
     "dividend_cash_block": {
@@ -103,13 +125,13 @@
         "label": "FCF for dividends",
         "period_40_value_keur": 589.649650241493,
         "identity": "free_cash_flow_for_dividends",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF117": {
         "label": "Net income",
         "period_40_value_keur": 1303.84,
         "identity": "net_income_pnl",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF118": {
         "label": "Cash available for dividend",
@@ -117,62 +139,65 @@
         "period_40_value_keur": 589.649650241493,
         "note": "Prior cash=0 at period 40. CF118=CF116 when prior cash=0.",
         "identity": "unrestricted_cash_available_for_dividend",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF123": {
         "label": "Accounting/cash Max",
         "formula_pattern": "MAX(0;MIN(AT154+AU117-AU153;AU118))",
         "identity": "accounting_cash_dividend_capacity",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF125": {
         "label": "Distributable",
         "formula_pattern": "IF(AND(AU120;AU121);AU123*$B$123;0)",
         "period_40_value_keur": 39.649650241465224,
         "identity": "distributable_dividend",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF128": {
         "label": "Dividend WHT rate",
         "B128_value": 0.05,
         "identity": "dividend_wht_rate",
-        "note": "Oborovo B128=5.00% — correct, factory unchanged.",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "note": "Oborovo B128=5.00% — correct, factory unchanged. This is dividend WHT, distinct from any financing-income WHT concept.",
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF129": {
         "label": "Net Dividends",
         "period_40_value_keur": 37.667167729391963,
         "identity": "net_dividend_paid",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF130": {
         "label": "Gross Dividends",
         "period_40_value_keur": 39.649650241465224,
         "note": "gross_dividend = distributable regardless of WHT rate.",
         "identity": "gross_dividend_paid",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF132": {
         "label": "Change in unrestricted cash",
         "formula_pattern": "CF116 - CF130",
         "period_40_value_keur": 550.0,
         "identity": "change_in_unrestricted_cash",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       },
       "CF144": {
         "label": "Unrestricted cash closing",
         "period_40_value_keur": 550.0,
         "identity": "unrestricted_cash_closing",
-        "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+        "provenance": "MANUAL_WORKBOOK_VERIFICATION"
       }
     }
   },
 
   "critical_distinction": {
     "DA_vs_unrestricted_cash": "Distribution Account (DA) is a covenant/DSCR gate mechanism. Unrestricted corporate cash is the dividend-accounting residual after gross dividends are paid. These are completely separate concepts in both workbooks.",
+    "TUHO_DA_block": "CF98-CF100 = TUHO Distribution Account block (covenant gate)",
+    "TUHO_CF108": "UNRESTRICTED_CASH_AVAILABLE — dividend cash cap at the later dividend-accounting stage (CF106+), NOT the DA block",
+    "Oborovo_DA_block": "CF108-CF110 = Oborovo Distribution Account block (covenant gate)",
     "Oborovo_CF108": "DA_AVAILABLE — covenant gate input, NOT dividend cash cap",
-    "Oborovo_CF118": "UNRESTRICTED_CASH_AVAILABLE — dividend cash cap, separate from DA",
-    "TUHO_CF108": "UNRESTRICTED_CASH_AVAILABLE — TUHO has no DA block; CF108 is the cash-available row",
-    "authority": "USER_VERIFIED_WORKBOOK_EXTRACTION"
+    "Oborovo_CF118": "UNRESTRICTED_CASH_AVAILABLE — dividend cash cap at the later dividend-accounting stage (CF116+)",
+    "b21_vs_b118": "P&L B21 is financing-income WHT (on cash/DSRA interest). CF!B118/CF!B128 are dividend WHT rates — separate concepts.",
+    "authority": "MANUAL_WORKBOOK_VERIFICATION"
   }
 }

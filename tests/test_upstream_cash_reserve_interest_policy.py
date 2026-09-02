@@ -2570,20 +2570,26 @@ def test_tuho_au_cf122_change_in_cash_from_roll_forward():
 # ── K-C. K.3 — WHT source vs factory reconciliation ─────────────────────
 
 
-def test_tuho_b21_wht_rate_zero_source_proven():
-    """K.3: TUHO source fixture confirms B21 (WHT rate) = 0.0.
+def test_tuho_b21_financing_wht_is_distinct_from_dividend_wht():
+    """K.3 / A.3: P&L B21 is financing-income WHT, NOT dividend WHT.
 
-    Source: excel_tuho_cash_reserve_interest_truth.json pnl_row21_withholding.
-    Factory (app/project_factories.py) has wht_sponsor_dividends=0.05 — UNRECONCILED.
-    Factory must NOT be updated until $B$118 cell is directly extracted.
+    B21 = WHT on Interests from Reserve/Cash accounts (P&L rows 19-20 income).
+    B21=0 confirms zero financing-income WHT — correct.
+    Dividend WHT authority is CF!B118 = 0.00% (separately verified).
+    These are distinct concepts: do not use B21 as dividend-WHT confirmation.
     """
     import json, pathlib
     d = json.loads(
         pathlib.Path("tests/fixtures/excel_tuho_cash_reserve_interest_truth.json").read_text()
     )
     wht = d["pnl_row21_withholding"]
-    assert wht["zero_all_periods"] is True, "TUHO WHT must be zero all periods per source"
+    assert wht["zero_all_periods"] is True, "TUHO financing-income WHT (B21) must be zero"
     assert "B21=0" in wht["note"], f"WHT note must confirm B21=0: {wht['note']!r}"
+    # A.3: Confirm fixture also records the B21 vs B118 distinction
+    l1f = json.loads(
+        pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").read_text()
+    )
+    assert "b21_vs_b118" in l1f["critical_distinction"], "Fixture must document B21≠B118 distinction"
 
 
 def test_tuho_wht_factory_vs_source_reconciled():
@@ -3017,10 +3023,11 @@ def test_l1f_tuho_cf106_identity_in_fixture():
 
 
 def test_l1f_tuho_cf108_identity_is_cash_available_not_da():
-    """L.1F: TUHO CF108 = unrestricted cash available for dividend (NOT DA block).
+    """L.1F / A.1: TUHO CF108 = unrestricted cash available for dividend (dividend-accounting stage).
 
-    CF108 formula = AT135 + AU102 + SUM(AU103:AU104) = prior_cash + CF106.
-    TUHO has no separate Distribution Account block — CF108 is the dividend cap row.
+    A.1 correction: TUHO DOES have a DA block at CF98-CF100 (covenant/gating stage).
+    CF108 is at a LATER stage (CF106+) — unrestricted cash available for dividend,
+    which is prior_cash + FCF_for_dividends. Not to be confused with DA (CF98-100).
     """
     import json, pathlib
     d = json.loads(
@@ -3029,7 +3036,11 @@ def test_l1f_tuho_cf108_identity_is_cash_available_not_da():
     cf108 = d["tuho"]["dividend_cash_block"]["CF108"]
     assert cf108["identity"] == "unrestricted_cash_available_for_dividend"
     assert "prior_unrestricted_cash_closing" in cf108["formula_meaning"]
-    assert d["tuho"]["da_block_absent"]["note"].startswith("TUHO does not have a separate")
+    # A.1: TUHO DA block exists at CF98-100
+    da = d["tuho"]["da_block"]
+    assert da["CF98"]["identity"] == "distribution_account_available"
+    assert da["CF99"]["identity"] == "distribution_account_release"
+    assert da["CF100"]["identity"] == "distribution_account_closing"
 
 
 def test_l1f_tuho_cf135_unrestricted_cash_closing():
@@ -3140,15 +3151,23 @@ def test_l1f_oborovo_cf144_unrestricted_cash_closing_550():
 
 
 def test_l1f_critical_distinction_da_vs_unrestricted_cash():
-    """L.1F: Fixture records the DA≠unrestricted cash critical distinction."""
+    """L.1F / A.1: Fixture records DA≠unrestricted-cash distinction for both projects.
+
+    A.1 correction: TUHO has DA at CF98-100. TUHO CF108 is at a later stage.
+    """
     import json, pathlib
     d = json.loads(
         pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").read_text()
     )
     dist = d["critical_distinction"]
     assert "Distribution Account" in dist["DA_vs_unrestricted_cash"]
-    assert "TUHO has no DA block" in dist["TUHO_CF108"]
+    # A.1: TUHO CF108 is unrestricted cash (not DA), but TUHO does have DA at CF98-100
+    assert "UNRESTRICTED_CASH_AVAILABLE" in dist["TUHO_CF108"]
+    assert "CF98" in dist["TUHO_DA_block"] or "CF98" in dist.get("TUHO_DA_block", "")
     assert dist["Oborovo_CF108"] == "DA_AVAILABLE — covenant gate input, NOT dividend cash cap"
+    # A.2: Provenance is MANUAL_WORKBOOK_VERIFICATION, not USER_VERIFIED_WORKBOOK_EXTRACTION
+    meta = d["_meta"]
+    assert meta["provenance"] == "MANUAL_WORKBOOK_VERIFICATION"
 
 
 # ── L-C. L.1B TUHO WHT Factory Reconciliation ────────────────────────────────
@@ -3180,12 +3199,24 @@ def test_l1b_oborovo_factory_wht_remains_five_percent():
 
 
 def test_l1b_tuho_wht_fixture_consistency():
-    """L.1B: TUHO fixture B21=0 and factory 0.00 are now consistent (K.3 resolved)."""
+    """L.1B / A.3: TUHO dividend WHT (CF!B118=0%) and factory 0.00 are consistent.
+
+    A.3: B21=0 is financing-income WHT (distinct from dividend WHT).
+    The dividend WHT authority is CF!B118 = 0.00% (L.1B manual verification).
+    B21 consistency is a secondary confirmation, not the primary authority.
+    """
     import json, pathlib
     d = json.loads(
         pathlib.Path("tests/fixtures/excel_tuho_cash_reserve_interest_truth.json").read_text()
     )
+    # B21 = financing-income WHT = 0 (consistent — zero financing WHT → zero withholding on interest)
     assert d["pnl_row21_withholding"]["zero_all_periods"] is True
+    # Primary dividend WHT authority: CF!B118 = 0.00% per L.1F fixture
+    l1f = json.loads(
+        pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").read_text()
+    )
+    assert l1f["tuho"]["wht"]["value"] == 0.00
+    assert l1f["tuho"]["wht"]["provenance"] == "MANUAL_WORKBOOK_VERIFICATION"
     factory_src = pathlib.Path("app/project_factories.py").read_text()
     assert "wht_sponsor_dividends=0.00" in factory_src
 
@@ -3194,11 +3225,12 @@ def test_l1b_tuho_wht_fixture_consistency():
 
 
 def test_l13_same_index_mismatched_dates_fails_closed():
-    """L.13: Periods with same index but different date bounds must fail closed.
+    """L.13: Periods with same index but different date bounds → UNRESOLVED.
 
-    Two period sets sharing index=0 but with different (start, end) dates
-    cannot be safely combined — mismatched calendar contexts produce wrong
-    day_fraction; must resolve to UNRESOLVED.
+    Full period identity validation: each position must match on all three
+    dimensions: (period_index, period_start, period_end).
+    Same index with different start/end dates produces wrong day_fraction
+    and must fail closed to UNRESOLVED.
     """
     from finco_core.inputs.cash_reserve_interest_schedule import (
         build_unrestricted_cash_schedule, build_cash_reserve_interest_schedules,
@@ -3209,38 +3241,37 @@ def test_l13_same_index_mismatched_dates_fails_closed():
         period_index = 0
         period_start = date(2030, 1, 1)
         period_end = date(2030, 6, 30)
+        is_operation = True
 
     class _PeriodB:
         period_index = 0
         period_start = date(2030, 7, 1)   # different start — same index, different dates
         period_end = date(2030, 12, 31)
+        is_operation = True
 
     cash_schedule = build_unrestricted_cash_schedule(
         periods=(_PeriodA(),),
         authority="SOURCE_PROVEN",
-        authoritative_period_cash_increments={0: 100.0},
+        authoritative_period_cash_increments={0: 550.0},
         opening_cash_keur=0.0,
     )
-    # Schedule built with PeriodA; now supply PeriodB — index matches, dates don't
+    # Schedule built with PeriodA (Jan-Jun); supply PeriodB (Jul-Dec) — index matches, dates don't
     result = build_cash_reserve_interest_schedules(
         periods=(_PeriodB(),), policy=policy, unrestricted_cash_schedule=cash_schedule,
     )
-    # Date mismatch cannot be detected purely by index tuple (same index=0 in both).
-    # At minimum the result must not produce a machine-precision match with wrong dates.
-    # If the engine detects mismatch it should return UNRESOLVED; otherwise this is
-    # a documentation test of the limitation (no full-period-identity check yet).
-    # The important governance: no crash, and result is inspectable.
-    assert result is not None
+    # L.13: Full identity validation (index, start, end) must detect the date mismatch.
+    assert result.authority == "UNRESOLVED", (
+        f"L.13: Same index, different dates must force UNRESOLVED; got {result.authority!r}"
+    )
+    assert result.total_financing_income_keur == 0.0
 
 
-def test_l13_period_identity_tuple_includes_index_only():
-    """L.13: Current axis check uses period_index tuple (not full identity).
-
-    Documents that the existing ordered-tuple axis check (K.5) validates index
-    ordering but not (index, start, end) triples. Full identity validation
-    is a Phase L future requirement — this test records the current boundary.
-    """
-    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+def test_l13_period_identity_full_triple_validation_passes_when_matching():
+    """L.13: Full (index, start, end) identity validation passes when all three match."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule, build_cash_reserve_interest_schedules,
+    )
+    policy = _make_source_proven_policy(dsra_eligible=False)
     periods = (
         _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),
         _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31)),
@@ -3252,8 +3283,12 @@ def test_l13_period_identity_tuple_includes_index_only():
         opening_cash_keur=0.0,
     )
     assert s.authority == "SOURCE_PROVEN"
-    idxs = tuple(b.period_index for b in s.period_balances)
-    assert idxs == (0, 1), f"Index tuple: {idxs}"
+    result = build_cash_reserve_interest_schedules(
+        periods=periods, policy=policy, unrestricted_cash_schedule=s,
+    )
+    assert result.authority == "SOURCE_PROVEN", (
+        f"Matching (index,start,end) must not force UNRESOLVED; got {result.authority!r}"
+    )
 
 
 # ── L-E. L.15 WHT Sensitivity on Sponsor Net Cashflows ──────────────────────
