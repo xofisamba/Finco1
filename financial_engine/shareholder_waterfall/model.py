@@ -257,9 +257,22 @@ def run_project_shareholder_waterfall_model(
 
     # U2 Phase L: accounting cap parameters
     _share_capital_keur = getattr(fin, "share_capital_keur", 0.0) or 0.0
-    _legal_reserve_cap = getattr(tax, "legal_reserve_cap", 0.0) or 0.0
-    _dividend_wht_rate = getattr(tax, "wht_sponsor_dividends", 0.0) or 0.0
     _cash_reserve_policy = getattr(project_inputs, "cash_reserve_interest_policy", None)
+    _distribution_accounting_policy = getattr(project_inputs, "distribution_accounting_policy", None)
+    _dist_accounting_enabled = (
+        _distribution_accounting_policy is not None
+        and getattr(_distribution_accounting_policy, "enabled", False)
+    )
+    _dividend_wht_rate = (
+        _distribution_accounting_policy.dividend_wht_rate
+        if _dist_accounting_enabled
+        else 0.0
+    )
+    _legal_reserve_cap = (
+        _distribution_accounting_policy.legal_reserve_cap_fraction
+        if _dist_accounting_enabled
+        else getattr(getattr(project_inputs, "tax", None), "legal_reserve_cap", 0.10)
+    )
 
     # U2 Phase L: outer fixed-point state
     _MAX_U2_ITER = 50
@@ -913,6 +926,31 @@ def run_project_shareholder_waterfall_model(
             ))
 
         # ── U2 Phase L: Accounting cap second pass ────────────────────────────
+        if not _dist_accounting_enabled:
+            # Preserve frozen G2C semantics: gross = net = legal_equity_distribution
+            _new_wp = []
+            for _wp in waterfall_periods:
+                _dist = _wp.legal_equity_distribution_keur
+                _new_wp.append(dataclasses.replace(
+                    _wp,
+                    fcf_for_dividends_keur=_dist,
+                    accounting_dividend_capacity_keur=_dist,
+                    cash_dividend_capacity_keur=_dist,
+                    distributable_keur=_dist,
+                    gross_dividend_paid_keur=_dist,
+                    dividend_wht_rate=0.0,
+                    dividend_wht_keur=0.0,
+                    net_dividend_received_keur=_dist,
+                    unrestricted_cash_opening_keur=0.0,
+                    change_in_unrestricted_cash_keur=0.0,
+                    unrestricted_cash_closing_keur=0.0,
+                    # pure_equity_net_cashflow_keur and total_sponsor_net_cashflow_keur
+                    # keep the original values set in the first pass
+                ))
+            waterfall_periods = _new_wp
+            # Skip U2 fixed-point entirely — no cash reserve interest without distribution policy
+            break
+
         # Build lookup maps for net income computation
         _op_period_by_idx = {
             p.period_index: p for p in model_result.periods if p.is_operation
@@ -1140,7 +1178,12 @@ def run_project_shareholder_waterfall_model(
     total_gross_div = sum(p.gross_dividend_paid_keur for p in waterfall_periods)
     total_net_div = sum(p.net_dividend_received_keur for p in waterfall_periods)
     total_covenant_locked = sum(p.covenant_locked_keur for p in waterfall_periods)
-    total_sponsor_receipts = total_net_div + total_shl_int_recd + total_shl_prin_recd
+    # N.2: sponsor receipts uses net dividends when distribution accounting is enabled,
+    # or the original legal_equity_distribution sum (=gross=net) otherwise.
+    total_sponsor_receipts = (
+        (total_net_div if _dist_accounting_enabled else total_distributions)
+        + total_shl_int_recd + total_shl_prin_recd
+    )
     total_dsrf_fee = sum(p.dsrf_commitment_fee_keur for p in waterfall_periods)
     # Sum of positive DA closings = total locked cash in DA (shortfall negatives excluded)
     total_da_locked = sum(
@@ -1197,6 +1240,10 @@ def run_project_shareholder_waterfall_model(
     deductible_feedback_status = (
         _G2C_DEDUCTIBLE_FEEDBACK_STATUS if deductible_feedback_active else None
     )
+    # N.1: return summary uses net dividends so that legal_equity.total_receipts_keur
+    # is consistent with pure_equity_net_cashflow_keur (post-WHT).
+    # For non-distribution-accounting projects: gross == net (no WHT applied).
+    _legal_equity_receipts = total_net_div if _dist_accounting_enabled else total_distributions
     return_summary = build_decision_complete_return_summary(
         project_inputs=project_inputs,
         financing=financing,
@@ -1210,7 +1257,7 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_moic=ts_moic,
         total_sponsor_moic_status=ts_moic_status,
         total_legal_equity_contributed_keur=total_le,
-        total_legal_equity_distributions_keur=total_gross_div,
+        total_legal_equity_distributions_keur=_legal_equity_receipts,
         total_sponsor_contributed_keur=total_sponsor_contrib,
         total_sponsor_receipts_keur=total_sponsor_receipts,
         deductible_shl_covenant_feedback_status=deductible_feedback_status,

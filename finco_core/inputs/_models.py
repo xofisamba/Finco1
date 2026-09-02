@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from finco_core.opex._capability import HierarchicalOpexCapability
     from finco_core.inputs.construction_financing import ConstructionFinancingInput
     from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestPolicy
+    from finco_core.inputs.distribution_accounting_policy import DistributionAccountingPolicy
 
 
 class PeriodFrequency(Enum):
@@ -1641,6 +1642,7 @@ class ProjectInputs:
     hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
     valuation: ValuationPolicies = field(default_factory=ValuationPolicies)
     cash_reserve_interest_policy: "CashReserveInterestPolicy | None" = None
+    distribution_accounting_policy: "DistributionAccountingPolicy | None" = None
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:

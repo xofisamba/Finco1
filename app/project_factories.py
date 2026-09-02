@@ -91,6 +91,10 @@ from finco_core.inputs.cash_reserve_interest_policy import (
     BalanceConvention,
     DayCountConvention,
 )
+from finco_core.inputs.distribution_accounting_policy import (
+    DistributionAccountingPolicy,
+    DistributionAccountingAuthority,
+)
 
 # H.3: SOURCE_PROVEN interest policy — rate and eligible-account identity proved
 # from workbook source formulas. Balance schedule remains UNRESOLVED (no
@@ -698,6 +702,12 @@ def create_default_oborovo() -> ProjectInputs:
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
         cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
+        distribution_accounting_policy=DistributionAccountingPolicy(
+            enabled=True,
+            authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+            dividend_wht_rate=0.05,
+            legal_reserve_cap_fraction=0.10,
+        ),
     )
 
 
@@ -1275,6 +1285,12 @@ def create_default_tuho_wind1() -> ProjectInputs:
         financing=financing,
         tax=tax,
         cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
+        distribution_accounting_policy=DistributionAccountingPolicy(
+            enabled=True,
+            authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+            dividend_wht_rate=0.0,
+            legal_reserve_cap_fraction=0.10,
+        ),
         valuation=ValuationPolicies(
             project=ProjectValuationPolicy(
                 annual_discount_rate=0.066,

@@ -28,6 +28,10 @@ from finco_core.inputs.cash_reserve_interest_policy import (
     DayCountConvention,
     BalanceConvention,
 )
+from finco_core.inputs.distribution_accounting_policy import (
+    DistributionAccountingPolicy,
+    DistributionAccountingAuthority,
+)
 from financial_engine.shareholder_waterfall import (
     CovenantGatedWaterfallResult,
     run_project_shareholder_waterfall_model,
@@ -70,8 +74,23 @@ def _solar_with_policy(rate: float = 0.03) -> CovenantGatedWaterfallResult:
 
 
 def _solar_with_wht(wht: float) -> CovenantGatedWaterfallResult:
+    """Solar project with explicit WHT rate via DistributionAccountingPolicy.
+
+    N.2: WHT now only applies when distribution_accounting_policy.enabled is True.
+    Tests that need WHT behaviour must supply the policy explicitly.
+    """
     p = _solar_inputs()
-    p2 = dataclasses.replace(p, tax=dataclasses.replace(p.tax, wht_sponsor_dividends=wht))
+    policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.GENERIC_FINCO_POLICY,
+        dividend_wht_rate=wht,
+        legal_reserve_cap_fraction=0.10,
+    )
+    p2 = dataclasses.replace(
+        p,
+        tax=dataclasses.replace(p.tax, wht_sponsor_dividends=wht),
+        distribution_accounting_policy=policy,
+    )
     return run_project_shareholder_waterfall_model(p2)
 
 
@@ -96,9 +115,31 @@ def test_m1_parameter_default_none():
 # ── M.3: Financing income in net income formula ────────────────────────────────
 
 def test_m3_fi_income_included_in_net_income():
-    """For a project with positive financing income, net income must be higher than without it."""
-    r_no_fi = _solar()
-    r_with_fi = _solar_with_policy(rate=0.03)
+    """For a project with positive financing income, net income must be higher than without it.
+
+    N.2: The U2 second pass only runs when distribution_accounting_policy.enabled is True.
+    Use a solar project with both cash_reserve_interest_policy AND distribution_accounting_policy
+    so the full U2 loop runs and produces non-zero financing income.
+    """
+    from finco_core.inputs.distribution_accounting_policy import (
+        DistributionAccountingPolicy,
+        DistributionAccountingAuthority,
+    )
+    _dist_policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.GENERIC_FINCO_POLICY,
+        dividend_wht_rate=0.0,
+        legal_reserve_cap_fraction=0.10,
+    )
+    p_base = _solar_inputs()
+    p_no_fi = dataclasses.replace(p_base, distribution_accounting_policy=_dist_policy)
+    p_with_fi = dataclasses.replace(
+        p_base,
+        cash_reserve_interest_policy=_make_policy(rate=0.03),
+        distribution_accounting_policy=_dist_policy,
+    )
+    r_no_fi = run_project_shareholder_waterfall_model(p_no_fi)
+    r_with_fi = run_project_shareholder_waterfall_model(p_with_fi)
 
     # Get first operating period with financing income
     ops_no = [p for p in r_no_fi.waterfall_periods if not p.is_construction]
@@ -106,20 +147,17 @@ def test_m3_fi_income_included_in_net_income():
 
     # Find a period where FI > 0
     total_fi = r_with_fi.financing_result.cash_reserve_interest_schedules
-    if total_fi is None:
-        pytest.skip("No fi_schedule computed (no policy or all zero)")
+    assert total_fi is not None, "No fi_schedule computed (no policy or all zero)"
 
     fi_by_idx = {fr.period_index: fr.calculated_financing_income_keur for fr in total_fi.period_results}
     nonzero_fi_indices = [idx for idx, v in fi_by_idx.items() if v > 0]
-    if not nonzero_fi_indices:
-        pytest.skip("All financing income is zero")
+    assert nonzero_fi_indices, "All financing income is zero"
 
     # accounting_dividend_capacity is affected by net income — with FI it should be >= without
     idx = nonzero_fi_indices[0]
     wp_no = next((p for p in ops_no if p.period_index == idx), None)
     wp_fi = next((p for p in ops_fi if p.period_index == idx), None)
-    if wp_no is None or wp_fi is None:
-        pytest.skip("Period not found")
+    assert wp_no is not None and wp_fi is not None, "Period not found"
     # accounting cap with FI >= without FI (more NI allows more distribution)
     assert wp_fi.accounting_dividend_capacity_keur >= wp_no.accounting_dividend_capacity_keur - 1e-4
 
@@ -436,10 +474,21 @@ def test_m8_total_sponsor_receipts_wind():
 
 
 def test_m4_wht_wind_project():
-    """Wind project WHT from tax.wht_sponsor_dividends."""
+    """Wind project WHT applied via DistributionAccountingPolicy.
+
+    N.2: WHT only applies when distribution_accounting_policy.enabled is True.
+    The test explicitly adds the policy to ensure WHT is applied.
+    """
     p = create_default_wind_project()
     wht_rate = p.tax.wht_sponsor_dividends
-    r = run_project_shareholder_waterfall_model(p)
+    policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.GENERIC_FINCO_POLICY,
+        dividend_wht_rate=wht_rate,
+        legal_reserve_cap_fraction=0.10,
+    )
+    p2 = dataclasses.replace(p, distribution_accounting_policy=policy)
+    r = run_project_shareholder_waterfall_model(p2)
     ops = [pp for pp in r.waterfall_periods if not pp.is_construction and pp.gross_dividend_paid_keur > 1e-6]
     for pp in ops:
         assert abs(pp.dividend_wht_rate - wht_rate) < 1e-9
@@ -448,21 +497,23 @@ def test_m4_wht_wind_project():
 # ── M.2: DSRA balance authority ───────────────────────────────────────────────
 
 def test_m2_dsra_balance_passed_when_dsra_opening_populated():
-    """When dsra_opening_by_idx is non-empty, fi_schedule receives DSRA balances."""
-    # We can't easily unit-test this without access to internal state, so we
-    # verify that a project with DSRA mode runs without error when policy is set.
-    from finco_core.inputs import DebtServiceReserveSupportMode
-    p = _solar_inputs()
-    # Enable DSRA mode by checking if the project has one
-    dsra_mode = p.financing.dsra_support_mode
-    if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
-        # Already in CASH_DSRA mode — run with policy
-        p2 = dataclasses.replace(p, cash_reserve_interest_policy=_make_policy())
-        r = run_project_shareholder_waterfall_model(p2)
-        # If we get here, M.2 didn't crash
-        assert r is not None
-    else:
-        pytest.skip("Solar project not in CASH_DSRA mode for this test")
+    """When dsra_opening_by_idx is non-empty, fi_schedule receives DSRA balances.
+
+    N.2: Use create_default_tuho_wind1() which has both cash_reserve_interest_policy
+    and distribution_accounting_policy configured, so the full U2 loop runs and
+    fi_schedule is attached to the result.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    p = create_default_tuho_wind1()
+    assert p.cash_reserve_interest_policy is not None, (
+        "TUHO must have cash_reserve_interest_policy for this test"
+    )
+    assert p.distribution_accounting_policy is not None and p.distribution_accounting_policy.enabled, (
+        "TUHO must have distribution_accounting_policy.enabled for this test"
+    )
+    r = run_project_shareholder_waterfall_model(p)
+    # fi_schedule should be attached — verifies M.2 doesn't crash
+    assert r.financing_result.cash_reserve_interest_schedules is not None
 
 
 def test_m2_none_dsra_policy_does_not_crash():
