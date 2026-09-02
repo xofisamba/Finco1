@@ -152,6 +152,66 @@
     "proof_cf95": "CF row 91 Beginning = =F95 (prior period End).",
     "authority": "SOURCE_PROVEN_FORMULA"
   },
+  "correction_g_findings": {
+    "correction": "U2 Correction G",
+    "minimum_cash_policy_input_search": {
+      "verdict": "NO_EXPLICIT_MINIMUM_CASH_INPUT_FOUND",
+      "search_scope": "All rows in Inputs sheet, all labels containing 'cash', 'retain', 'minimum', 'floor', 'reserve cash', 'liquidity'",
+      "found_rows": [
+        {"row": 438, "label": "Cash Interest", "value": 0.01, "role": "interest_rate_only"}
+      ],
+      "conclusion": "The 550 kEUR cash balance (CF!AU135) is a model OUTPUT (emergent waterfall result), not a source policy input. No minimum retained cash / distribution floor / liquidity reserve input exists in the Inputs sheet.",
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    },
+    "cf_row122_decomposition": {
+      "label": "Change in cash",
+      "row": 122,
+      "colG_formula": "=G106-G120",
+      "components": {
+        "G106": {
+          "label": "Free Cash Flow for dividends",
+          "formula": "=G102+SUM(G103:G104)",
+          "sub_components": {
+            "G102": "FCF for Shareholder Loan (=G99)",
+            "G103": "Withholding Tax SHL (=-DS!G123*G5)",
+            "G104": "Net SHL (=-DS!G128)"
+          }
+        },
+        "G120": {
+          "label": "Gross Dividends",
+          "formula": "=G119+G118",
+          "sub_components": {
+            "G119": "Net Dividends (=G115-G118)",
+            "G118": "Withholding Tax on dividends (=G115*$B$118)"
+          }
+        }
+      },
+      "cash_roll_forward": {
+        "identity": "CF!G135 = CF!F135 + CF!G122",
+        "meaning": "closing_cash[p] = closing_cash[p-1] + change_in_cash[p]",
+        "change_in_cash_meaning": "FCF_after_SHL_service_and_WHT minus gross_dividends"
+      },
+      "bank_cfads_treatment": {
+        "cf_row66_formula": "=SUM('P&L'!G19:G21)-'P&L'!G28",
+        "cf_row69_formula": "=SUM(G20,G38,G63,G66,G67)+$B$70*(G$3=0)",
+        "verdict": "BANK_CFADS_INCLUDES_FINANCING_INCOME",
+        "conclusion": "CF row 69 (Free Cash Flow for Banks) explicitly includes G66 (reserve/cash interest income). Bank CFADS includes both unrestricted cash interest (P&L!G20) and reserve account interest (P&L!G19)."
+      },
+      "dsra_account_eligibility": {
+        "P&L_row19_formula": "=(G$3>0)*$B19*(CF!F95+CF!F81)*G$6",
+        "verdict": "ACCOUNTS_ELIGIBLE_BALANCE_CURRENTLY_ZERO",
+        "conclusion": "DSRA (CF81) and J-DSRA (CF95) are ELIGIBLE accounts in the workbook formula. Current balance is zero for all periods. INELIGIBLE classification was incorrect — accounts are eligible but happen to have zero balance.",
+        "correct_classification": "DSRA account = ELIGIBLE; observed balance = 0.0 for all periods"
+      },
+      "cash_balance_observation": {
+        "cf135_nonzero_periods": "Only col AU (last period, yr=20): 550.0 kEUR",
+        "all_other_periods": "0.0 kEUR",
+        "conclusion": "The 550 kEUR appears only in the final period. P&L!G20 cash interest uses CF!F135 (prior period cash), which is zero for all periods except the last. Cash interest income is therefore zero for all periods in this workbook scenario.",
+        "p&l_row20_all_periods_zero": true
+      },
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    }
+  },
   "numerical_handshake": {
     "period_col_pnl": "AV",
     "pnl_cash_interest_cell": "P&L!AV20",

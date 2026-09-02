@@ -1450,34 +1450,30 @@ def test_policy_min_cash_floor_field():
     assert policy.min_unrestricted_cash_floor_keur == 550.0
 
 
-# ── 71. Oborovo factory sets SOURCE_PROVEN policy with 550 kEUR floor ──────────
+# ── 71. Oborovo factory: cash_reserve_interest_policy is UNRESOLVED (G.1) ──────
 
-def test_oborovo_factory_has_source_proven_cash_policy():
-    """create_default_oborovo() sets a SOURCE_PROVEN cash_reserve_interest_policy."""
+def test_oborovo_factory_has_unresolved_cash_policy():
+    """Correction G: no source policy input exists — factory must not set SOURCE_PROVEN."""
     from app.project_factories import create_default_oborovo
     project = create_default_oborovo()
+    # No explicit minimum cash input exists in Oborovo Inputs sheet.
+    # Cash balance (CF144) is a model output, not a policy input.
+    # UNRESOLVED (fail-closed) until real roll-forward authority is available.
     policy = project.cash_reserve_interest_policy
-    assert policy is not None
-    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
-    assert policy.annual_rate == 0.01
-    assert policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
-    assert policy.eligible_dsra == EligibilityStatus.INELIGIBLE
-    assert policy.min_unrestricted_cash_floor_keur == 550.0
+    assert policy is None or policy.authority == CashReserveInterestAuthority.UNRESOLVED
 
 
-# ── 72. TUHO factory sets SOURCE_PROVEN policy with 550 kEUR floor ─────────────
+# ── 72. TUHO factory: cash_reserve_interest_policy is UNRESOLVED (G.1) ──────────
 
-def test_tuho_factory_has_source_proven_cash_policy():
-    """create_default_tuho_wind1() sets a SOURCE_PROVEN cash_reserve_interest_policy."""
+def test_tuho_factory_has_unresolved_cash_policy():
+    """Correction G: no source policy input exists — factory must not set SOURCE_PROVEN."""
     from app.project_factories import create_default_tuho_wind1
     project = create_default_tuho_wind1()
+    # No explicit minimum cash input exists in TUHO Inputs sheet.
+    # Cash balance (CF135) is a model output, not a policy input.
+    # UNRESOLVED (fail-closed) until real roll-forward authority is available.
     policy = project.cash_reserve_interest_policy
-    assert policy is not None
-    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
-    assert policy.annual_rate == 0.01
-    assert policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
-    assert policy.eligible_dsra == EligibilityStatus.INELIGIBLE
-    assert policy.min_unrestricted_cash_floor_keur == 550.0
+    assert policy is None or policy.authority == CashReserveInterestAuthority.UNRESOLVED
 
 
 # ── 73. SeniorDebtModelInput accepts cash_reserve_interest_policy ──────────────
@@ -1490,29 +1486,24 @@ def test_senior_debt_model_input_accepts_cash_policy():
     assert "cash_reserve_interest_policy" in fields
 
 
-# ── 74. _build_cash_reserve_financing_income helper produces correct entries ───
+# ── 74. Canonical schedule builder: UNRESOLVED policy yields zero income ─────────
 
-def test_build_cash_reserve_financing_income_helper():
-    """_build_cash_reserve_financing_income produces PeriodFinancingIncomeInput for eligible."""
-    from financial_engine.orchestrator import _build_cash_reserve_financing_income
-
-    policy = _make_source_proven_policy(cash_keur=550.0, rate=0.01)
-    periods = (
-        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=False),
-        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
-        _FakePeriod(2, date(2031, 1, 1), date(2031, 6, 30), is_operation=True),
+def test_schedule_builder_unresolved_policy_yields_zero():
+    """Correction G: _build_cash_reserve_financing_income removed; canonical builders govern."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
     )
-    senior_axis = (1,)  # period 1 is debt-active; period 2 is post-debt
-    entries = _build_cash_reserve_financing_income(periods, policy, senior_axis)
-    # period 0: construction → excluded
-    # period 1: in senior_axis → excluded
-    # period 2: post-debt, in-life → included
-    assert len(entries) == 1
-    assert entries[0].period_index == 2
-    assert entries[0].authority == "SOURCE_PROVEN"
-    day_frac = (date(2031, 6, 30) - date(2031, 1, 1)).days / 365.0
-    expected = 550.0 * 0.01 * day_frac
-    assert abs(entries[0].financing_income_keur - expected) < 1e-9
+    from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+    )
+    cash_schedule = build_unrestricted_cash_schedule(periods, 0.0, "UNRESOLVED")
+    result = build_cash_reserve_interest_schedules(periods, UNRESOLVED_POLICY, cash_schedule)
+    assert result.total_financing_income_keur == 0.0
+    for pr in result.period_results:
+        assert pr.calculated_financing_income_keur == 0.0, f"Period {pr.period_index} must be zero"
 
 
 # ── 75. EBITDA invariant: financing income does not alter EBITDA ──────────────

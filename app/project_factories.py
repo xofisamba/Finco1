@@ -58,13 +58,7 @@ from finco_core.inputs.senior_rate_schedule import (
     SeniorRateSchedule,
 )
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
-from finco_core.inputs.cash_reserve_interest_policy import (
-    BalanceConvention,
-    CashReserveInterestAuthority,
-    CashReserveInterestPolicy,
-    DayCountConvention,
-    EligibilityStatus,
-)
+
 from finco_core.inputs.construction_financing import (
     ConstructionCapexTimingInput,
     ConstructionCommitmentFeeInput,
@@ -669,21 +663,10 @@ def create_default_oborovo() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
-    # U2 Correction F — source-proven cash/reserve interest policy.
-    # Rate: Oborovo P&L!B19 = =Inputs!$D$438 = 0.01 (confirmed HARDCODE).
-    # Eligible: unrestricted cash (CF row 144, "Cash end of the year").
-    # DSRA (CF rows 91, 105): zero all periods → INELIGIBLE.
-    # Balance convention: PRIOR_PERIOD_CLOSING (source-proven from CF144 formula).
-    oborovo_cash_policy = CashReserveInterestPolicy(
-        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
-        annual_rate=0.01,
-        day_count_convention=DayCountConvention.ACTUAL_365,
-        balance_convention=BalanceConvention.OPENING,
-        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
-        eligible_dsra=EligibilityStatus.INELIGIBLE,
-        enabled=True,
-        min_unrestricted_cash_floor_keur=550.0,
-    )
+    # U2 Correction G — cash interest rate (0.01) proved via P&L!B19 = =Inputs!$D$455.
+    # Cash balance (CF row 144) and DSRA (CF rows 91, 105) are MODEL OUTPUTS, not
+    # source policy inputs. No explicit minimum cash floor input exists in Inputs sheet.
+    # UNRESOLVED (fail-closed) until a real balance roll-forward authority is available.
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -693,7 +676,6 @@ def create_default_oborovo() -> ProjectInputs:
         financing=financing,
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
-        cash_reserve_interest_policy=oborovo_cash_policy,
     )
 
 
@@ -1253,28 +1235,16 @@ def create_default_tuho_wind1() -> ProjectInputs:
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
     )
-    # U2 Correction F — source-proven cash/reserve interest policy.
-    # Rate: TUHO P&L!B19 = =Inputs!$D$438 = 0.01 (confirmed HARDCODE).
-    # Eligible: unrestricted cash (CF row 135, "Cash end of the year").
-    # DSRA (CF rows 81, 95): zero all periods → INELIGIBLE.
-    # Balance convention: PRIOR_PERIOD_CLOSING (source-proven from CF135 formula).
-    tuho_cash_policy = CashReserveInterestPolicy(
-        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
-        annual_rate=0.01,
-        day_count_convention=DayCountConvention.ACTUAL_365,
-        balance_convention=BalanceConvention.OPENING,
-        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
-        eligible_dsra=EligibilityStatus.INELIGIBLE,
-        enabled=True,
-        min_unrestricted_cash_floor_keur=550.0,
-    )
+    # U2 Correction G — cash interest rate (0.01) proved via P&L!B19 = =Inputs!$D$438.
+    # Cash balance (CF row 135) and DSRA (CF rows 81, 95) are MODEL OUTPUTS, not
+    # source policy inputs. No explicit minimum cash floor input exists in Inputs sheet.
+    # UNRESOLVED (fail-closed) until a real balance roll-forward authority is available.
     return replace(
         legacy,
         info=info,
         capex=capex,
         financing=financing,
         tax=tax,
-        cash_reserve_interest_policy=tuho_cash_policy,
         valuation=ValuationPolicies(
             project=ProjectValuationPolicy(
                 annual_discount_rate=0.066,

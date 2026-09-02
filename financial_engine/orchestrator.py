@@ -831,72 +831,6 @@ SENIOR_DEBT_RUN_PATH_ID = "financial_engine.orchestrator.run_senior_debt_model"
 _PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
 
 
-def _build_cash_reserve_financing_income(
-    periods: tuple,
-    cash_reserve_interest_policy: object,   # CashReserveInterestPolicy | None
-    senior_axis: tuple[int, ...],
-) -> "tuple":
-    """Build PeriodFinancingIncomeInput entries from the typed cash/reserve policy.
-
-    Called post-solver when senior_axis (debt-active period indices) is known.
-    Eligible periods: operating AND NOT in senior_axis (post-debt, in-life).
-    Balance: min_unrestricted_cash_floor_keur from the policy (source-proven: 550 kEUR).
-    Returns an empty tuple when policy is None or UNRESOLVED.
-
-    U2 Correction F task 4/6: production builder wired here to avoid circular imports.
-    No project-name dispatch. No workbook-vector replay.
-    """
-    from financial_engine.inputs import PeriodFinancingIncomeInput
-    from finco_core.inputs.cash_reserve_interest_policy import (
-        CashReserveInterestAuthority,
-        EligibilityStatus,
-    )
-
-    if cash_reserve_interest_policy is None:
-        return ()
-
-    policy = cash_reserve_interest_policy  # type alias
-    if policy.authority == CashReserveInterestAuthority.UNRESOLVED or not policy.enabled:
-        return ()
-
-    senior_set = frozenset(senior_axis)
-    result = []
-    for p in periods:
-        idx: int = p.period_index  # type: ignore[attr-defined]
-        in_life: bool = getattr(p, "is_operation", False)
-        post_debt = idx not in senior_set
-        eligible = in_life and post_debt
-
-        if not eligible:
-            continue
-
-        cash_keur = (
-            policy.min_unrestricted_cash_floor_keur
-            if policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
-            else 0.0
-        )
-        dsra_keur = 0.0  # Source-proven: DSRA zero all periods for TUHO/Oborovo
-
-        p_start = p.period_start  # type: ignore[attr-defined]
-        p_end = p.period_end  # type: ignore[attr-defined]
-        period_days = (p_end - p_start).days
-        denominator = 365.0 if policy.day_count_convention.value == "actual_365" else 360.0
-        day_fraction = period_days / denominator if denominator > 0 else 0.0
-
-        income = policy.compute_period_income_keur(
-            unrestricted_cash_balance_keur=cash_keur,
-            dsra_balance_keur=dsra_keur,
-            day_fraction=day_fraction,
-        )
-        if income > 0.0:
-            result.append(PeriodFinancingIncomeInput(
-                period_index=idx,
-                financing_income_keur=income,
-                authority=policy.authority.value,
-            ))
-
-    return tuple(result)
-
 
 def _merge_financing_tax_input(
     base_tax_input: object,
@@ -2109,21 +2043,6 @@ def _run_senior_debt_model_with_shl(
     _require_final_financing_contract(final_financing_contract, context="B5_FINAL_CONVERGENCE_FULL_AXIS")
 
     # I. Construct Base and Bank tax inputs FROM THE FINAL CONTRACT (TASK 3).
-    # U2 Correction F: inject cash/reserve financing income post-solver (senior_axis_shl known).
-    _shl_financing_income_entries = _build_cash_reserve_financing_income(
-        phase2b_result.periods,
-        inputs.cash_reserve_interest_policy,
-        senior_axis_shl,
-    )
-    if _shl_financing_income_entries:
-        base_tax_input = TaxCalculationInput(
-            policy=base_tax_input.policy,
-            opening_loss_vintages=base_tax_input.opening_loss_vintages,
-            period_interest=base_tax_input.period_interest,
-            period_adjustments=base_tax_input.period_adjustments,
-            period_financing_income=_shl_financing_income_entries,
-        )
-
     # One financing-interest authority for both cases; differences arise only from
     # approved economic case inputs (tax_periodisation_mode_override for Bank).
     _contract_senior_map, _contract_shl_map = financing_interest_maps_from_contract(
@@ -2563,21 +2482,6 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         )
 
     # Step 6: Recompute Base CFADS with final senior interest (authoritative base result).
-    # U2 Correction F: inject cash/reserve financing income post-solver (senior_axis known).
-    _financing_income_entries = _build_cash_reserve_financing_income(
-        phase2b_result.periods,
-        inputs.cash_reserve_interest_policy,
-        senior_axis,
-    )
-    if _financing_income_entries:
-        base_tax_input = TaxCalculationInput(
-            policy=base_tax_input.policy,
-            opening_loss_vintages=base_tax_input.opening_loss_vintages,
-            period_interest=base_tax_input.period_interest,
-            period_adjustments=base_tax_input.period_adjustments,
-            period_financing_income=_financing_income_entries,
-        )
-
     # Correction B: validate final senior interest against independently-derived senior_axis.
     final_senior_interest = _strict_period_map(
         sd_result.period_indices,

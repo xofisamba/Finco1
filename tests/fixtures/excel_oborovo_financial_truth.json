@@ -13754,5 +13754,78 @@
         "status": "OPEN"
       }
     ]
+  },
+  "correction_g_findings": {
+    "correction": "U2 Correction G",
+    "source_file": "20260414_BP_Oborovo.xlsm",
+    "minimum_cash_policy_input_search": {
+      "verdict": "NO_EXPLICIT_MINIMUM_CASH_INPUT_FOUND",
+      "search_scope": "All rows in Inputs sheet, all labels containing cash/retain/minimum/floor/reserve/liquidity",
+      "found_rows": [
+        {
+          "row": 455,
+          "label": "Cash Interest",
+          "value": 0.01,
+          "role": "interest_rate_only"
+        }
+      ],
+      "conclusion": "The 550 kEUR cash balance (CF!AU144) is a model OUTPUT, not a source policy input. No minimum retained cash / distribution floor / liquidity reserve input exists in the Inputs sheet.",
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    },
+    "pnl_B19_rate": {
+      "cell": "P&L!B19",
+      "formula": "=Inputs!$D$455",
+      "data_value": 0.01,
+      "conclusion": "Rate 0.01 sourced from Inputs!D455 (label: Cash Interest). NOTE: Correction F incorrectly referenced D438 (TUHO cell). Oborovo correct cell is D455.",
+      "authority": "SOURCE_PROVEN_FORMULA_LINK"
+    },
+    "cf_row132_decomposition": {
+      "label": "Change in cash",
+      "row": 132,
+      "colG_formula": "=G116-G130",
+      "components": {
+        "G116": {
+          "label": "Free Cash Flow for dividends",
+          "formula": "=G112+SUM(G113:G114)",
+          "sub_components": {
+            "G112": "FCF for Shareholder Loan (=G109)",
+            "G113": "Withholding Tax SHL (=-DS!G126*G6)",
+            "G114": "Net SHL (=-DS!G131)"
+          }
+        },
+        "G130": {
+          "label": "Gross Dividends",
+          "formula": "=G129+G128",
+          "sub_components": {
+            "G129": "Net Dividends (=G125-G128)",
+            "G128": "Withholding Tax on dividends (=G125*$B$128)"
+          }
+        }
+      },
+      "cash_roll_forward": {
+        "identity": "CF!G144 = CF!F144 + CF!G132",
+        "meaning": "closing_cash[p] = closing_cash[p-1] + change_in_cash[p]",
+        "change_in_cash_meaning": "FCF_after_SHL_service_and_WHT minus gross_dividends"
+      },
+      "bank_cfads_treatment": {
+        "cf_row76_formula": "=SUM('P&L'!G19:G21)-'P&L'!G28",
+        "cf_row79_formula": "=SUM(G23,G49,G73,G76,G77)+$B$80*(G$4=0)",
+        "verdict": "BANK_CFADS_INCLUDES_FINANCING_INCOME",
+        "conclusion": "CF row 79 (FCFB) explicitly includes G76 (reserve/cash interest). Bank CFADS includes both cash interest (P&L!G20) and reserve account interest (P&L!G19)."
+      },
+      "dsra_account_eligibility": {
+        "P&L_row19_formula": "=(G$3>0)*$B19*(CF!F105+CF!F91)*G$6",
+        "verdict": "ACCOUNTS_ELIGIBLE_BALANCE_CURRENTLY_ZERO",
+        "conclusion": "Senior DSRA (CF91) and J-DSRA (CF105) are ELIGIBLE accounts. Current balance zero all periods. INELIGIBLE classification was incorrect.",
+        "correct_classification": "DSRA accounts = ELIGIBLE; observed balance = 0.0 for all periods"
+      },
+      "cash_balance_observation": {
+        "cf144_nonzero_periods": "Only col AU (last period, yr=20): 550.0 kEUR",
+        "all_other_periods": "0.0 kEUR",
+        "conclusion": "P&L!G20 uses CF!F144 (prior period cash), which is zero for all periods except the last. Cash interest income is therefore zero for all periods in this workbook scenario.",
+        "p&l_row20_all_periods_zero": true
+      },
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    }
   }
 }
