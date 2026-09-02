@@ -392,6 +392,11 @@ class SeniorDebtModelInput:
     shareholder_loan: object | None = None
     dsra: object | None = None  # CashDsraInput | None (avoid circular imports)
     capitalisation_gate_equity: CapitalisationGateEquityInput | None = None
+    # U2 Correction F: typed cash/reserve interest policy for post-solver injection.
+    # None → no financing income computed (fail-closed to 0.0).
+    # Set by project_inputs adapter from ProjectInputs.cash_reserve_interest_policy.
+    # min_unrestricted_cash_floor_keur is carried inside the policy object.
+    cash_reserve_interest_policy: object | None = None  # CashReserveInterestPolicy | None
 
 
 @dataclass(frozen=True)

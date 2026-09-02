@@ -370,6 +370,8 @@ def build_senior_debt_model_input_from_project_inputs(
         dsra_months=_dsra_months,
     )
 
+    # U2 Correction F: pass cash/reserve interest policy for post-solver injection.
+    _cash_policy = getattr(project_inputs, "cash_reserve_interest_policy", None)
     return SeniorDebtModelInput(
         operating=operating,
         tax=tax,
@@ -377,6 +379,7 @@ def build_senior_debt_model_input_from_project_inputs(
         senior_debt_inputs=inputs,
         debt_sizing_case=resolved_debt_sizing_case,
         shareholder_loan=shareholder_loan,
+        cash_reserve_interest_policy=_cash_policy,
         dsra=dsra,
         capitalisation_gate_equity=(
             CapitalisationGateEquityInput(

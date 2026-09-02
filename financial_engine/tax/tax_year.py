@@ -259,7 +259,7 @@ def build_tax_year_bases(
         policy is not None
         and policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
     ):
-        return _build_model_year_pairing_bases(periods, interest_map, adj_map, policy)
+        return _build_model_year_pairing_bases(periods, interest_map, adj_map, policy, financing_income_map)
 
     # Single-pass: use shl_tax_deductible_fraction() for all modes.
     # For SUBJECT_TO_LIMITATIONS, shl_tax_deductible_fraction() returns 1.0 (SHL fully
@@ -359,6 +359,7 @@ def _build_model_year_pairing_bases(
     interest_map: dict[int, PeriodInterestInput],
     adj_map: dict[int, float],
     policy: TaxPolicy,
+    financing_income_map: dict[int, float] | None = None,
 ) -> tuple[TaxYearCalculationBasis, ...]:
     """Aggregate H2(period N) + H1(period N+1) source workbook tax years.
 
@@ -417,6 +418,7 @@ def _build_model_year_pairing_bases(
                 other_fiscal_reintegration_keur=adj_map.get(idx, 0.0),
                 shl_tax_eligible_interest_keur=shl_tax_eligible,
                 shl_non_deductible_interest_keur=shl_non_deductible,
+                financing_income_keur=(financing_income_map or {}).get(idx, 0.0),
             )
         )
 
@@ -452,6 +454,7 @@ def _build_model_year_pairing_bases(
                 shl_non_deductible_interest_keur=sum(
                     f.shl_non_deductible_interest_keur for f in frags_for_year
                 ),
+                financing_income_keur=sum(f.financing_income_keur for f in frags_for_year),
             )
         )
     return tuple(bases)

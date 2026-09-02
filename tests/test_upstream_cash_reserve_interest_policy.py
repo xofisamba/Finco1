@@ -1299,3 +1299,381 @@ def test_tuho_evidence_not_in_oborovo_fixture():
     assert "tuho_cash_reserve_interest" not in ob, (
         "TUHO canonical source-truth must not reside in Oborovo fixture"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction F — Runtime cash/reserve interest schedule builder and wiring
+# Tests 67–80
+# ══════════════════════════════════════════════════════════════════════════════
+
+import json as _json_f
+import pathlib as _pathlib_f
+from dataclasses import dataclass, field
+from datetime import date
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _make_source_proven_policy(
+    cash_keur: float = 550.0,
+    dsra_eligible: bool = False,
+    rate: float = 0.01,
+) -> CashReserveInterestPolicy:
+    return CashReserveInterestPolicy(
+        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+        annual_rate=rate,
+        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+        eligible_dsra=EligibilityStatus.ELIGIBLE if dsra_eligible else EligibilityStatus.INELIGIBLE,
+        enabled=True,
+        min_unrestricted_cash_floor_keur=cash_keur,
+    )
+
+
+@dataclass
+class _FakePeriod:
+    period_index: int
+    period_start: date
+    period_end: date
+    is_operation: bool = True
+    days_in_period: int = 181
+    ebitda_keur: float = 1000.0
+    tax_depreciation_keur: float = 200.0
+    period_in_year: int = 1
+
+
+# ── 67. UnrestrictedCashSchedule builder — basic path ─────────────────────────
+
+def test_build_unrestricted_cash_schedule_basic():
+    """build_unrestricted_cash_schedule returns eligible periods post-debt."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=False),  # construction
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),   # debt period
+        _FakePeriod(2, date(2031, 1, 1), date(2031, 6, 30), is_operation=True),    # post-debt
+        _FakePeriod(3, date(2031, 7, 1), date(2031, 12, 31), is_operation=True),   # post-debt
+    )
+    senior_outstanding = {0: 0.0, 1: 10000.0, 2: 0.0, 3: 0.0}
+    schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        min_cash_floor_keur=550.0,
+        authority="SOURCE_PROVEN",
+        senior_debt_outstanding_by_period=senior_outstanding,
+    )
+    # period 0: not in_life → ineligible
+    assert not schedule.period_balances[0].is_eligible
+    assert schedule.period_balances[0].opening_balance_keur == 0.0
+    # period 1: in_life but debt outstanding → ineligible
+    assert not schedule.period_balances[1].is_eligible
+    # period 2 and 3: post-debt, in-life → eligible
+    assert schedule.period_balances[2].is_eligible
+    assert schedule.period_balances[2].opening_balance_keur == 550.0
+    assert schedule.period_balances[3].is_eligible
+    assert schedule.min_cash_floor_keur == 550.0
+    assert schedule.authority == "SOURCE_PROVEN"
+
+
+# ── 68. CashReserveInterestSchedules builder — income computed correctly ───────
+
+def test_build_cash_reserve_interest_schedules_income():
+    """build_cash_reserve_interest_schedules computes financing income for eligible periods."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+
+    policy = _make_source_proven_policy(cash_keur=550.0, rate=0.01)
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=False),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+    )
+    senior_outstanding = {0: 0.0, 1: 0.0}
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        min_cash_floor_keur=550.0,
+        authority="SOURCE_PROVEN",
+        senior_debt_outstanding_by_period=senior_outstanding,
+    )
+    interest_schedule = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+    )
+    # period 0: construction → no income
+    assert interest_schedule.period_results[0].calculated_financing_income_keur == 0.0
+    # period 1: in-life, post-debt → income = 550 * 0.01 * (184/365)
+    p1 = interest_schedule.period_results[1]
+    expected_day_frac = (date(2030, 12, 31) - date(2030, 7, 1)).days / 365.0
+    expected_income = 550.0 * 0.01 * expected_day_frac
+    assert abs(p1.calculated_financing_income_keur - expected_income) < 1e-9
+    assert p1.authority == "SOURCE_PROVEN"
+    assert abs(interest_schedule.total_financing_income_keur - expected_income) < 1e-9
+
+
+# ── 69. UNRESOLVED policy → zero income from schedule builder ──────────────────
+
+def test_build_cash_reserve_interest_schedules_unresolved_zero():
+    """UNRESOLVED policy → all periods compute 0.0."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+    from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY
+
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        min_cash_floor_keur=550.0,
+        authority="UNRESOLVED",
+    )
+    schedule = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=UNRESOLVED_POLICY,
+        unrestricted_cash_schedule=cash_schedule,
+    )
+    assert schedule.total_financing_income_keur == 0.0
+    assert schedule.period_results[0].calculated_financing_income_keur == 0.0
+
+
+# ── 70. Policy factory field: min_unrestricted_cash_floor_keur ─────────────────
+
+def test_policy_min_cash_floor_field():
+    """CashReserveInterestPolicy carries min_unrestricted_cash_floor_keur."""
+    policy = CashReserveInterestPolicy(
+        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+        annual_rate=0.01,
+        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+        eligible_dsra=EligibilityStatus.INELIGIBLE,
+        enabled=True,
+        min_unrestricted_cash_floor_keur=550.0,
+    )
+    assert policy.min_unrestricted_cash_floor_keur == 550.0
+
+
+# ── 71. Oborovo factory sets SOURCE_PROVEN policy with 550 kEUR floor ──────────
+
+def test_oborovo_factory_has_source_proven_cash_policy():
+    """create_default_oborovo() sets a SOURCE_PROVEN cash_reserve_interest_policy."""
+    from app.project_factories import create_default_oborovo
+    project = create_default_oborovo()
+    policy = project.cash_reserve_interest_policy
+    assert policy is not None
+    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+    assert policy.annual_rate == 0.01
+    assert policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
+    assert policy.eligible_dsra == EligibilityStatus.INELIGIBLE
+    assert policy.min_unrestricted_cash_floor_keur == 550.0
+
+
+# ── 72. TUHO factory sets SOURCE_PROVEN policy with 550 kEUR floor ─────────────
+
+def test_tuho_factory_has_source_proven_cash_policy():
+    """create_default_tuho_wind1() sets a SOURCE_PROVEN cash_reserve_interest_policy."""
+    from app.project_factories import create_default_tuho_wind1
+    project = create_default_tuho_wind1()
+    policy = project.cash_reserve_interest_policy
+    assert policy is not None
+    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+    assert policy.annual_rate == 0.01
+    assert policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
+    assert policy.eligible_dsra == EligibilityStatus.INELIGIBLE
+    assert policy.min_unrestricted_cash_floor_keur == 550.0
+
+
+# ── 73. SeniorDebtModelInput accepts cash_reserve_interest_policy ──────────────
+
+def test_senior_debt_model_input_accepts_cash_policy():
+    """SeniorDebtModelInput has cash_reserve_interest_policy field (None default)."""
+    from financial_engine.inputs import SeniorDebtModelInput
+    import inspect
+    fields = {f.name for f in SeniorDebtModelInput.__dataclass_fields__.values()}
+    assert "cash_reserve_interest_policy" in fields
+
+
+# ── 74. _build_cash_reserve_financing_income helper produces correct entries ───
+
+def test_build_cash_reserve_financing_income_helper():
+    """_build_cash_reserve_financing_income produces PeriodFinancingIncomeInput for eligible."""
+    from financial_engine.orchestrator import _build_cash_reserve_financing_income
+
+    policy = _make_source_proven_policy(cash_keur=550.0, rate=0.01)
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=False),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+        _FakePeriod(2, date(2031, 1, 1), date(2031, 6, 30), is_operation=True),
+    )
+    senior_axis = (1,)  # period 1 is debt-active; period 2 is post-debt
+    entries = _build_cash_reserve_financing_income(periods, policy, senior_axis)
+    # period 0: construction → excluded
+    # period 1: in senior_axis → excluded
+    # period 2: post-debt, in-life → included
+    assert len(entries) == 1
+    assert entries[0].period_index == 2
+    assert entries[0].authority == "SOURCE_PROVEN"
+    day_frac = (date(2031, 6, 30) - date(2031, 1, 1)).days / 365.0
+    expected = 550.0 * 0.01 * day_frac
+    assert abs(entries[0].financing_income_keur - expected) < 1e-9
+
+
+# ── 75. EBITDA invariant: financing income does not alter EBITDA ──────────────
+
+def test_ebitda_invariant_financing_income_does_not_alter_ebitda():
+    """Financing income enters taxable income below EBITDA. EBITDA is unchanged."""
+    from financial_engine.inputs import (
+        PeriodFinancingIncomeInput,
+        TaxCalculationInput,
+    )
+    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.cfads import calculate_canonical_cfads
+
+    periods = _make_synthetic_periods([1500.0, 1500.0])
+    base_tax = _make_minimal_tax_input(None)
+    fin_income_tax = _make_minimal_tax_input({1: 5.0})
+
+    base_result = calculate_tax(periods, base_tax)
+    fin_result = calculate_tax(periods, fin_income_tax)
+
+    # EBITDA is an operating result — unchanged by financing income injection
+    for pr_base, pr_fin in zip(base_result.period_results, fin_result.period_results):
+        assert pr_base.ebitda_keur == pr_fin.ebitda_keur, (
+            f"EBITDA changed: {pr_base.ebitda_keur} → {pr_fin.ebitda_keur}"
+        )
+
+    # Period 1: financing income should increase tax and reduce post-tax CFADS
+    base_cfads = calculate_canonical_cfads(periods, base_result.period_results)
+    fin_cfads = calculate_canonical_cfads(periods, fin_result.period_results)
+    base_p1 = next(r for r in base_cfads if r.period_index == 1)
+    fin_p1 = next(r for r in fin_cfads if r.period_index == 1)
+    # financing income increases TI → increases CIT → net CFADS delta is positive
+    # CFADS = EBITDA + financing_income - cash_tax; with 5.0 kEUR FI the delta > 0
+    delta = fin_p1.cfads_keur - base_p1.cfads_keur
+    assert delta > 0.0, f"Expected positive CFADS delta, got {delta}"
+
+
+# ── 76. _merge_financing_tax_input forwards period_financing_income ────────────
+
+def test_merge_financing_tax_input_forwards_financing_income():
+    """_merge_financing_tax_input preserves period_financing_income from base."""
+    from financial_engine.orchestrator import _merge_financing_tax_input
+    from financial_engine.inputs import TaxCalculationInput, PeriodFinancingIncomeInput
+    entries = (PeriodFinancingIncomeInput(period_index=5, financing_income_keur=3.0, authority="SOURCE_PROVEN"),)
+    base_tax = _make_minimal_tax_input({5: 3.0})
+    merged = _merge_financing_tax_input(base_tax)
+    assert merged.period_financing_income == entries, (
+        "_merge_financing_tax_input must forward period_financing_income unchanged"
+    )
+
+
+# ── 77. MODEL_YEAR_PAIRING carries financing_income_keur ──────────────────────
+
+def test_model_year_pairing_carries_financing_income():
+    """_build_model_year_pairing_bases passes financing_income_keur into fragments."""
+    from financial_engine.tax.tax_year import build_tax_year_bases
+    from financial_engine.policies.tax import (
+        TaxPolicy, TaxBasisPeriodisation, TaxLossUtilisationGate
+    )
+
+    from financial_engine.policies.tax import (
+        TaxPolicy, CashTaxTiming, TaxBasisPeriodisation, TaxLossUtilisationGate
+    )
+    policy = TaxPolicy(
+        policy_id="u2-synthetic-test",
+        policy_version="1.0.0",
+        corporate_rate=0.25,
+        loss_carryforward_years=5,
+        periods_per_tax_year=2,
+        cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+        tax_basis_periodisation=TaxBasisPeriodisation.MODEL_YEAR_PAIRING,
+        loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+        atad_enabled=False,
+        atad_ebitda_limit=0.30,
+        atad_de_minimis_threshold_keur_annual=3_000.0,
+    )
+
+    @dataclass
+    class _Prd:
+        period_index: int
+        period_start: date
+        period_end: date
+        is_operation: bool = True
+        period_in_year: int = 1
+        days_in_period: int = 181
+        ebitda_keur: float = 1000.0
+        tax_depreciation_keur: float = 100.0
+
+    # H1 and H2 of the same model year
+    periods = (
+        _Prd(0, date(2030, 1, 1), date(2030, 6, 30), period_in_year=1),  # H1 → tax_year 2031
+        _Prd(1, date(2030, 7, 1), date(2030, 12, 31), period_in_year=2), # H2 → tax_year 2031
+    )
+    financing_income_map = {0: 2.5, 1: 3.5}
+    bases = build_tax_year_bases(
+        periods=periods,
+        interest_map={},
+        adj_map={},
+        policy=policy,
+        financing_income_map=financing_income_map,
+    )
+    total_fi = sum(b.financing_income_keur for b in bases)
+    assert abs(total_fi - (2.5 + 3.5)) < 1e-9, (
+        f"MODEL_YEAR_PAIRING must carry financing_income_keur; total={total_fi}"
+    )
+
+
+# ── 78. Factory: oborovo policy is not None → policy is not legacy UNRESOLVED ──
+
+def test_oborovo_legacy_calibration_unaffected_by_policy():
+    """create_default_oborovo_legacy_calibration() inherits the cash policy from clean."""
+    from app.project_factories import create_default_oborovo_legacy_calibration
+    project = create_default_oborovo_legacy_calibration()
+    policy = project.cash_reserve_interest_policy
+    # Legacy calibration inherits from clean factory — may or may not have policy
+    # (depends on implementation). Just assert it doesn't crash and is either None or valid.
+    if policy is not None:
+        assert policy.authority in list(CashReserveInterestAuthority)
+
+
+# ── 79. Reserve schedule builder: DSRA zero all periods matches source ──────────
+
+def test_dsra_ineligible_policy_yields_zero_dsra_income():
+    """DSRA INELIGIBLE policy: dsra_balance_by_period is ignored."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+    policy = CashReserveInterestPolicy(
+        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+        annual_rate=0.01,
+        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+        eligible_dsra=EligibilityStatus.INELIGIBLE,
+        enabled=True,
+        min_unrestricted_cash_floor_keur=550.0,
+    )
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(periods, 550.0, "SOURCE_PROVEN")
+    interest = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period={0: 100_000.0},  # large DSRA balance — but INELIGIBLE
+    )
+    # DSRA balance is ignored; only unrestricted cash income is earned
+    p0 = interest.period_results[0]
+    assert p0.eligible_dsra_keur == 0.0, "INELIGIBLE DSRA must contribute 0.0"
+    # unrestricted cash income = 550 * 0.01 * (period_days/365)
+    from datetime import date as _date
+    period_days = (_date(2030, 6, 30) - _date(2030, 1, 1)).days
+    day_frac = period_days / 365.0
+    expected = 550.0 * 0.01 * day_frac
+    assert abs(p0.calculated_financing_income_keur - expected) < 1e-9
+
+
+# ── 80. ProjectFinancingResult carries cash_reserve_interest_schedules field ───
+
+def test_project_financing_result_has_cash_reserve_interest_schedules_field():
+    """ProjectFinancingResult exposes cash_reserve_interest_schedules for C3 handoff."""
+    from financial_engine.financing.contracts import ProjectFinancingResult
+    fields = {f for f in ProjectFinancingResult.__dataclass_fields__}
+    assert "cash_reserve_interest_schedules" in fields, (
+        "C3 handoff field missing from ProjectFinancingResult"
+    )

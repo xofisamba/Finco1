@@ -198,3 +198,8 @@ class ProjectFinancingResult:
     # Exact typed SHL contract used by the converged financing model. This is
     # a downstream handoff, not a second principal authority.
     shareholder_loan_model_input: object | None = None
+    # U2 Correction F C3 handoff: cash/reserve interest income schedule.
+    # None when no policy is configured (authority=UNRESOLVED or policy=None).
+    # C3 uses this to replace FINANCING_INCOME_AUTHORITY_UNAVAILABLE /
+    # UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE sentinel strings.
+    cash_reserve_interest_schedules: object | None = None  # CashReserveInterestSchedules | None
