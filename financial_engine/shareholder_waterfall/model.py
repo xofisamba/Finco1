@@ -1187,6 +1187,8 @@ def run_project_shareholder_waterfall_model(
             break
 
     # M.11: Final idempotence — re-run financing with converged FI vector, use that result
+    # Save converged-loop final financing result for delta computation in O.4 block
+    _converged_loop_financing = financing
     _fi_inputs_final: tuple = tuple(
         PeriodFinancingIncomeInput(
             period_index=idx,
@@ -1271,73 +1273,146 @@ def run_project_shareholder_waterfall_model(
                 f"Q7_IDEMPOTENCE_UC_RESIDUAL: ΔUC={_o4_uc_residual:.6e} > {_U2_TOL:.6e}. "
                 "M.11 UC not idempotent."
             )
-        # Δgross_div assertion (Q.7)
+        # Δgross_div / Δnet_div assertion (Q.7, R.8)
+        # Re-run the forward pass with M.11 quantities to get M.11-derived gross_divs.
+        # final_1 = converged loop forward pass → _gd_by_idx
+        # final_2 = T(M.11 FI, M.11 financing) forward pass → _o4_gd_fp
+        # Assert max|final_2.gd - final_1.gd| < _U2_TOL.
+        _o4_op_period_by_idx2 = {
+            p.period_index: p for p in _o4_model_result.periods if p.is_operation
+        }
+        _o4_senior_int_by_idx2: dict[int, float] = {}
+        if _o4_model_result.senior_debt is not None:
+            _o4_sd2 = _o4_model_result.senior_debt
+            for _s2i, _s2idx in enumerate(_o4_sd2.period_indices):
+                _o4_senior_int_by_idx2[_s2idx] = _o4_sd2.senior_interest_keur[_s2i]
+        _o4_cit_by_idx2: dict[int, float] = {}
+        if _o4_model_result.tax_and_cfads is not None:
+            _o4_ta2 = _o4_model_result.tax_and_cfads
+            for _t2i, _t2idx in enumerate(_o4_ta2.period_indices):
+                _o4_cit_by_idx2[_t2idx] = _o4_ta2.tax_keur[_t2i]
+        _o4_shl_pik2 = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+        _o4_const_pl2 = getattr(project_inputs.tax, "construction_pl", None)
+        _o4_pre_op_opex2 = (
+            getattr(_o4_const_pl2, "pre_operational_opex_keur", 0.0)
+            if _o4_const_pl2 else 0.0
+        )
+        _o4_eq_retained2 = -(_o4_shl_pik2 + _o4_pre_op_opex2)
+        _o4_eq_reserve2 = 0.0
+        _o4_uc_carry2 = 0.0
+        _o4_gd_fp: dict[int, float] = {}
+        _o4_re_closing2 = _o4_eq_retained2
+        _o4_lr_closing2 = _o4_eq_reserve2
+        for _o4_wp2 in waterfall_periods:
+            if _o4_wp2.is_construction:
+                continue
+            _o4_idx2 = _o4_wp2.period_index
+            _o4_op2 = _o4_op_period_by_idx2.get(_o4_idx2)
+            if _o4_op2 is None:
+                continue
+            _o4_ni2 = (
+                _o4_op2.ebitda_keur
+                - _o4_op2.book_depreciation_keur
+                + _o4_fi_check.get(_o4_idx2, 0.0)
+                - _o4_senior_int_by_idx2.get(_o4_idx2, 0.0)
+                - _o4_wp2.shl_gross_interest_keur
+                - _o4_cit_by_idx2.get(_o4_idx2, 0.0)
+            )
+            _o4_fcf2 = _o4_wp2.legal_equity_distribution_keur
+            _o4_eq_cap2 = roll_forward_equity_state(
+                (EquityStatePeriodInput(
+                    period_index=_o4_idx2,
+                    net_income_keur=_o4_ni2,
+                    gross_dividends_keur=0.0,
+                ),),
+                share_capital_keur=_share_capital_keur,
+                legal_reserve_cap_fraction=_legal_reserve_cap,
+                opening_legal_reserve_keur=_o4_eq_reserve2,
+                opening_retained_earnings_keur=_o4_eq_retained2,
+            )[0]
+            _o4_acct_cap2 = max(0.0, _o4_eq_cap2.closing_retained_earnings_keur)
+            _o4_gd2 = max(0.0, min(_o4_acct_cap2, _o4_uc_carry2 + _o4_fcf2))
+            _o4_gd_fp[_o4_idx2] = _o4_gd2
+            _o4_eq_actual2 = roll_forward_equity_state(
+                (EquityStatePeriodInput(
+                    period_index=_o4_idx2,
+                    net_income_keur=_o4_ni2,
+                    gross_dividends_keur=_o4_gd2,
+                ),),
+                share_capital_keur=_share_capital_keur,
+                legal_reserve_cap_fraction=_legal_reserve_cap,
+                opening_legal_reserve_keur=_o4_eq_reserve2,
+                opening_retained_earnings_keur=_o4_eq_retained2,
+            )[0]
+            _o4_eq_reserve2 = _o4_eq_actual2.closing_legal_reserve_keur
+            _o4_eq_retained2 = _o4_eq_actual2.closing_retained_earnings_keur
+            _o4_uc_carry2 = _o4_uc_carry2 + (_o4_fcf2 - _o4_gd2)
+            _o4_re_closing2 = _o4_eq_retained2
+            _o4_lr_closing2 = _o4_eq_reserve2
+
+        _o4_gd_all_idx = set(_o4_gd_fp) | set(_gd_by_idx)
         _o4_gd_residual = max(
-            (abs(_gd_by_idx.get(i, 0.0) - _prev_gd.get(i, 0.0))
-             for i in set(_gd_by_idx) | set(_prev_gd)),
+            (abs(_o4_gd_fp.get(i, 0.0) - _gd_by_idx.get(i, 0.0))
+             for i in _o4_gd_all_idx),
             default=0.0,
         )
         if _o4_gd_residual > _U2_TOL:
             raise ValueError(
                 f"Q7_IDEMPOTENCE_GROSS_DIV_RESIDUAL: Δgross_div={_o4_gd_residual:.6e} > "
-                f"{_U2_TOL:.6e}. Gross dividends not stable at convergence."
+                f"{_U2_TOL:.6e}. M.11 forward-pass gross dividends differ from converged."
             )
-        # Δnet_div assertion (Q.7) — net = gross × (1 - WHT rate)
-        _o4_nd_residual = max(
-            (abs(_gd_by_idx.get(i, 0.0) * (1.0 - _dividend_wht_rate)
-                 - _prev_gd.get(i, 0.0) * (1.0 - _dividend_wht_rate))
-             for i in set(_gd_by_idx) | set(_prev_gd)),
-            default=0.0,
-        )
+        _o4_nd_residual = _o4_gd_residual * (1.0 - _dividend_wht_rate)
         if _o4_nd_residual > _U2_TOL:
             raise ValueError(
                 f"Q7_IDEMPOTENCE_NET_DIV_RESIDUAL: Δnet_div={_o4_nd_residual:.6e} > "
                 f"{_U2_TOL:.6e}."
             )
-        # ΔRE / ΔLR informational (Q.7) — closing equity state after final waterfall
-        _o4_re_residual = 0.0
-        _o4_lr_residual = 0.0
-        for _o4_wp in waterfall_periods:
-            if not _o4_wp.is_construction:
-                _prev_wp = next(
-                    (w for w in waterfall_periods if w.period_index == _o4_wp.period_index),
-                    None,
-                )
-                if _prev_wp is not None:
-                    _o4_re_residual = max(
-                        _o4_re_residual,
-                        abs(_o4_wp.unrestricted_cash_closing_keur
-                            - _prev_wp.unrestricted_cash_closing_keur),
-                    )
-                    _o4_lr_residual = max(
-                        _o4_lr_residual,
-                        abs(_o4_wp.closing_legal_reserve_keur
-                            - _prev_wp.closing_legal_reserve_keur),
-                    )
+        # ΔRE / ΔLR informational (Q.7)
+        # RE is not stored on CovenantGatedWaterfallPeriod; use 0.0 placeholder.
+        # LR is stored: compare M.11 forward-pass closing LR vs converged waterfall.
+        _o4_lr_converged_last = next(
+            (w.closing_legal_reserve_keur
+             for w in reversed(waterfall_periods) if not w.is_construction),
+            0.0,
+        )
+        _o4_re_residual = 0.0  # RE not directly stored on WP; not yet checkable
+        _o4_lr_residual = abs(_o4_lr_closing2 - _o4_lr_converged_last)
         # ΔSenior / ΔSHL / ΔIDC / ΔCIT informational (Q.7)
+        # Compute delta between M.11 financing and converged-loop final financing.
         _q7_delta_senior = 0.0
         _q7_delta_shl = 0.0
         _q7_delta_idc = 0.0
         _q7_delta_cit = 0.0
-        if _o4_model_result.senior_debt is not None:
-            _q7_delta_senior = sum(abs(v) for v in _o4_model_result.senior_debt.senior_interest_keur)
+        _conv_sd = getattr(_converged_loop_financing, "project_model_result", None)
+        _conv_sd = getattr(_conv_sd, "senior_debt", None) if _conv_sd else None
+        if _o4_model_result.senior_debt is not None and _conv_sd is not None:
+            _q7_delta_senior = abs(
+                _o4_model_result.senior_debt.debt_size_keur
+                - (_conv_sd.debt_size_keur if hasattr(_conv_sd, "debt_size_keur") else 0.0)
+            )
         _q7_delta_shl = abs(
-            getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+            (getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0)
+            - (getattr(_converged_loop_financing, "shl_construction_pik_keur", 0.0) or 0.0)
         )
-        if _o4_model_result.tax_and_cfads is not None:
-            _q7_delta_cit = sum(abs(v) for v in _o4_model_result.tax_and_cfads.tax_keur)
-        # Store Q.7 residuals as module-level diagnostic (not asserted — informational)
+        _conv_ta = getattr(_converged_loop_financing, "project_model_result", None)
+        _conv_ta = getattr(_conv_ta, "tax_and_cfads", None) if _conv_ta else None
+        if _o4_model_result.tax_and_cfads is not None and _conv_ta is not None:
+            _q7_delta_cit = abs(
+                sum(_o4_model_result.tax_and_cfads.tax_keur)
+                - sum(_conv_ta.tax_keur)
+            )
+        # Store Q.7 residuals as diagnostic (informational — not asserted beyond gd/nd/fi/uc)
         _Q7_IDEMPOTENCE_RESIDUALS: dict[str, float] = {
             "delta_fi": _o4_outer_residual,
             "delta_uc": _o4_uc_residual,
             "delta_gross_div": _o4_gd_residual,
             "delta_net_div": _o4_nd_residual,
-            "delta_re_proxy": _o4_re_residual,
-            "delta_lr_proxy": _o4_lr_residual,
-            "senior_total_interest_keur": _q7_delta_senior,
-            "shl_construction_pik_keur": _q7_delta_shl,
-            "cit_total_keur": _q7_delta_cit,
-            "idc_keur": _q7_delta_idc,
+            "delta_re": _o4_re_residual,
+            "delta_lr": _o4_lr_residual,
+            "delta_senior_commitment_keur": _q7_delta_senior,
+            "delta_shl_construction_pik_keur": _q7_delta_shl,
+            "delta_cit_total_keur": _q7_delta_cit,
+            "delta_idc_keur": _q7_delta_idc,
         }
 
     # ── Attach fi_schedule from M.11 final transition (Q.7) ──────────────────
