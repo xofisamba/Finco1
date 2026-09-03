@@ -1644,6 +1644,15 @@ class ProjectInputs:
     cash_reserve_interest_policy: "CashReserveInterestPolicy | None" = None
     distribution_accounting_policy: "DistributionAccountingPolicy | None" = None
 
+    def __post_init__(self) -> None:
+        from finco_core.inputs.distribution_accounting_policy import (
+            assert_wht_authority_consistent,
+        )
+        assert_wht_authority_consistent(
+            self.tax.wht_sponsor_dividends,
+            self.distribution_accounting_policy,
+        )
+
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
     """Build a deterministic cache key from stable input fields."""

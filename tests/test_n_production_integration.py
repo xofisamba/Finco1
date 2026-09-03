@@ -52,6 +52,41 @@ def test_o2_disabled_unresolved_ok():
     assert p.enabled is False
 
 
+# ── O.3: WHT dual authority reconciliation ────────────────────────────────────
+
+def test_o3_wht_authority_disagreement_raises():
+    """O.3: TaxParams.wht_sponsor_dividends != DistributionAccountingPolicy.dividend_wht_rate
+    when policy is enabled must raise ValueError (fail closed).
+    DistributionAccountingPolicy.dividend_wht_rate is the canonical owner.
+    """
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority
+    policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+        dividend_wht_rate=0.05,
+    )
+    with pytest.raises(ValueError, match="WHT authority conflict"):
+        assert_wht_authority_consistent(tax_wht=0.10, policy=policy)
+
+
+def test_o3_wht_authority_agreement_ok():
+    """O.3: When rates match, no error is raised."""
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority
+    policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+        dividend_wht_rate=0.05,
+    )
+    assert_wht_authority_consistent(tax_wht=0.05, policy=policy)  # no raise
+
+
+def test_o3_wht_authority_disabled_policy_skips_check():
+    """O.3: Disabled policy skips the cross-check (TaxParams legacy value irrelevant)."""
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy
+    policy = DistributionAccountingPolicy(enabled=False, dividend_wht_rate=0.05)
+    assert_wht_authority_consistent(tax_wht=0.99, policy=policy)  # no raise
+
+
 # ── N.2: Solar without distribution accounting preserves frozen G2C receipts ──
 
 def test_n2_solar_frozen_sponsor_receipts():
@@ -251,6 +286,64 @@ def test_n6_tuho_share_capital_and_legal_reserve_fraction():
     assert r.financing_result.share_capital_keur == 500.0
     proj = create_default_tuho_wind1()
     assert proj.distribution_accounting_policy.legal_reserve_cap_fraction == 0.10
+
+
+# ── O.8: Legal reserve causal proof ──────────────────────────────────────────
+
+def test_o8_tuho_legal_reserve_causal_rollforward():
+    """O.8: Prove TUHO legal reserve roll-forward is causally populated.
+
+    At period_index=25 (first profitable distribution period):
+      - opening_legal_reserve_keur == 0.0   (greenfield start)
+      - legal_reserve_transfer_keur == 50.0  (10% × 500 kEUR share capital)
+      - closing_legal_reserve_keur == 50.0   (cap fully funded in one period)
+
+    All prior periods must have closing_legal_reserve_keur == 0.0.
+    All subsequent periods: LR stable at 50, no further transfers.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    op_periods = [p for p in r.waterfall_periods if not p.is_construction]
+
+    assert op_periods[0].opening_legal_reserve_keur == 0.0
+
+    first_lr = next((p for p in op_periods if p.legal_reserve_transfer_keur > 0), None)
+    assert first_lr is not None, "No legal reserve transfer found"
+    assert first_lr.period_index == 25, f"Expected LR transfer at idx=25, got {first_lr.period_index}"
+    assert first_lr.opening_legal_reserve_keur == 0.0
+    assert abs(first_lr.legal_reserve_transfer_keur - 50.0) < 1e-6, (
+        f"Expected transfer=50.0, got {first_lr.legal_reserve_transfer_keur}"
+    )
+    assert abs(first_lr.closing_legal_reserve_keur - 50.0) < 1e-6, (
+        f"Expected closing_LR=50.0, got {first_lr.closing_legal_reserve_keur}"
+    )
+
+    for p in op_periods:
+        if p.period_index >= 25:
+            break
+        assert p.closing_legal_reserve_keur == 0.0, (
+            f"Expected 0 LR before idx=25, got {p.closing_legal_reserve_keur} at idx={p.period_index}"
+        )
+
+    for p in op_periods:
+        if p.period_index > 25:
+            assert abs(p.opening_legal_reserve_keur - 50.0) < 1e-6
+            assert abs(p.closing_legal_reserve_keur - 50.0) < 1e-6
+            assert p.legal_reserve_transfer_keur == 0.0
+
+
+def test_o8_oborovo_legal_reserve_causal_rollforward():
+    """O.8: Prove Oborovo legal reserve roll-forward (WHT=5%). Greenfield axiom."""
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    op_periods = [p for p in r.waterfall_periods if not p.is_construction]
+
+    assert op_periods[0].opening_legal_reserve_keur == 0.0
+
+    first_lr = next((p for p in op_periods if p.legal_reserve_transfer_keur > 0), None)
+    assert first_lr is not None, "No legal reserve transfer for Oborovo"
+    assert first_lr.opening_legal_reserve_keur == 0.0
+    assert abs(first_lr.closing_legal_reserve_keur - 50.0) < 1e-6
 
 
 # ── N.9: Full-transition idempotence ─────────────────────────────────────────

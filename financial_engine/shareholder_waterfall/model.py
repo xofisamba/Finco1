@@ -125,6 +125,14 @@ _G2C_RESERVE_GATE_STATUS = (
     "J_DSRA_AND_DSRF_DRAW_NOT_IMPLEMENTED"
 )
 _FLOAT_TOLERANCE = 1e-9
+# O.9: Greenfield axiom — all construction funding is allocated to project Uses
+# (senior debt, SHL, equity) plus reserves at financial close. No uncommitted
+# cash enters the operating company on day one. Causal chain:
+#   ProjectFinancingResult.construction_funding → project Uses (capex + IDC + fees)
+#   DSRA funded at tranche draw → DSRA reserve (not unrestricted cash)
+#   Residual → zero by construction (balanced sources = uses)
+# This is not a calibration choice; it is a structural axiom of greenfield project finance.
+_GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR: float = 0.0
 
 
 def _evaluate_reserve_support_gate(
@@ -1056,6 +1064,9 @@ def run_project_shareholder_waterfall_model(
                 unrestricted_cash_opening_keur=_uc_carry,
                 change_in_unrestricted_cash_keur=_change_uc,
                 unrestricted_cash_closing_keur=_uc_closing,
+                opening_legal_reserve_keur=_eq_res2.opening_legal_reserve_keur,
+                legal_reserve_transfer_keur=_eq_res2.legal_reserve_transfer_keur,
+                closing_legal_reserve_keur=_eq_res2.closing_legal_reserve_keur,
                 pure_equity_net_cashflow_keur=_net_div,
                 total_sponsor_net_cashflow_keur=_net_div + _wp.shl_cash_interest_receipt_keur + _wp.shl_principal_receipt_keur,
             ))
@@ -1093,14 +1104,11 @@ def run_project_shareholder_waterfall_model(
                         _wp_match.change_in_unrestricted_cash_keur
                         if _wp_match is not None else 0.0
                     )
-            # M.10: Greenfield opening unrestricted cash = 0 (all construction sources go to Uses/reserves)
-            # Authority: ProjectFinancingResult.construction_funding sources fully allocated to project Uses.
-            _opening_uc = 0.0  # GREENFIELD_ZERO_OPENING_UNRESTRICTED_CASH
             _uc_sched = build_unrestricted_cash_schedule(
                 periods=model_result.periods,
                 authority="SOURCE_PROVEN",
                 authoritative_period_cash_increments=_all_increments,
-                opening_cash_keur=_opening_uc,
+                opening_cash_keur=_GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR,
             )
             _fi_schedule = build_cash_reserve_interest_schedules(
                 periods=model_result.periods,

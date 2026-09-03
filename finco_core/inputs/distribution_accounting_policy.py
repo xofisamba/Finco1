@@ -43,3 +43,28 @@ class DistributionAccountingPolicy:
                 f"DistributionAccountingPolicy: legal_reserve_cap_fraction="
                 f"{self.legal_reserve_cap_fraction!r} must be in [0, 1]."
             )
+
+
+def assert_wht_authority_consistent(
+    tax_wht: float,
+    policy: "DistributionAccountingPolicy | None",
+) -> None:
+    """O.3: Fail closed if TaxParams.wht_sponsor_dividends disagrees with
+    DistributionAccountingPolicy.dividend_wht_rate when the policy is enabled.
+
+    DistributionAccountingPolicy.dividend_wht_rate is the canonical owner.
+    TaxParams.wht_sponsor_dividends is the legacy field (kept for backward
+    compatibility with serialised payloads). When a distribution accounting
+    policy is active, both must agree or the project inputs are rejected.
+    """
+    if policy is None or not policy.enabled:
+        return
+    if abs(tax_wht - policy.dividend_wht_rate) > 1e-12:
+        raise ValueError(
+            f"O.3 WHT authority conflict: TaxParams.wht_sponsor_dividends="
+            f"{tax_wht!r} disagrees with "
+            f"DistributionAccountingPolicy.dividend_wht_rate="
+            f"{policy.dividend_wht_rate!r}. "
+            "DistributionAccountingPolicy.dividend_wht_rate is canonical. "
+            "Update TaxParams.wht_sponsor_dividends to match, or disable the policy."
+        )

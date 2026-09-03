@@ -175,6 +175,7 @@ class CovenantGatedWaterfallPeriod:
     fcf_for_dividends_keur: float          # = legal_equity_distribution_keur (post-SHL residual)
     accounting_dividend_capacity_keur: float  # MAX(0, opening_RE + net_income - legal_reserve_transfer)
     cash_dividend_capacity_keur: float     # opening_unrestricted_cash + fcf_for_dividends
+
     distributable_keur: float              # MAX(0, MIN(accounting_cap, cash_cap))
     gross_dividend_paid_keur: float        # = distributable (WHT-neutral for corporate cash)
     dividend_wht_rate: float               # 0.0 for TUHO, 0.05 for Oborovo
@@ -196,6 +197,12 @@ class CovenantGatedWaterfallPeriod:
     # Net cashflows for return metrics
     pure_equity_net_cashflow_keur: float
     total_sponsor_net_cashflow_keur: float
+
+    # O.8: Legal reserve causal roll-forward (exposed for auditability)
+    # Default 0.0: periods where distribution accounting is inactive carry no LR movement.
+    opening_legal_reserve_keur: float = 0.0   # legal reserve at start of period
+    legal_reserve_transfer_keur: float = 0.0  # transfer to legal reserve this period
+    closing_legal_reserve_keur: float = 0.0   # legal reserve at end of period
 
 
 @dataclass(frozen=True)
