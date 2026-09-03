@@ -134,6 +134,30 @@ _FLOAT_TOLERANCE = 1e-9
 # This is not a calibration choice; it is a structural axiom of greenfield project finance.
 _GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR: float = 0.0
 
+# P.6: Typed authority contract for opening unrestricted cash.
+# Authority must be SOURCE_PROVEN_EXPLICIT_ZERO or CAUSALLY_DERIVED_ZERO.
+# UNRESOLVED fails closed — prevents silent zero from masking missing provenance.
+_OPENING_UC_AUTHORITY: str = "CAUSALLY_DERIVED_ZERO"
+# Causal derivation: greenfield axiom above (O.9). Not source-proven from a
+# specific workbook cell. A project with a non-zero opening UC must supply
+# SOURCE_PROVEN_EXPLICIT_ZERO with a workbook cell reference.
+_OPENING_UC_AUTHORITY_VALID = frozenset({
+    "SOURCE_PROVEN_EXPLICIT_ZERO",
+    "CAUSALLY_DERIVED_ZERO",
+})
+
+
+def _resolve_opening_uc_keur(authority: str) -> float:
+    """P.6: Fail closed if opening UC authority is UNRESOLVED."""
+    if authority not in _OPENING_UC_AUTHORITY_VALID:
+        raise ValueError(
+            f"P.6 OPENING_UC_AUTHORITY_UNRESOLVED: authority={authority!r} is not "
+            "SOURCE_PROVEN_EXPLICIT_ZERO or CAUSALLY_DERIVED_ZERO. "
+            "Provide workbook cell reference (SOURCE_PROVEN_EXPLICIT_ZERO) or "
+            "a causal derivation (CAUSALLY_DERIVED_ZERO)."
+        )
+    return _GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR
+
 
 def _evaluate_reserve_support_gate(
     dsra_mode: "DebtServiceReserveSupportMode",
@@ -1108,7 +1132,7 @@ def run_project_shareholder_waterfall_model(
                 periods=model_result.periods,
                 authority="SOURCE_PROVEN",
                 authoritative_period_cash_increments=_all_increments,
-                opening_cash_keur=_GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR,
+                opening_cash_keur=_resolve_opening_uc_keur(_OPENING_UC_AUTHORITY),
             )
             _fi_schedule = build_cash_reserve_interest_schedules(
                 periods=model_result.periods,

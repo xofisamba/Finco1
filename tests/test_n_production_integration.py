@@ -496,3 +496,53 @@ def test_n14_cash_reserve_interest_authority_status():
     assert getattr(proj_tuho.tax, "construction_pl", None) is None
     # Final token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED
     # This session does NOT deliver DELIVERED — O.7 blocked the construction NI component.
+
+
+def test_p6_opening_uc_authority_contract():
+    """P.6: Typed opening UC authority — CAUSALLY_DERIVED_ZERO passes; UNRESOLVED fails closed."""
+    from financial_engine.shareholder_waterfall.model import (
+        _OPENING_UC_AUTHORITY,
+        _OPENING_UC_AUTHORITY_VALID,
+        _resolve_opening_uc_keur,
+    )
+    import pytest as _pytest
+
+    # P.6: Current authority is CAUSALLY_DERIVED_ZERO (greenfield axiom, O.9)
+    assert _OPENING_UC_AUTHORITY == "CAUSALLY_DERIVED_ZERO"
+    assert _OPENING_UC_AUTHORITY in _OPENING_UC_AUTHORITY_VALID
+
+    # P.6: SOURCE_PROVEN_EXPLICIT_ZERO also valid
+    assert _resolve_opening_uc_keur("SOURCE_PROVEN_EXPLICIT_ZERO") == 0.0
+    assert _resolve_opening_uc_keur("CAUSALLY_DERIVED_ZERO") == 0.0
+
+    # P.6: UNRESOLVED fails closed
+    with _pytest.raises(ValueError, match="P.6 OPENING_UC_AUTHORITY_UNRESOLVED"):
+        _resolve_opening_uc_keur("UNRESOLVED")
+
+    # P.6: Unknown strings also fail closed
+    with _pytest.raises(ValueError, match="P.6 OPENING_UC_AUTHORITY_UNRESOLVED"):
+        _resolve_opening_uc_keur("SOME_UNKNOWN_AUTHORITY")
+
+
+def test_p4_oborovo_dsra_source_alignment():
+    """P.4: Oborovo dsra_months=0 matches source Inputs!I347=0 and Inputs!I348=0.
+
+    Source workbook: DSRA is absent (zero target, zero balance throughout).
+    Eligible_dsra=ELIGIBLE is preserved per O.1 — the eligibility policy is correct;
+    zero balance means zero DSRA FI regardless of eligibility.
+    FI and UC are unchanged from dsra_months=6 because the model computes UC from
+    the operating waterfall, not from DSRA equity funding at FC.
+    Root cause of Oborovo UC=695.977 vs source 550: structural waterfall/RE divergence
+    (period 41 model acct_cap ~2803 vs source ~39.65 kEUR) — source workbook period-by-
+    period RE data required for full resolution.
+    """
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import EligibilityStatus
+
+    proj = create_default_oborovo()
+    # P.4: dsra_months=0 matches Inputs!I348=0
+    assert proj.financing.dsra_months == 0, (
+        f"P.4: Oborovo dsra_months={proj.financing.dsra_months} != 0 (source Inputs!I348=0)"
+    )
+    # O.1: eligible_dsra stays ELIGIBLE regardless of zero balance
+    assert proj.cash_reserve_interest_policy.eligible_dsra == EligibilityStatus.ELIGIBLE

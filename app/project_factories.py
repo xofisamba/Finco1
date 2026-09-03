@@ -614,7 +614,7 @@ def create_default_oborovo() -> ProjectInputs:
         target_dscr=1.15,
         lockup_dscr=1.10,
         min_llcr=1.15,  # Oborovo source: Inputs!D224 = Inputs!C177 = 1.15
-        dsra_months=6,
+        dsra_months=0,  # P.4: Source Inputs!I347=0 (construction) and Inputs!I348=0 (operation) — DSRA absent in source workbook. Zero target, zero balance; eligible_dsra=ELIGIBLE preserved per O.1.
         equity_irr_method="shl_plus_dividends",  # Stack O: Golden Excel equity IRR = SHL interest while SHL outstanding + dividends after; "combined" (capex-debt base, distributions only) gave 6.24% vs golden 10.60%
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,  # C3B3A: clean DSCR-sculpted solver path
