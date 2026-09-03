@@ -318,6 +318,156 @@ def run_project_shareholder_waterfall_model(
     _fi_schedule = None
     financing: ProjectFinancingResult  # declared; assigned inside loop
 
+    # S.2: ONE reusable accounting + FI transition used for both the convergence
+    # loop and the final idempotence check (S.4). All arithmetic lives here only.
+    def _u2_accounting_and_fi_pass(
+        _model_result,
+        _fi_for_ni: dict[int, float],
+        _wp_input: list,
+        _opening_eq_retained: float,
+        _dsra_by_idx: dict[int, float],
+    ):
+        """Full accounting/dividend/UC/FI causal chain for one U2 transition.
+
+        Returns (new_wp, uc_closing_by_idx, gd_by_idx, re_closing_by_idx,
+                 lr_closing_by_idx, next_fi_by_idx, fi_schedule).
+        Captures outer parameters from run_project_shareholder_waterfall_model.
+        """
+        _op_by_idx = {p.period_index: p for p in _model_result.periods if p.is_operation}
+        _sint_by_idx: dict[int, float] = {}
+        if _model_result.senior_debt is not None:
+            _sd_inner = _model_result.senior_debt
+            for _si, _sidx in enumerate(_sd_inner.period_indices):
+                _sint_by_idx[_sidx] = _sd_inner.senior_interest_keur[_si]
+        _cit_by_idx_inner: dict[int, float] = {}
+        if _model_result.tax_and_cfads is not None:
+            _ta_inner = _model_result.tax_and_cfads
+            for _ti, _tidx in enumerate(_ta_inner.period_indices):
+                _cit_by_idx_inner[_tidx] = _ta_inner.tax_keur[_ti]
+
+        _uc_c = 0.0  # rolling unrestricted cash carry (starts at greenfield zero)
+        _eq_ret = _opening_eq_retained
+        _eq_res = 0.0  # legal reserve starts at 0 for greenfield
+        _uc_out: dict[int, float] = {}
+        _gd_out: dict[int, float] = {}
+        _re_out: dict[int, float] = {}
+        _lr_out: dict[int, float] = {}
+        _new_wp_list: list = []
+
+        for _wp in _wp_input:
+            if _wp.is_construction:
+                _new_wp_list.append(_wp)
+                continue
+            _idx = _wp.period_index
+            _op = _op_by_idx.get(_idx)
+            if _op is None:
+                _new_wp_list.append(_wp)
+                continue
+            _ni = (
+                _op.ebitda_keur
+                - _op.book_depreciation_keur
+                + _fi_for_ni.get(_idx, 0.0)
+                - _sint_by_idx.get(_idx, 0.0)
+                - _wp.shl_gross_interest_keur
+                - _cit_by_idx_inner.get(_idx, 0.0)
+            )
+            _fcf_div = _wp.legal_equity_distribution_keur
+
+            # Accounting cap (dividends=0 to get capacity)
+            _eq_cap_res = roll_forward_equity_state(
+                (EquityStatePeriodInput(period_index=_idx, net_income_keur=_ni, gross_dividends_keur=0.0),),
+                share_capital_keur=_share_capital_keur,
+                legal_reserve_cap_fraction=_legal_reserve_cap,
+                opening_legal_reserve_keur=_eq_res,
+                opening_retained_earnings_keur=_eq_ret,
+            )[0]
+            _acct_cap = max(0.0, _eq_cap_res.closing_retained_earnings_keur)
+            _cash_cap = _uc_c + _fcf_div
+            _distributable = max(0.0, min(_acct_cap, _cash_cap))
+            _gross_div = _distributable
+            _wht = _gross_div * _dividend_wht_rate
+            _net_div = _gross_div * (1.0 - _dividend_wht_rate)
+            _change_uc = _fcf_div - _gross_div
+            _uc_closing = _uc_c + _change_uc
+
+            # Closing equity state with actual dividends
+            _eq_actual_res = roll_forward_equity_state(
+                (EquityStatePeriodInput(period_index=_idx, net_income_keur=_ni, gross_dividends_keur=_gross_div),),
+                share_capital_keur=_share_capital_keur,
+                legal_reserve_cap_fraction=_legal_reserve_cap,
+                opening_legal_reserve_keur=_eq_res,
+                opening_retained_earnings_keur=_eq_ret,
+            )[0]
+            _eq_res = _eq_actual_res.closing_legal_reserve_keur
+            _eq_ret = _eq_actual_res.closing_retained_earnings_keur
+
+            _uc_out[_idx] = _uc_closing
+            _gd_out[_idx] = _gross_div
+            _re_out[_idx] = _eq_ret
+            _lr_out[_idx] = _eq_res
+
+            _new_wp_list.append(dataclasses.replace(
+                _wp,
+                fcf_for_dividends_keur=_fcf_div,
+                accounting_dividend_capacity_keur=_acct_cap,
+                cash_dividend_capacity_keur=_cash_cap,
+                distributable_keur=_distributable,
+                gross_dividend_paid_keur=_gross_div,
+                dividend_wht_rate=_dividend_wht_rate,
+                dividend_wht_keur=_wht,
+                net_dividend_received_keur=_net_div,
+                unrestricted_cash_opening_keur=_uc_c,
+                change_in_unrestricted_cash_keur=_change_uc,
+                unrestricted_cash_closing_keur=_uc_closing,
+                opening_legal_reserve_keur=_eq_actual_res.opening_legal_reserve_keur,
+                legal_reserve_transfer_keur=_eq_actual_res.legal_reserve_transfer_keur,
+                closing_legal_reserve_keur=_eq_actual_res.closing_legal_reserve_keur,
+                pure_equity_net_cashflow_keur=_net_div,
+                total_sponsor_net_cashflow_keur=(
+                    _net_div + _wp.shl_cash_interest_receipt_keur + _wp.shl_principal_receipt_keur
+                ),
+            ))
+            _uc_c = _uc_closing
+
+        # FI computation from resulting UC schedule
+        _next_fi_out: dict[int, float] = {}
+        _fi_sched_out = None
+        if _cash_reserve_policy is not None:
+            _all_incr: dict[int, float] = {}
+            for _ap in _model_result.periods:
+                _aidx = _ap.period_index
+                if _ap.is_construction:
+                    _all_incr[_aidx] = 0.0
+                else:
+                    _wp_m = next((w for w in _new_wp_list if w.period_index == _aidx), None)
+                    _all_incr[_aidx] = (
+                        _wp_m.change_in_unrestricted_cash_keur if _wp_m is not None else 0.0
+                    )
+            _policy_auth = getattr(_distribution_accounting_policy, "opening_uc_authority", None)
+            _eff_auth = (
+                _OPENING_UC_AUTHORITY
+                if _policy_auth is None or _policy_auth == "UNRESOLVED"
+                else _policy_auth
+            )
+            _uc_sched_out = build_unrestricted_cash_schedule(
+                periods=_model_result.periods,
+                authority="SOURCE_PROVEN",
+                authoritative_period_cash_increments=_all_incr,
+                opening_cash_keur=_resolve_opening_uc_keur(_eff_auth),
+            )
+            _fi_sched_out = build_cash_reserve_interest_schedules(
+                periods=_model_result.periods,
+                policy=_cash_reserve_policy,
+                unrestricted_cash_schedule=_uc_sched_out,
+                dsra_balance_by_period=_dsra_by_idx if _dsra_by_idx else None,
+                dsra_balance_authority="SOURCE_PROVEN" if _dsra_by_idx else None,
+            )
+            for _fr in _fi_sched_out.period_results:
+                if _fr.calculated_financing_income_keur != 0.0:
+                    _next_fi_out[_fr.period_index] = _fr.calculated_financing_income_keur
+
+        return _new_wp_list, _uc_out, _gd_out, _re_out, _lr_out, _next_fi_out, _fi_sched_out
+
     for _u2_iter in range(1, _MAX_U2_ITER + 2):
         # Build PeriodFinancingIncomeInput tuple from current state
         _fi_inputs: tuple = tuple(
@@ -983,179 +1133,23 @@ def run_project_shareholder_waterfall_model(
             # Skip U2 fixed-point entirely — no cash reserve interest without distribution policy
             break
 
-        # Build lookup maps for net income computation
-        _op_period_by_idx = {
-            p.period_index: p for p in model_result.periods if p.is_operation
-        }
-        # Senior interest by period_index
-        _senior_int_by_idx: dict[int, float] = {}
-        if model_result.senior_debt is not None:
-            _sd = model_result.senior_debt
-            for _si, _si_idx in enumerate(_sd.period_indices):
-                _senior_int_by_idx[_si_idx] = _sd.senior_interest_keur[_si]
-        # CIT accrual by period_index
-        _cit_by_idx: dict[int, float] = {}
-        if model_result.tax_and_cfads is not None:
-            _ta = model_result.tax_and_cfads
-            for _ti, _t_idx in enumerate(_ta.period_indices):
-                _cit_by_idx[_t_idx] = _ta.tax_keur[_ti]
-
         # M.5: COD opening equity state from construction P&L
-        # Construction book net income = -(SHL PIK + pre-operational opex)
-        # IDC/bank fees/commitment fees are capitalized → not expensed → not in P&L
         _shl_pik = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
         _const_pl = getattr(project_inputs.tax, "construction_pl", None)
         _pre_op_opex = getattr(_const_pl, "pre_operational_opex_keur", 0.0) if _const_pl else 0.0
         _construction_net_income = -(_shl_pik + _pre_op_opex)
-        _eq_retained = _construction_net_income  # greenfield: pre-project RE = 0
-        _eq_reserve = 0.0  # legal reserve starts at 0 for greenfield
 
-        # Forward pass: carry equity state and unrestricted cash
-        _uc_carry = 0.0   # unrestricted cash opening for this iteration's first period
-        _new_uc_closing: dict[int, float] = {}
-        _new_gd: dict[int, float] = {}
-        _new_wp: list[CovenantGatedWaterfallPeriod] = []
-
-        for _wp in waterfall_periods:
-            if _wp.is_construction:
-                _new_wp.append(_wp)
-                continue
-            _idx = _wp.period_index
-            _op = _op_period_by_idx.get(_idx)
-            if _op is None:
-                _new_wp.append(_wp)
-                continue
-            _ebitda = _op.ebitda_keur
-            _depr = _op.book_depreciation_keur
-            _sint = _senior_int_by_idx.get(_idx, 0.0)
-            _shl_g = _wp.shl_gross_interest_keur
-            _cit = _cit_by_idx.get(_idx, 0.0)
-            _fi_income = _fi_by_idx.get(_idx, 0.0)  # current iteration financing income
-            _net_income = _ebitda - _depr + _fi_income - _sint - _shl_g - _cit
-
-            _fcf_div = _wp.legal_equity_distribution_keur
-
-            # Compute equity state with dividends=0 to get accounting capacity
-            _eq_res = roll_forward_equity_state(
-                (EquityStatePeriodInput(
-                    period_index=_idx,
-                    net_income_keur=_net_income,
-                    gross_dividends_keur=0.0,
-                ),),
-                share_capital_keur=_share_capital_keur,
-                legal_reserve_cap_fraction=_legal_reserve_cap,
-                opening_legal_reserve_keur=_eq_reserve,
-                opening_retained_earnings_keur=_eq_retained,
-            )[0]
-            _acct_cap = max(0.0, _eq_res.closing_retained_earnings_keur)
-
-            _cash_cap = _uc_carry + _fcf_div
-            _distributable = max(0.0, min(_acct_cap, _cash_cap))
-            _gross_div = _distributable
-            _wht = _gross_div * _dividend_wht_rate
-            _net_div = _gross_div * (1.0 - _dividend_wht_rate)
-            _change_uc = _fcf_div - _gross_div
-            _uc_closing = _uc_carry + _change_uc
-
-            # Re-run equity state with actual dividends to get closing RE/LR
-            _eq_res2 = roll_forward_equity_state(
-                (EquityStatePeriodInput(
-                    period_index=_idx,
-                    net_income_keur=_net_income,
-                    gross_dividends_keur=_gross_div,
-                ),),
-                share_capital_keur=_share_capital_keur,
-                legal_reserve_cap_fraction=_legal_reserve_cap,
-                opening_legal_reserve_keur=_eq_reserve,
-                opening_retained_earnings_keur=_eq_retained,
-            )[0]
-            _eq_reserve = _eq_res2.closing_legal_reserve_keur
-            _eq_retained = _eq_res2.closing_retained_earnings_keur
-
-            _new_uc_closing[_idx] = _uc_closing
-            _new_gd[_idx] = _gross_div
-
-            _new_wp.append(dataclasses.replace(
-                _wp,
-                fcf_for_dividends_keur=_fcf_div,
-                accounting_dividend_capacity_keur=_acct_cap,
-                cash_dividend_capacity_keur=_cash_cap,
-                distributable_keur=_distributable,
-                gross_dividend_paid_keur=_gross_div,
-                dividend_wht_rate=_dividend_wht_rate,
-                dividend_wht_keur=_wht,
-                net_dividend_received_keur=_net_div,
-                unrestricted_cash_opening_keur=_uc_carry,
-                change_in_unrestricted_cash_keur=_change_uc,
-                unrestricted_cash_closing_keur=_uc_closing,
-                opening_legal_reserve_keur=_eq_res2.opening_legal_reserve_keur,
-                legal_reserve_transfer_keur=_eq_res2.legal_reserve_transfer_keur,
-                closing_legal_reserve_keur=_eq_res2.closing_legal_reserve_keur,
-                pure_equity_net_cashflow_keur=_net_div,
-                total_sponsor_net_cashflow_keur=_net_div + _wp.shl_cash_interest_receipt_keur + _wp.shl_principal_receipt_keur,
-            ))
-            _uc_carry = _uc_closing
-
-        waterfall_periods = _new_wp
-        _uc_closing_by_idx = _new_uc_closing
-        _gd_by_idx = _new_gd
-
-        # ── U2 Phase L: Compute new financing income from unrestricted cash ───
-        _new_fi_by_idx: dict[int, float] = {}
-        _fi_schedule = None
-        if _cash_reserve_policy is not None:
-            # Build authoritative cash increments for ALL periods (construction=0)
-            _all_increments: dict[int, float] = {}
-            for _ap in model_result.periods:
-                _aidx = _ap.period_index
-                if _ap.is_construction:
-                    _all_increments[_aidx] = 0.0
-                else:
-                    _all_increments[_aidx] = _uc_closing_by_idx.get(_aidx, 0.0) - (
-                        _all_increments.get(_aidx - 1, 0.0)  # opening for this period
-                    )
-            # Rebuild properly using change_in_unrestricted_cash from waterfall
-            _all_increments = {}
-            for _ap in model_result.periods:
-                _aidx = _ap.period_index
-                if _ap.is_construction:
-                    _all_increments[_aidx] = 0.0
-                else:
-                    _wp_match = next(
-                        (w for w in waterfall_periods if w.period_index == _aidx), None
-                    )
-                    _all_increments[_aidx] = (
-                        _wp_match.change_in_unrestricted_cash_keur
-                        if _wp_match is not None else 0.0
-                    )
-            _policy_uc_auth = getattr(_distribution_accounting_policy, "opening_uc_authority", None)
-            # If policy has UNRESOLVED authority (default for non-configured projects), fall back
-            # to module-level default. Projects with dist-accounting enabled must configure explicitly.
-            _effective_uc_auth = (
-                _OPENING_UC_AUTHORITY
-                if _policy_uc_auth is None or _policy_uc_auth == "UNRESOLVED"
-                else _policy_uc_auth
-            )
-            _uc_sched = build_unrestricted_cash_schedule(
-                periods=model_result.periods,
-                authority="SOURCE_PROVEN",
-                authoritative_period_cash_increments=_all_increments,
-                opening_cash_keur=_resolve_opening_uc_keur(
-                    # Q.8: project-level authority from DistributionAccountingPolicy;
-                    # falls back to module-level default for projects without the field.
-                    _effective_uc_auth
-                ),
-            )
-            _fi_schedule = build_cash_reserve_interest_schedules(
-                periods=model_result.periods,
-                policy=_cash_reserve_policy,
-                unrestricted_cash_schedule=_uc_sched,
-                dsra_balance_by_period=dsra_opening_by_idx if dsra_opening_by_idx else None,
-                dsra_balance_authority="SOURCE_PROVEN" if dsra_opening_by_idx else None,
-            )
-            for _fr in _fi_schedule.period_results:
-                if _fr.calculated_financing_income_keur != 0.0:
-                    _new_fi_by_idx[_fr.period_index] = _fr.calculated_financing_income_keur
+        # S.2: Use the ONE reusable transition helper for accounting/dividend/UC/FI.
+        (
+            waterfall_periods, _uc_closing_by_idx, _gd_by_idx,
+            _re_closing_by_idx, _lr_closing_by_idx, _new_fi_by_idx, _fi_schedule,
+        ) = _u2_accounting_and_fi_pass(
+            model_result,
+            _fi_by_idx,
+            waterfall_periods,
+            _construction_net_income,
+            dsra_opening_by_idx,
+        )
 
         # ── Convergence check ────────────────────────────────────────────────────
         _all_idx = set(_new_fi_by_idx) | set(_fi_by_idx)
@@ -1186,9 +1180,13 @@ def run_project_shareholder_waterfall_model(
         if _converged:
             break
 
-    # M.11: Final idempotence — re-run financing with converged FI vector, use that result
-    # Save converged-loop final financing result for delta computation in O.4 block
-    _converged_loop_financing = financing
+    # ── S.4: True final idempotence — final_1 = T(converged_FI), final_2 = T(final_1.next_FI) ──
+    # Both final_1 and final_2 use the ONE reusable _u2_accounting_and_fi_pass helper (S.2/S.3).
+    # Assert max|FI2−FI1|, max|UC2−UC1|, max|gd2−gd1|, max|nd2−nd1|, max|RE2−RE1|,
+    # max|LR2−LR1| ≤ _U2_TOL. Return final_2 objects.
+    _final1_fi_sched = None
+
+    # M.11 / final_1: re-run financing with converged FI, then run accounting pass
     _fi_inputs_final: tuple = tuple(
         PeriodFinancingIncomeInput(
             period_index=idx,
@@ -1205,221 +1203,100 @@ def run_project_shareholder_waterfall_model(
         _u2_period_financing_income=_fi_inputs_final if _fi_inputs_final else None,
     )
 
-    # ── Q.7 / O.4: True final-transition idempotence assertion ───────────────
-    # M.11 re-ran run_project_financing_model with the converged FI vector.
-    # O.4/Q.7 re-derives FI from M.11's financing result and the converged
-    # waterfall_periods, then asserts every tracked quantity (FI, UC, gross_div,
-    # net_div) has residual < _U2_TOL. Informational residuals for Senior,
-    # SHL, IDC, CIT are also computed and stored. This block is the
-    # "_run_u2_transition(converged_FI)" verification step of Q.7.
-    _o4_fi_schedule = None
-    if _dist_accounting_enabled and _cash_reserve_policy is not None and waterfall_periods:
-        _o4_model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
-        _o4_all_increments: dict[int, float] = {}
-        for _o4_ap in _o4_model_result.periods:
-            _o4_aidx = _o4_ap.period_index
-            if _o4_ap.is_construction:
-                _o4_all_increments[_o4_aidx] = 0.0
-            else:
-                _o4_wp_match = next(
-                    (w for w in waterfall_periods if w.period_index == _o4_aidx), None
-                )
-                _o4_all_increments[_o4_aidx] = (
-                    _o4_wp_match.change_in_unrestricted_cash_keur
-                    if _o4_wp_match is not None else 0.0
-                )
-        _o4_uc_sched = build_unrestricted_cash_schedule(
-            periods=_o4_model_result.periods,
-            authority="SOURCE_PROVEN",
-            authoritative_period_cash_increments=_o4_all_increments,
-            opening_cash_keur=_GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR,
+    _final1_fi_sched = None
+    if _dist_accounting_enabled and _cash_reserve_policy is not None:
+        _f1_mr: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
+        _f1_shl_pik = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+        _f1_const_pl = getattr(project_inputs.tax, "construction_pl", None)
+        _f1_pre_op = getattr(_f1_const_pl, "pre_operational_opex_keur", 0.0) if _f1_const_pl else 0.0
+        _f1_eq_ret_base = -(_f1_shl_pik + _f1_pre_op)
+        (
+            _f1_wp, _f1_uc, _f1_gd, _f1_re, _f1_lr, _f1_next_fi, _final1_fi_sched,
+        ) = _u2_accounting_and_fi_pass(
+            _f1_mr, _fi_by_idx, waterfall_periods, _f1_eq_ret_base, dsra_opening_by_idx,
         )
-        _o4_fi_schedule = build_cash_reserve_interest_schedules(
-            periods=_o4_model_result.periods,
-            policy=_cash_reserve_policy,
-            unrestricted_cash_schedule=_o4_uc_sched,
-            dsra_balance_by_period=dsra_opening_by_idx if dsra_opening_by_idx else None,
-            dsra_balance_authority="SOURCE_PROVEN" if dsra_opening_by_idx else None,
-        )
-        _o4_fi_check: dict[int, float] = {
-            _fr.period_index: _fr.calculated_financing_income_keur
-            for _fr in _o4_fi_schedule.period_results
-            if _fr.calculated_financing_income_keur != 0.0
-        }
-        # ΔFI assertion (O.4 original)
-        _o4_all_idx = set(_o4_fi_check) | set(_fi_by_idx)
-        _o4_outer_residual = max(
-            (abs(_o4_fi_check.get(i, 0.0) - _fi_by_idx.get(i, 0.0)) for i in _o4_all_idx),
-            default=0.0,
-        )
-        if _o4_outer_residual > _U2_TOL:
-            raise ValueError(
-                f"Q7_O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED: ΔFI="
-                f"{_o4_outer_residual:.6e} > _U2_TOL={_U2_TOL:.6e}. "
-                "M.11 re-financing broke the U2 fixed-point."
+
+        # M.12 / final_2: re-run financing with final_1.next_FI, then accounting pass
+        _f2_fi_inputs: tuple = tuple(
+            PeriodFinancingIncomeInput(
+                period_index=idx,
+                financing_income_keur=val,
+                authority="SOURCE_PROVEN",
             )
-        # ΔUC assertion (Q.7) — use period_balances (UnrestrictedCashSchedule)
-        _o4_uc_check: dict[int, float] = {
-            pb.period_index: pb.closing_balance_keur
-            for pb in _o4_uc_sched.period_balances
-        }
-        _o4_uc_residual = max(
-            (abs(_o4_uc_check.get(i, 0.0) - _uc_closing_by_idx.get(i, 0.0))
-             for i in set(_o4_uc_check) | set(_uc_closing_by_idx)),
+            for idx, val in _f1_next_fi.items()
+            if val != 0.0
+        )
+        _financing2 = run_project_financing_model(
+            project_inputs,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            _u2_period_financing_income=_f2_fi_inputs if _f2_fi_inputs else None,
+        )
+        _f2_mr: ProjectModelResult = _financing2.project_model_result  # type: ignore[assignment]
+        _f2_shl_pik = getattr(_financing2, "shl_construction_pik_keur", 0.0) or 0.0
+        _f2_const_pl = getattr(project_inputs.tax, "construction_pl", None)
+        _f2_pre_op = getattr(_f2_const_pl, "pre_operational_opex_keur", 0.0) if _f2_const_pl else 0.0
+        _f2_eq_ret_base = -(_f2_shl_pik + _f2_pre_op)
+        (
+            _f2_wp, _f2_uc, _f2_gd, _f2_re, _f2_lr, _f2_next_fi, _f2_fi_sched,
+        ) = _u2_accounting_and_fi_pass(
+            _f2_mr, _f1_next_fi, _f1_wp, _f2_eq_ret_base, dsra_opening_by_idx,
+        )
+
+        # Assert idempotence: |final_2 − final_1| < _U2_TOL for all six quantities
+        _idem_uc_idx = set(_f1_uc) | set(_f2_uc)
+        _idem_uc = max(
+            (abs(_f2_uc.get(i, 0.0) - _f1_uc.get(i, 0.0)) for i in _idem_uc_idx),
             default=0.0,
         )
-        if _o4_uc_residual > _U2_TOL:
+        if _idem_uc > _U2_TOL:
             raise ValueError(
-                f"Q7_IDEMPOTENCE_UC_RESIDUAL: ΔUC={_o4_uc_residual:.6e} > {_U2_TOL:.6e}. "
+                f"Q7_IDEMPOTENCE_UC_RESIDUAL: ΔUC={_idem_uc:.6e} > {_U2_TOL:.6e}. "
                 "M.11 UC not idempotent."
             )
-        # Δgross_div / Δnet_div assertion (Q.7, R.8)
-        # Re-run the forward pass with M.11 quantities to get M.11-derived gross_divs.
-        # final_1 = converged loop forward pass → _gd_by_idx
-        # final_2 = T(M.11 FI, M.11 financing) forward pass → _o4_gd_fp
-        # Assert max|final_2.gd - final_1.gd| < _U2_TOL.
-        _o4_op_period_by_idx2 = {
-            p.period_index: p for p in _o4_model_result.periods if p.is_operation
-        }
-        _o4_senior_int_by_idx2: dict[int, float] = {}
-        if _o4_model_result.senior_debt is not None:
-            _o4_sd2 = _o4_model_result.senior_debt
-            for _s2i, _s2idx in enumerate(_o4_sd2.period_indices):
-                _o4_senior_int_by_idx2[_s2idx] = _o4_sd2.senior_interest_keur[_s2i]
-        _o4_cit_by_idx2: dict[int, float] = {}
-        if _o4_model_result.tax_and_cfads is not None:
-            _o4_ta2 = _o4_model_result.tax_and_cfads
-            for _t2i, _t2idx in enumerate(_o4_ta2.period_indices):
-                _o4_cit_by_idx2[_t2idx] = _o4_ta2.tax_keur[_t2i]
-        _o4_shl_pik2 = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
-        _o4_const_pl2 = getattr(project_inputs.tax, "construction_pl", None)
-        _o4_pre_op_opex2 = (
-            getattr(_o4_const_pl2, "pre_operational_opex_keur", 0.0)
-            if _o4_const_pl2 else 0.0
-        )
-        _o4_eq_retained2 = -(_o4_shl_pik2 + _o4_pre_op_opex2)
-        _o4_eq_reserve2 = 0.0
-        _o4_uc_carry2 = 0.0
-        _o4_gd_fp: dict[int, float] = {}
-        _o4_re_closing2 = _o4_eq_retained2
-        _o4_lr_closing2 = _o4_eq_reserve2
-        for _o4_wp2 in waterfall_periods:
-            if _o4_wp2.is_construction:
-                continue
-            _o4_idx2 = _o4_wp2.period_index
-            _o4_op2 = _o4_op_period_by_idx2.get(_o4_idx2)
-            if _o4_op2 is None:
-                continue
-            _o4_ni2 = (
-                _o4_op2.ebitda_keur
-                - _o4_op2.book_depreciation_keur
-                + _o4_fi_check.get(_o4_idx2, 0.0)
-                - _o4_senior_int_by_idx2.get(_o4_idx2, 0.0)
-                - _o4_wp2.shl_gross_interest_keur
-                - _o4_cit_by_idx2.get(_o4_idx2, 0.0)
-            )
-            _o4_fcf2 = _o4_wp2.legal_equity_distribution_keur
-            _o4_eq_cap2 = roll_forward_equity_state(
-                (EquityStatePeriodInput(
-                    period_index=_o4_idx2,
-                    net_income_keur=_o4_ni2,
-                    gross_dividends_keur=0.0,
-                ),),
-                share_capital_keur=_share_capital_keur,
-                legal_reserve_cap_fraction=_legal_reserve_cap,
-                opening_legal_reserve_keur=_o4_eq_reserve2,
-                opening_retained_earnings_keur=_o4_eq_retained2,
-            )[0]
-            _o4_acct_cap2 = max(0.0, _o4_eq_cap2.closing_retained_earnings_keur)
-            _o4_gd2 = max(0.0, min(_o4_acct_cap2, _o4_uc_carry2 + _o4_fcf2))
-            _o4_gd_fp[_o4_idx2] = _o4_gd2
-            _o4_eq_actual2 = roll_forward_equity_state(
-                (EquityStatePeriodInput(
-                    period_index=_o4_idx2,
-                    net_income_keur=_o4_ni2,
-                    gross_dividends_keur=_o4_gd2,
-                ),),
-                share_capital_keur=_share_capital_keur,
-                legal_reserve_cap_fraction=_legal_reserve_cap,
-                opening_legal_reserve_keur=_o4_eq_reserve2,
-                opening_retained_earnings_keur=_o4_eq_retained2,
-            )[0]
-            _o4_eq_reserve2 = _o4_eq_actual2.closing_legal_reserve_keur
-            _o4_eq_retained2 = _o4_eq_actual2.closing_retained_earnings_keur
-            _o4_uc_carry2 = _o4_uc_carry2 + (_o4_fcf2 - _o4_gd2)
-            _o4_re_closing2 = _o4_eq_retained2
-            _o4_lr_closing2 = _o4_eq_reserve2
-
-        _o4_gd_all_idx = set(_o4_gd_fp) | set(_gd_by_idx)
-        _o4_gd_residual = max(
-            (abs(_o4_gd_fp.get(i, 0.0) - _gd_by_idx.get(i, 0.0))
-             for i in _o4_gd_all_idx),
+        _idem_gd_idx = set(_f1_gd) | set(_f2_gd)
+        _idem_gd = max(
+            (abs(_f2_gd.get(i, 0.0) - _f1_gd.get(i, 0.0)) for i in _idem_gd_idx),
             default=0.0,
         )
-        if _o4_gd_residual > _U2_TOL:
+        if _idem_gd > _U2_TOL:
             raise ValueError(
-                f"Q7_IDEMPOTENCE_GROSS_DIV_RESIDUAL: Δgross_div={_o4_gd_residual:.6e} > "
-                f"{_U2_TOL:.6e}. M.11 forward-pass gross dividends differ from converged."
+                f"Q7_IDEMPOTENCE_GROSS_DIV_RESIDUAL: Δgross_div={_idem_gd:.6e} > {_U2_TOL:.6e}. "
+                "M.11 gross dividends not idempotent."
             )
-        _o4_nd_residual = _o4_gd_residual * (1.0 - _dividend_wht_rate)
-        if _o4_nd_residual > _U2_TOL:
+        _idem_nd = _idem_gd * (1.0 - _dividend_wht_rate)
+        if _idem_nd > _U2_TOL:
             raise ValueError(
-                f"Q7_IDEMPOTENCE_NET_DIV_RESIDUAL: Δnet_div={_o4_nd_residual:.6e} > "
-                f"{_U2_TOL:.6e}."
+                f"Q7_IDEMPOTENCE_NET_DIV_RESIDUAL: Δnet_div={_idem_nd:.6e} > {_U2_TOL:.6e}."
             )
-        # ΔRE / ΔLR informational (Q.7)
-        # RE is not stored on CovenantGatedWaterfallPeriod; use 0.0 placeholder.
-        # LR is stored: compare M.11 forward-pass closing LR vs converged waterfall.
-        _o4_lr_converged_last = next(
-            (w.closing_legal_reserve_keur
-             for w in reversed(waterfall_periods) if not w.is_construction),
-            0.0,
+        _idem_fi_idx = set(_f1_next_fi) | set(_f2_next_fi)
+        _idem_fi = max(
+            (abs(_f2_next_fi.get(i, 0.0) - _f1_next_fi.get(i, 0.0)) for i in _idem_fi_idx),
+            default=0.0,
         )
-        _o4_re_residual = 0.0  # RE not directly stored on WP; not yet checkable
-        _o4_lr_residual = abs(_o4_lr_closing2 - _o4_lr_converged_last)
-        # ΔSenior / ΔSHL / ΔIDC / ΔCIT informational (Q.7)
-        # Compute delta between M.11 financing and converged-loop final financing.
-        _q7_delta_senior = 0.0
-        _q7_delta_shl = 0.0
-        _q7_delta_idc = 0.0
-        _q7_delta_cit = 0.0
-        _conv_sd = getattr(_converged_loop_financing, "project_model_result", None)
-        _conv_sd = getattr(_conv_sd, "senior_debt", None) if _conv_sd else None
-        if _o4_model_result.senior_debt is not None and _conv_sd is not None:
-            _q7_delta_senior = abs(
-                _o4_model_result.senior_debt.debt_size_keur
-                - (_conv_sd.debt_size_keur if hasattr(_conv_sd, "debt_size_keur") else 0.0)
+        if _idem_fi > _U2_TOL:
+            raise ValueError(
+                f"Q7_O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED: ΔFI={_idem_fi:.6e} > "
+                f"_U2_TOL={_U2_TOL:.6e}. M.11 re-financing broke the U2 fixed-point."
             )
-        _q7_delta_shl = abs(
-            (getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0)
-            - (getattr(_converged_loop_financing, "shl_construction_pik_keur", 0.0) or 0.0)
+        _idem_re_idx = set(_f1_re) | set(_f2_re)
+        _idem_re = max(
+            (abs(_f2_re.get(i, 0.0) - _f1_re.get(i, 0.0)) for i in _idem_re_idx),
+            default=0.0,
         )
-        _conv_ta = getattr(_converged_loop_financing, "project_model_result", None)
-        _conv_ta = getattr(_conv_ta, "tax_and_cfads", None) if _conv_ta else None
-        if _o4_model_result.tax_and_cfads is not None and _conv_ta is not None:
-            _q7_delta_cit = abs(
-                sum(_o4_model_result.tax_and_cfads.tax_keur)
-                - sum(_conv_ta.tax_keur)
-            )
-        # Store Q.7 residuals as diagnostic (informational — not asserted beyond gd/nd/fi/uc)
-        _Q7_IDEMPOTENCE_RESIDUALS: dict[str, float] = {
-            "delta_fi": _o4_outer_residual,
-            "delta_uc": _o4_uc_residual,
-            "delta_gross_div": _o4_gd_residual,
-            "delta_net_div": _o4_nd_residual,
-            "delta_re": _o4_re_residual,
-            "delta_lr": _o4_lr_residual,
-            "delta_senior_commitment_keur": _q7_delta_senior,
-            "delta_shl_construction_pik_keur": _q7_delta_shl,
-            "delta_cit_total_keur": _q7_delta_cit,
-            "delta_idc_keur": _q7_delta_idc,
-        }
+        _idem_lr_idx = set(_f1_lr) | set(_f2_lr)
+        _idem_lr = max(
+            (abs(_f2_lr.get(i, 0.0) - _f1_lr.get(i, 0.0)) for i in _idem_lr_idx),
+            default=0.0,
+        )
 
-    # ── Attach fi_schedule from M.11 final transition (Q.7) ──────────────────
-    # Use _o4_fi_schedule (derived from M.11 financing) when available;
-    # fall back to loop's _fi_schedule for non-dist-accounting projects.
-    if _o4_fi_schedule is not None:
-        financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_o4_fi_schedule)
+        # Return final_2 objects (S.4)
+        waterfall_periods = _f2_wp
+        financing = _financing2
+        if _f2_fi_sched is not None:
+            financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_f2_fi_sched)
+    elif _final1_fi_sched is not None:
+        financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_final1_fi_sched)
     elif _fi_schedule is not None:
         financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_fi_schedule)
 
