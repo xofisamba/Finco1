@@ -485,6 +485,14 @@ def test_n14_cash_reserve_interest_authority_status():
     fi_obo = r_obo.financing_result.cash_reserve_interest_schedules
     assert abs(fi_obo.total_financing_income_keur - 71.00318671182808) < 1e-6
 
-    # Report conclusion: BLOCKED due to O.7
-    token = "CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED"
-    assert len(token) > 0  # Structural: token is the documented conclusion, not an acceptance gate
+    # O.11 report conclusion: BLOCKED due to O.7
+    # Token is not a string assertion — it is the causal state of the model.
+    # Assert the model state that causes the BLOCKED status:
+    #   construction_pl=None (removed), no pre_op_opex plug, FI exact-matched above.
+    assert proj_tuho.tax.construction_pl is None, (
+        "CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED: "
+        "construction_pl must be None (O.7: pre_op_opex plug removed, no source-proven value)"
+    )
+    assert getattr(proj_tuho.tax, "construction_pl", None) is None
+    # Final token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED
+    # This session does NOT deliver DELIVERED — O.7 blocked the construction NI component.
