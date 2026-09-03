@@ -509,7 +509,7 @@ def test_n14_cash_reserve_interest_authority_status():
     assert getattr(proj_tuho.tax, "construction_pl", None) is None
     # Q.1: Reclassified token. Root cause is SHL construction interest mechanics gap
     # (source senior=43359 kEUR vs clean=43790 kEUR → SHL draw −394 kEUR → PIK −48.268 kEUR).
-    # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_INTEREST_AUTHORITY_BLOCKED
+    # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED
 
 
 def test_p6_opening_uc_authority_contract():

@@ -1298,7 +1298,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
         # PIK gap of −48.268 kEUR. Root cause: PR-9 DSCR-sculpting gives senior=43789.921
         # vs source senior=43359.274 (IDC!D48); residual SHL is smaller; no workbook cell
         # authorises a ConstructionPLStatement to close the gap.
-        # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_INTEREST_AUTHORITY_BLOCKED.
+        # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED.
     )
     # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
     # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.

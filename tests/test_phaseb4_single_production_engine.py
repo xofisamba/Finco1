@@ -568,6 +568,7 @@ class TestB4H_AuthorityMetadataContract:
 # ---------------------------------------------------------------------------
 
 from tests.fixtures.b4a_b3main_baseline import _B3_MAIN_BASELINE  # noqa: E402
+from tests.fixtures.b4a_current_production_baseline import _CURRENT_PRODUCTION_BASELINE  # noqa: E402
 
 _VECTOR_KEYS = (
     "senior_interest", "senior_principal", "senior_ds", "senior_closing",
@@ -752,28 +753,29 @@ class TestB4I_ExpandedFinancialNonRegression:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_i1_solar_wind_scalar_matrix_bit_identical(self, ptype):
-        """Solar/Wind: all scalar keys must be bit-identical to B3-main (post-N.2 values)."""
+        """Solar/Wind: all scalar keys must be bit-identical to current production baseline."""
         from app import project_factories as pf
         factory = {"Solar": pf.create_default_solar_project,
                    "Wind": pf.create_default_wind_project}[ptype]
         got = _b4a_extract(_b4a_run_clean(factory))
-        expected = _B3_MAIN_BASELINE[ptype]
+        expected = _CURRENT_PRODUCTION_BASELINE[ptype]
         for key in _SCALAR_KEYS:
             assert got[key] == expected[key], (
-                f"{ptype}.{key}: B4={got[key]} vs B3={expected[key]}"
+                f"{ptype}.{key}: got={got[key]} vs expected={expected[key]}"
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_i1b_oborovo_tuho_frozen_scalars_unchanged(self, ptype):
-        """Oborovo/TUHO: scalars not affected by distribution accounting are bit-identical."""
+        """Oborovo/TUHO: scalars not affected by distribution accounting are bit-identical
+        to current production baseline."""
         from app import project_factories as pf
         factory = {"Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
         got = _b4a_extract(_b4a_run_clean(factory))
-        expected = _B3_MAIN_BASELINE[ptype]
+        expected = _CURRENT_PRODUCTION_BASELINE[ptype]
         for key in self._FROZEN_SCALAR_KEYS:
             assert got[key] == expected[key], (
-                f"{ptype}.{key}: B4={got[key]} vs B3={expected[key]}"
+                f"{ptype}.{key}: got={got[key]} vs expected={expected[key]}"
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
@@ -797,13 +799,13 @@ class TestB4I_ExpandedFinancialNonRegression:
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_i2_period_vector_identity(self, ptype):
-        """High-risk schedules: full period-vector digests must be identical to bf71b21d
-        (Senior/SHL schedules not affected by distribution accounting)."""
+        """High-risk schedules: full period-vector digests must be identical to current
+        production baseline (Senior/SHL schedules not affected by distribution accounting)."""
         from app import project_factories as pf
         factory = {"Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
         got = _b4a_extract(_b4a_run_clean(factory))
-        expected = _B3_MAIN_BASELINE[ptype]
+        expected = _CURRENT_PRODUCTION_BASELINE[ptype]
         for vec_key in _VECTOR_KEYS:
             assert got["period_vectors"][vec_key] == expected["period_vectors"][vec_key], (
                 f"{ptype} period vector {vec_key} diverged"
@@ -811,7 +813,7 @@ class TestB4I_ExpandedFinancialNonRegression:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_i3_derived_construction_scalar_identity(self, ptype):
-        """B3 remains the authority for applicable derived financing results.
+        """Current production is the authority for applicable derived financing results.
         Construction financing not affected by distribution accounting."""
         from app import project_factories as pf
         factory = {"Solar": pf.create_default_solar_project,
@@ -819,7 +821,7 @@ class TestB4I_ExpandedFinancialNonRegression:
                    "Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
         got = _b4a_extract(_b4a_run_clean(factory))["construction_financing"]
-        expected = _B3_MAIN_BASELINE[ptype]["construction_financing"]
+        expected = _CURRENT_PRODUCTION_BASELINE[ptype]["construction_financing"]
         assert (got is None) == (expected is None), (
             f"{ptype}: construction applicability changed"
         )
@@ -828,17 +830,18 @@ class TestB4I_ExpandedFinancialNonRegression:
         for key in _CONSTRUCTION_SCALAR_KEYS:
             assert got[key] == expected[key], (
                 f"{ptype}.construction_financing.{key}: "
-                f"B4={got[key]} vs B3={expected[key]}"
+                f"got={got[key]} vs expected={expected[key]}"
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_i4_derived_construction_period_vector_identity(self, ptype):
-        """Timing-sensitive construction and VAT vectors remain bit-identical."""
+        """Timing-sensitive construction and VAT vectors remain bit-identical to current
+        production baseline."""
         from app import project_factories as pf
         factory = {"Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
         got = _b4a_extract(_b4a_run_clean(factory))["construction_financing"]
-        expected = _B3_MAIN_BASELINE[ptype]["construction_financing"]
+        expected = _CURRENT_PRODUCTION_BASELINE[ptype]["construction_financing"]
         for key in _CONSTRUCTION_VECTOR_KEYS:
             assert got["period_vectors"][key] == expected["period_vectors"][key], (
                 f"{ptype} construction period vector {key} diverged"
