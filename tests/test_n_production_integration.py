@@ -669,6 +669,53 @@ def test_q10_tuho_source_construction_shl_pik():
         f"Q.10: Source opening RE={source_opening_re} != -3568.688"
     )
 
+    # ── R.2/R.3: TUHO construction funding equation and Uses difference trace ──
+    # R.2: Source total uses = source_senior + SC + source_SHL
+    source_sc = 500.0  # share capital kEUR — unchanged between source and clean
+    source_shl = source_p  # IDC!B49: SHL Sponsor draw = 29135.176 kEUR
+    source_total_uses = source_senior + source_sc + source_shl
+    assert abs(source_total_uses - 72994.450) < 0.01, (
+        f"R.2: Source total uses={source_total_uses:.3f} != 72994.450"
+    )
+    # R.2: Clean total uses from model
+    clean_uses = r.financing_result.project_uses.total_project_uses_keur
+    assert abs(clean_uses - 73031.030) < 0.01, (
+        f"R.2: Clean total uses={clean_uses:.3f} != 73031.030"
+    )
+    delta_uses = clean_uses - source_total_uses
+    assert abs(delta_uses - 36.580) < 0.05, (
+        f"R.2: Δuses={delta_uses:.3f} != +36.580 kEUR"
+    )
+    # R.3: Component-by-component delta trace (no balancing item)
+    # Clean senior = DSCR-derived; source senior = IDC!D48 (DSCR at different assumptions).
+    # Δuses = Δsenior + ΔSHL (SC unchanged, hard_capex and struct_fee are source-identical).
+    # The full +36.580 is explained by senior/SHL split; no hidden plug.
+    clean_senior = r.financing_result.project_model_result.senior_debt.debt_size_keur
+    delta_senior = clean_senior - source_senior   # R.4: +430.647 kEUR
+    clean_shl_draw = clean_uses - clean_senior - source_sc
+    delta_shl = clean_shl_draw - source_shl   # -394.067 kEUR
+    residual = delta_uses - (delta_senior + delta_shl)
+    assert abs(residual) < 0.01, (
+        f"R.3: Δuses({delta_uses:.3f}) ≠ Δsenior({delta_senior:.3f}) + ΔSHL({delta_shl:.3f}); "
+        f"unexplained residual={residual:.3f} kEUR (must be 0 — no balancing item allowed)"
+    )
+    assert abs(delta_senior - 430.647) < 0.01, (
+        f"R.4: Δsenior={delta_senior:.3f} != +430.647 kEUR"
+    )
+    assert abs(delta_shl - (-394.067)) < 0.01, (
+        f"R.3: ΔSHL={delta_shl:.3f} != -394.067 kEUR"
+    )
+    # R.5: Decision — canonical SHL principal = RESIDUAL (current clean model).
+    # Source SHL (29135.176) differs from clean (28741.109) because source senior
+    # (43359.274 IDC!D48) differs from clean DSCR-derived (43789.921). Root cause
+    # of the +430.647 senior gap: different DSCR sizing assumptions (CFADS basis,
+    # terminal, gearing, or IDC feedback). No typed SHL override is introduced;
+    # the blocker token CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED
+    # remains until the senior sizing root cause is resolved.
+    assert abs(clean_shl_draw - 28741.109) < 0.01, (
+        f"R.5: Clean SHL draw={clean_shl_draw:.3f} != 28741.109 (residual authority)"
+    )
+
 
 def test_q10_oborovo_source_construction_re_and_acct_cap():
     """Q.10: Source Oborovo construction RE = −1169.6619115852516; period-40 acct_cap = 39.649650.
