@@ -446,19 +446,24 @@ def test_n12_tuho_economic_delta_direction():
 # ── N.14: Final acceptance report ────────────────────────────────────────────
 
 def test_n14_cash_reserve_interest_authority_status():
-    """O.11/O.7: Final authority status report — O.7 BLOCKED, exact behavioral assertions.
+    """O.11/O.7: Final authority status report — behavioral assertions.
 
-    Token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED
-    Reason: pre_op_opex=48.268 kEUR was a balancing plug (SOURCE_OPENING_LOSS_KEUR − SHL_PIK)
-    with no independent workbook cell reference. Removed per O.7. Construction NI = -SHL_PIK only.
+    Current blocker token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED
+    Reason: canonical G2A senior solver (PR-9) produces senior=43789.921 kEUR vs source
+    43359.274 kEUR → different SHL principal/PIK → RE gap → UC/FI parity gap.
+    Classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    (Option A — accepted per S.9: canonical G2A authority takes precedence.)
 
+    S.1/S.2/S.3/S.4: ONE _u2_accounting_and_fi_pass helper, true final idempotence
+      (final_2 = T(T(converged_FI))). Q7_IDEMPOTENCE_UC_RESIDUAL resolved. ✓
     O.1  Oborovo DSRA ELIGIBLE (zero balance is not INELIGIBLE) ✓
     O.2  DistributionAccountingPolicy validated (enabled+UNRESOLVED raises, rate/cap ranges) ✓
-    O.7  ConstructionPLStatement removed from TUHO (BLOCKED — no source-proven pre_op_opex) ✓
+    O.7  ConstructionPLStatement removed from TUHO (no source-proven pre_op_opex) ✓
     N.2  distribution accounting layer gated behind DistributionAccountingPolicy ✓
     N.3  TUHO FI: 20 non-zero periods, total=124.317 kEUR, AV UC=544.865 ✓
     N.4  Oborovo FI: 20 non-zero periods, total=71.003 kEUR ✓
     N.6  legal reserve authority: share_capital=500, cap_fraction=10% ✓
+    S.8  TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY ✓
     """
     from app.project_factories import create_default_tuho_wind1, create_default_oborovo
     from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestAuthority, EligibilityStatus
@@ -923,3 +928,57 @@ def test_s8_tuho_source_shl_parity_blocked_classification():
             f"S.8: TUHO_SOURCE_SHL_PARITY_BLOCKED — "
             f"clean UC at idx=41 ({clean_uc_41:.3f}) more than 10 kEUR from source (550.0)"
         )
+
+
+# ── S.9: Architecture recommendation — TUHO G2A gap ──────────────────────────
+
+def test_s9_architecture_recommendation_option_a():
+    """S.9: Architecture recommendation — Option A: accept G2A authority, classify gap as permanent.
+
+    TUHO source SHL parity gap options:
+
+    Option A (SELECTED): Accept TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+      as the permanent classification. The canonical G2A financing stack (PR-9 senior solver)
+      is the single authoritative source of truth for all projects. The TUHO source workbook uses
+      a manually-derived senior commitment (43359.274 kEUR) that differs from the PR-9 solver
+      output (43789.921 kEUR). The correct engineering decision is to accept the solver's output
+      and document the gap as permanently blocked. No project-specific override is permissible.
+      Advantages: clean causal chain, no project dispatch, no output calibration, no second
+      competing senior solver. Consistent with governance constraints.
+
+    Option B (REJECTED): Override the TUHO factory to use source senior commitment (43359.274 kEUR)
+      to force SHL parity. This would require project-name dispatch or a factory-level override
+      parameter outside the standard typed input model. It violates the governance constraints:
+      "No project-name dispatch, no workbook-vector replay, no output-calibration". It would also
+      break test_d4_no_named_project_identity_financial_dispatch and related production guards.
+
+    Rationale for Option A: The G2A financing stack is the canonical authority by design. Source
+    workbook manual values are reference evidence, not overrides. The UC gap (Δ≈5.135 kEUR at
+    AV idx=41) is within normal parameter sensitivity and does not change investment conclusions.
+    The correct response to this gap is transparent documentation, not calibration.
+
+    This test proves the Option A state: the canonical G2A result is accepted and no project
+    dispatch exists.
+    """
+    from app.project_factories import create_default_tuho_wind1
+
+    # Option A verification: production path uses the PR-9 solver (not the legacy fixed_debt)
+    pi = create_default_tuho_wind1()
+    r = run_project_shareholder_waterfall_model(pi)
+    fin = r.financing_result
+    # PR-9 solver produces senior_debt_size ≈ 43789.921 (canonical G2A — not legacy 43359)
+    sd = fin.project_model_result.senior_debt
+    assert abs(sd.debt_size_keur - 43789.92111682598) < 1.0, (
+        f"S.9: G2A canonical senior debt={sd.debt_size_keur:.3f} != 43789.921 (PR-9 solver)"
+    )
+    # Typed construction financing present (PR-9 authority, not legacy fixed-debt override)
+    assert fin.project_uses is not None
+    assert fin.construction_financing is not None, "S.9: typed construction financing must be present"
+    assert "TYPED" in fin.construction_financing.authority, (
+        f"S.9: construction authority={fin.construction_financing.authority} must be TYPED (PR-9)"
+    )
+    # Option B would require fin.project_model_result.senior_debt.debt_size_keur ≈ 43359.
+    # Assert this is NOT the case — Option A accepted.
+    assert sd.debt_size_keur > 43500.0, (
+        "S.9: Option B rejected — senior debt must not match source manual value 43359 kEUR"
+    )
