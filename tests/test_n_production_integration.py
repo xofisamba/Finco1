@@ -522,6 +522,7 @@ def test_p6_opening_uc_authority_contract():
     from finco_core.inputs.distribution_accounting_policy import (
         DistributionAccountingPolicy,
         DistributionAccountingAuthority,
+        OpeningUCAuthority,
         OPENING_UC_AUTHORITY_VALID,
     )
     from app.project_factories import create_default_oborovo, create_default_tuho_wind1
@@ -547,8 +548,8 @@ def test_p6_opening_uc_authority_contract():
     # Oborovo and TUHO must carry CAUSALLY_DERIVED_ZERO at project level
     oborovo = create_default_oborovo()
     tuho = create_default_tuho_wind1()
-    assert oborovo.distribution_accounting_policy.opening_uc_authority == "CAUSALLY_DERIVED_ZERO"
-    assert tuho.distribution_accounting_policy.opening_uc_authority == "CAUSALLY_DERIVED_ZERO"
+    assert oborovo.distribution_accounting_policy.opening_uc_authority == OpeningUCAuthority.CAUSALLY_DERIVED_ZERO
+    assert tuho.distribution_accounting_policy.opening_uc_authority == OpeningUCAuthority.CAUSALLY_DERIVED_ZERO
 
     # Q.8: OPENING_UC_AUTHORITY_VALID in distribution_accounting_policy matches model
     assert "CAUSALLY_DERIVED_ZERO" in OPENING_UC_AUTHORITY_VALID
@@ -603,15 +604,13 @@ def test_q6_oborovo_dsra_balance_vector_zero():
     from app.project_factories import create_default_oborovo
     from finco_core.inputs.cash_reserve_interest_policy import EligibilityStatus
 
-    # Q.6: Source SHL fixture proves DSRA balance = 0 at construction close
+    # Q.6: Source SHL fixture proves DSRA balance = 0 via explicit workbook inputs
     fixture_path = pathlib.Path("tests/fixtures/excel_oborovo_shl_operating_truth.json")
     with fixture_path.open() as f:
         shl_fix = json.load(f)
-    construction = shl_fix["construction_period"]
-    # Source construction period: no DSRA field → balance = 0
-    assert construction.get("dsra_closing_balance_keur", 0.0) == 0.0, (
-        "Q.6: Source construction DSRA closing balance must be 0"
-    )
+    dsra_inputs = shl_fix.get("workbook_inputs", {}).get("dsra_inputs", {})
+    assert dsra_inputs.get("Inputs_I347_dsra_target_months") == 0, "Q.6: Source Inputs!I347 must be explicitly zero"
+    assert dsra_inputs.get("Inputs_I348_dsra_months") == 0, "Q.6: Source Inputs!I348 must be explicitly zero"
 
     # Q.6: Clean model — dsra_months=0 → no DSRA balance
     proj = create_default_oborovo()

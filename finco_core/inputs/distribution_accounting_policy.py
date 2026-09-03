@@ -19,13 +19,19 @@ class DistributionAccountingAuthority(str, Enum):
     SOURCE_PROVEN = "SOURCE_PROVEN"
 
 
+class OpeningUCAuthority(str, Enum):
+    UNRESOLVED = "UNRESOLVED"
+    SOURCE_PROVEN_EXPLICIT_ZERO = "SOURCE_PROVEN_EXPLICIT_ZERO"
+    CAUSALLY_DERIVED_ZERO = "CAUSALLY_DERIVED_ZERO"
+
+
 # Q.8: Valid opening UC authorities — project-level typed contract.
 # SOURCE_PROVEN_EXPLICIT_ZERO: workbook cell reference provided.
 # CAUSALLY_DERIVED_ZERO: greenfield axiom (O.9) — no uncommitted cash at FC.
 # UNRESOLVED: fails closed; must be resolved before enabling distribution accounting.
 OPENING_UC_AUTHORITY_VALID: frozenset[str] = frozenset({
-    "SOURCE_PROVEN_EXPLICIT_ZERO",
-    "CAUSALLY_DERIVED_ZERO",
+    OpeningUCAuthority.SOURCE_PROVEN_EXPLICIT_ZERO,
+    OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
 })
 
 
@@ -38,8 +44,8 @@ class DistributionAccountingPolicy:
     legal_reserve_cap_fraction: float = 0.10  # default 10%
     # Q.8: Project-level opening UC authority. Must be SOURCE_PROVEN_EXPLICIT_ZERO or
     # CAUSALLY_DERIVED_ZERO when enabled=True. UNRESOLVED fails closed.
-    # Default CAUSALLY_DERIVED_ZERO applies the greenfield axiom (O.9) to all projects.
-    opening_uc_authority: str = "CAUSALLY_DERIVED_ZERO"
+    # Default UNRESOLVED fails closed when enabled=True. Projects must explicitly configure CAUSALLY_DERIVED_ZERO or SOURCE_PROVEN_EXPLICIT_ZERO.
+    opening_uc_authority: str = OpeningUCAuthority.UNRESOLVED
 
     def __post_init__(self) -> None:
         if self.enabled and self.authority == DistributionAccountingAuthority.UNRESOLVED:

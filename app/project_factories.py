@@ -94,6 +94,7 @@ from finco_core.inputs.cash_reserve_interest_policy import (
 from finco_core.inputs.distribution_accounting_policy import (
     DistributionAccountingPolicy,
     DistributionAccountingAuthority,
+    OpeningUCAuthority,
 )
 
 
@@ -722,7 +723,7 @@ def create_default_oborovo() -> ProjectInputs:
             dividend_wht_rate=0.05,
             legal_reserve_cap_fraction=0.10,
             # Q.8: Project-level opening UC authority (greenfield axiom O.9)
-            opening_uc_authority="CAUSALLY_DERIVED_ZERO",
+            opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
         ),
     )
 
@@ -1316,7 +1317,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
             dividend_wht_rate=0.0,
             legal_reserve_cap_fraction=0.10,
             # Q.8: Project-level opening UC authority (greenfield axiom O.9)
-            opening_uc_authority="CAUSALLY_DERIVED_ZERO",
+            opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
         ),
         valuation=ValuationPolicies(
             project=ProjectValuationPolicy(

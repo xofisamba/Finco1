@@ -1128,6 +1128,14 @@ def run_project_shareholder_waterfall_model(
                         _wp_match.change_in_unrestricted_cash_keur
                         if _wp_match is not None else 0.0
                     )
+            _policy_uc_auth = getattr(_distribution_accounting_policy, "opening_uc_authority", None)
+            # If policy has UNRESOLVED authority (default for non-configured projects), fall back
+            # to module-level default. Projects with dist-accounting enabled must configure explicitly.
+            _effective_uc_auth = (
+                _OPENING_UC_AUTHORITY
+                if _policy_uc_auth is None or _policy_uc_auth == "UNRESOLVED"
+                else _policy_uc_auth
+            )
             _uc_sched = build_unrestricted_cash_schedule(
                 periods=model_result.periods,
                 authority="SOURCE_PROVEN",
@@ -1135,8 +1143,7 @@ def run_project_shareholder_waterfall_model(
                 opening_cash_keur=_resolve_opening_uc_keur(
                     # Q.8: project-level authority from DistributionAccountingPolicy;
                     # falls back to module-level default for projects without the field.
-                    getattr(_distribution_accounting_policy, "opening_uc_authority", None)
-                    or _OPENING_UC_AUTHORITY
+                    _effective_uc_auth
                 ),
             )
             _fi_schedule = build_cash_reserve_interest_schedules(
