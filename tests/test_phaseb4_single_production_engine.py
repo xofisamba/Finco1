@@ -626,6 +626,13 @@ def _b4a_extract(payload):
     import hashlib
     def digest(vec):
         return hashlib.sha256(repr(tuple(float(v) if v is not None else 0.0 for v in vec)).encode()).hexdigest()
+    def stable_digest(vec):
+        """Round each element to 6 decimal places before hashing.
+        Eliminates ±1 ULP FPU divergence while preserving per-period timing shape."""
+        rounded = tuple(round(float(v) if v is not None else 0.0, 6) for v in vec)
+        return hashlib.sha256(repr(rounded).encode()).hexdigest()
+    def vd(vec):
+        return {"hash": digest(vec), "stable": stable_digest(vec)}
     fin = res.financing_result
     model = fin.project_model_result
     op = model.operating_schedules
@@ -675,30 +682,14 @@ def _b4a_extract(payload):
             "other_explicit_project_uses": uses.other_explicit_project_uses_keur,
             "total_project_uses": uses.total_project_uses_keur,
             "period_vectors": {
-                "senior_idc_accrual": {
-                    "hash": digest(construction.senior_idc_accrual_keur),
-                    "sum": sum(construction.senior_idc_accrual_keur)},
-                "senior_idc_capitalized_uses": {
-                    "hash": digest(construction.senior_idc_capitalized_uses_keur),
-                    "sum": sum(construction.senior_idc_capitalized_uses_keur)},
-                "senior_commitment_fee_accrual": {
-                    "hash": digest(construction.senior_commitment_fee_accrual_keur),
-                    "sum": sum(construction.senior_commitment_fee_accrual_keur)},
-                "structuring_fee": {
-                    "hash": digest(construction.structuring_fee_keur),
-                    "sum": sum(construction.structuring_fee_keur)},
-                "vat_payable": {
-                    "hash": digest(construction.vat_payable_keur),
-                    "sum": sum(construction.vat_payable_keur)},
-                "vat_requirement": {
-                    "hash": digest(construction.vat_requirement_keur),
-                    "sum": sum(construction.vat_requirement_keur)},
-                "vat_drawn": {
-                    "hash": digest(construction.vat_drawn_keur),
-                    "sum": sum(construction.vat_drawn_keur)},
-                "vat_undrawn": {
-                    "hash": digest(construction.vat_undrawn_keur),
-                    "sum": sum(construction.vat_undrawn_keur)},
+                "senior_idc_accrual": vd(construction.senior_idc_accrual_keur),
+                "senior_idc_capitalized_uses": vd(construction.senior_idc_capitalized_uses_keur),
+                "senior_commitment_fee_accrual": vd(construction.senior_commitment_fee_accrual_keur),
+                "structuring_fee": vd(construction.structuring_fee_keur),
+                "vat_payable": vd(construction.vat_payable_keur),
+                "vat_requirement": vd(construction.vat_requirement_keur),
+                "vat_drawn": vd(construction.vat_drawn_keur),
+                "vat_undrawn": vd(construction.vat_undrawn_keur),
             },
         }
     out = {
@@ -733,20 +724,13 @@ def _b4a_extract(payload):
         "distributions": res.total_legal_equity_distributions_keur,
         "sponsor_receipts": res.total_sponsor_receipts_keur,
         "period_vectors": {
-            "senior_interest": {"hash": digest(senior.senior_interest_keur),
-                                "sum": sum(senior.senior_interest_keur)},
-            "senior_principal": {"hash": digest(senior.senior_principal_keur),
-                                 "sum": sum(senior.senior_principal_keur)},
-            "senior_ds": {"hash": digest(senior.senior_debt_service_keur),
-                          "sum": sum(senior.senior_debt_service_keur)},
-            "senior_closing": {"hash": digest(senior.senior_debt_closing_keur),
-                               "sum": sum(senior.senior_debt_closing_keur)},
-            "shl_interest": {"hash": digest(shl.shl_gross_interest_keur),
-                             "sum": sum(shl.shl_gross_interest_keur)},
-            "shl_principal": {"hash": digest(shl.shl_principal_keur),
-                              "sum": sum(shl.shl_principal_keur)},
-            "shl_closing": {"hash": digest(shl.shl_closing_keur),
-                            "sum": sum(shl.shl_closing_keur)},
+            "senior_interest": vd(senior.senior_interest_keur),
+            "senior_principal": vd(senior.senior_principal_keur),
+            "senior_ds": vd(senior.senior_debt_service_keur),
+            "senior_closing": vd(senior.senior_debt_closing_keur),
+            "shl_interest": vd(shl.shl_gross_interest_keur),
+            "shl_principal": vd(shl.shl_principal_keur),
+            "shl_closing": vd(shl.shl_closing_keur),
         },
     }
     return out
@@ -823,20 +807,11 @@ class TestB4I_ExpandedFinancialNonRegression:
         )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    # Maps vector key → scalar key in the top-level extracted dict for sum fallback.
-    _VEC_TO_SCALAR = {
-        "senior_interest": "senior_interest",
-        "senior_principal": "senior_principal",
-        "senior_ds": "senior_ds",
-        "shl_interest": "shl_total_interest",
-        "shl_principal": "shl_total_principal",
-    }
-
     def test_i2_period_vector_identity(self, ptype):
-        """High-risk schedules: full period-vector digests must be identical to current
-        production baseline (Senior/SHL schedules not affected by distribution accounting).
-        When hashes diverge due to FPU rounding (iterative PR-9/U2 loops), falls back to
-        scalar-sum comparison at rel_tol=1e-10."""
+        """High-risk schedules: full period-vector stable-digests must be identical to
+        current production baseline. Stable digest rounds each element to 6 decimal places
+        before hashing — eliminates ±1 ULP FPU divergence while preserving per-period
+        shape (vectors with equal totals but different timing produce different hashes)."""
         from app import project_factories as pf
         factory = {"Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
@@ -845,20 +820,10 @@ class TestB4I_ExpandedFinancialNonRegression:
         for vec_key in _VECTOR_KEYS:
             got_vd = got["period_vectors"][vec_key]
             exp_vd = expected["period_vectors"][vec_key]
-            got_hash = got_vd["hash"] if isinstance(got_vd, dict) else got_vd
-            exp_hash = exp_vd["hash"] if isinstance(exp_vd, dict) else exp_vd
-            if got_hash == exp_hash:
-                continue
-            # Hash mismatch: tolerate FPU divergence if sum matches baseline scalar.
-            scalar_key = self._VEC_TO_SCALAR.get(vec_key)
-            assert scalar_key is not None, (
-                f"{ptype} {vec_key}: hash mismatch with no scalar fallback"
-            )
-            got_sum = got_vd["sum"] if isinstance(got_vd, dict) else None
-            exp_scalar = expected[scalar_key]
-            assert got_sum is not None and _approx_eq(got_sum, exp_scalar), (
-                f"{ptype} period vector {vec_key}: hash diverged and "
-                f"sum {got_sum} ≠ baseline scalar {exp_scalar}"
+            got_stable = got_vd["stable"] if isinstance(got_vd, dict) else got_vd
+            exp_stable = exp_vd["stable"] if isinstance(exp_vd, dict) else exp_vd
+            assert got_stable == exp_stable, (
+                f"{ptype} period vector {vec_key} diverged"
             )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
@@ -883,19 +848,11 @@ class TestB4I_ExpandedFinancialNonRegression:
                 f"got={got[key]} vs expected={expected[key]}"
             )
 
-    # Maps construction vector key → scalar key in construction_financing for sum fallback.
-    _CONSTRUCTION_VEC_TO_SCALAR = {
-        "senior_idc_accrual": "construction_senior_idc_raw",
-        "senior_idc_capitalized_uses": "construction_senior_idc_capitalized",
-        "senior_commitment_fee_accrual": "construction_senior_commitment_fee",
-        "structuring_fee": "construction_structuring_fee",
-    }
-
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_i4_derived_construction_period_vector_identity(self, ptype):
-        """Timing-sensitive construction and VAT vectors remain bit-identical to current
-        production baseline. When hashes diverge due to FPU rounding (iterative PR-9/U2
-        loops), falls back to scalar-sum comparison at rel_tol=1e-10."""
+        """Timing-sensitive construction and VAT vectors: stable-digest must be identical
+        to current production baseline. Preserves per-period timing shape while tolerating
+        ±1 ULP FPU divergence across CPU environments."""
         from app import project_factories as pf
         factory = {"Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
@@ -904,20 +861,10 @@ class TestB4I_ExpandedFinancialNonRegression:
         for key in _CONSTRUCTION_VECTOR_KEYS:
             got_vd = got["period_vectors"][key]
             exp_vd = expected["period_vectors"][key]
-            got_hash = got_vd["hash"] if isinstance(got_vd, dict) else got_vd
-            exp_hash = exp_vd["hash"] if isinstance(exp_vd, dict) else exp_vd
-            if got_hash == exp_hash:
-                continue
-            # Hash mismatch: tolerate FPU divergence if sum matches baseline scalar.
-            scalar_key = self._CONSTRUCTION_VEC_TO_SCALAR.get(key)
-            assert scalar_key is not None, (
-                f"{ptype} construction {key}: hash mismatch with no scalar fallback"
-            )
-            got_sum = got_vd["sum"] if isinstance(got_vd, dict) else None
-            exp_scalar = expected[scalar_key]
-            assert got_sum is not None and _approx_eq(got_sum, exp_scalar), (
-                f"{ptype} construction {key}: hash diverged and "
-                f"sum {got_sum} ≠ baseline scalar {exp_scalar}"
+            got_stable = got_vd["stable"] if isinstance(got_vd, dict) else got_vd
+            exp_stable = exp_vd["stable"] if isinstance(exp_vd, dict) else exp_vd
+            assert got_stable == exp_stable, (
+                f"{ptype} construction period vector {key} diverged"
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
