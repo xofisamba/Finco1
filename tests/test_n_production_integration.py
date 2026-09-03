@@ -346,6 +346,19 @@ def test_o8_oborovo_legal_reserve_causal_rollforward():
     assert abs(first_lr.closing_legal_reserve_keur - 50.0) < 1e-6
 
 
+# ── O.4: Full U2 transition residual assertion ────────────────────────────────
+
+def test_o4_tuho_full_transition_no_residual():
+    """O.4: After M.11 re-financing, running Oborovo/TUHO must not raise
+    O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED. The model itself enforces this;
+    we prove it by running successfully.
+    """
+    from app.project_factories import create_default_tuho_wind1, create_default_oborovo
+    # Both projects run O.4 residual check internally; successful return proves it passed.
+    run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    run_project_shareholder_waterfall_model(create_default_oborovo())
+
+
 # ── N.9: Full-transition idempotence ─────────────────────────────────────────
 
 def test_n9_tuho_idempotent_run():

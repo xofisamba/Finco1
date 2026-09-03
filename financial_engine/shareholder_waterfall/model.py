@@ -1167,6 +1167,56 @@ def run_project_shareholder_waterfall_model(
         _u2_period_financing_income=_fi_inputs_final if _fi_inputs_final else None,
     )
 
+    # ── O.4: Full transition residual assertion ───────────────────────────────
+    # After M.11 re-financing, assert the converged FI vector is stable: running
+    # one more FI derivation from the converged waterfall_periods produces the same
+    # FI (outer residual < _U2_TOL). This verifies M.11 is truly idempotent and
+    # the fixed-point is not broken by the final re-financing.
+    if _dist_accounting_enabled and _cash_reserve_policy is not None and waterfall_periods:
+        _o4_model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
+        _o4_all_increments: dict[int, float] = {}
+        for _o4_ap in _o4_model_result.periods:
+            _o4_aidx = _o4_ap.period_index
+            if _o4_ap.is_construction:
+                _o4_all_increments[_o4_aidx] = 0.0
+            else:
+                _o4_wp_match = next(
+                    (w for w in waterfall_periods if w.period_index == _o4_aidx), None
+                )
+                _o4_all_increments[_o4_aidx] = (
+                    _o4_wp_match.change_in_unrestricted_cash_keur
+                    if _o4_wp_match is not None else 0.0
+                )
+        _o4_uc_sched = build_unrestricted_cash_schedule(
+            periods=_o4_model_result.periods,
+            authority="SOURCE_PROVEN",
+            authoritative_period_cash_increments=_o4_all_increments,
+            opening_cash_keur=_GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR,
+        )
+        _o4_fi_schedule = build_cash_reserve_interest_schedules(
+            periods=_o4_model_result.periods,
+            policy=_cash_reserve_policy,
+            unrestricted_cash_schedule=_o4_uc_sched,
+            dsra_balance_by_period=dsra_opening_by_idx if dsra_opening_by_idx else None,
+            dsra_balance_authority="SOURCE_PROVEN" if dsra_opening_by_idx else None,
+        )
+        _o4_fi_check: dict[int, float] = {
+            _fr.period_index: _fr.calculated_financing_income_keur
+            for _fr in _o4_fi_schedule.period_results
+            if _fr.calculated_financing_income_keur != 0.0
+        }
+        _o4_all_idx = set(_o4_fi_check) | set(_fi_by_idx)
+        _o4_outer_residual = max(
+            (abs(_o4_fi_check.get(i, 0.0) - _fi_by_idx.get(i, 0.0)) for i in _o4_all_idx),
+            default=0.0,
+        )
+        if _o4_outer_residual > _U2_TOL:
+            raise ValueError(
+                f"O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED: outer_residual="
+                f"{_o4_outer_residual:.6e} > _U2_TOL={_U2_TOL:.6e}. "
+                "M.11 re-financing broke the U2 fixed-point."
+            )
+
     # ── Attach fi_schedule to financing result ────────────────────────────────
     if _fi_schedule is not None:
         financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_fi_schedule)
