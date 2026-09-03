@@ -1,16 +1,18 @@
-"""Current-production baseline — DESCRIPTIVE_REGRESSION_EVIDENCE (current HEAD).
+"""Current-production baseline — DESCRIPTIVE_REGRESSION_EVIDENCE (production SHA).
 
-Captured from current production output at HEAD SHA
-bf4b4f0d1bb0567601b016adf49d95abc9463054 (branch upstream-cash-reserve-interest-authority).
-This is the authoritative fixture for exact-equality regression tests (test_i1, test_i1b,
-test_i2, test_i3, test_i4). It reflects post-N.2 ULP cascade values for all four projects.
-Regression evidence ONLY: never read by runtime or financial code; no engine value was
-fitted to match it.
+Captured from current production output at production SHA
+bf4b4f0d1bb0567601b016adf49d95abc9463054 (branch upstream-cash-reserve-interest-authority,
+prior to test/doc-only commits). This is the authoritative fixture for exact-equality
+regression tests (test_i1, test_i1b, test_i2, test_i3, test_i4). It reflects post-N.2 ULP
+cascade values for all four projects. Regression evidence ONLY: never read by runtime or
+financial code; no engine value was fitted to match it.
 
-Solar/Wind: bit-identical to bf71b21d (no ULP cascade affecting these projects).
-Oborovo/TUHO: post-N.2 ULP cascade values (≤1-2 ULP at 12th decimal; economic conclusions
-unchanged). For the bf71b21d originals of ULP-affected fields see b4a_b3main_baseline.py
-N.2 ULP NOTE.
+All four projects show ≤few-ULP differences relative to bf71b21d in fields affected by the
+N.2 distribution-accounting gating commit (12th-decimal-place arithmetic artefacts only;
+economic conclusions unchanged). For example:
+  Solar: opex 9233.000523588737 here vs bf71 9233.000523588735 (Δ≈2 ULP)
+  Wind:  revenue 213093.2536298828 here vs bf71 213093.25362988273 (Δ≈1 ULP)
+For the bf71b21d originals of all ULP-affected fields see b4a_b3main_baseline.py N.2 ULP NOTE.
 """
 
 _CURRENT_PRODUCTION_BASELINE = {

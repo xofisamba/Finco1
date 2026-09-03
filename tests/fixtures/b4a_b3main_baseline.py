@@ -12,43 +12,55 @@ derived layer is captured directly from
 Regression evidence ONLY: never read by runtime or financial code; no
 engine value was fitted to match it.
 Provenance: git worktree @ bf71b21dfe1130a100454bbc5d6faa2c9db4e549 (base SHA).
-R.11 RESTORATION NOTE: scalar values in this file have been restored to actual
-bf71b21d originals (including all ULP-affected fields from the N.2 ULP NOTE).
-Exact-equality regression tests (test_i1, test_i1b, test_i2, test_i3, test_i4)
-have been migrated to b4a_current_production_baseline.py. This file is now used
-ONLY by test_i1c (direction test: FI income raises cash_tax/base_cfads, WHT/LR
-reduces distributions/sponsor_receipts). Period-vector hashes for Oborovo/TUHO
-operating schedules cannot be restored without re-running at bf71b21d; those
-entries are left as post-N.2 placeholders (marked below) and are unused by any
-currently-active test. See b4a_current_production_baseline.py for current values.
 
-N.2 ULP NOTE (Solar, Wind, Oborovo revenue): The N.2 distribution-accounting
-gating commit introduced ≤1-ULP floating-point cascade in Solar, Wind, and
-Oborovo revenue computed summations. The economic conclusions (DSCR, senior
-debt size, returns) are unchanged; only 12th-decimal-place arithmetic artefacts
-differ. Solar/Wind/Oborovo revenue values below reflect post-N.2 model output.
-The bf71b21d originals for the affected fields are:
-  Solar:   opex=9233.000523588735, cash_tax=9612.66059784277,
-           base_cfads=75568.8876901546, min_dscr=1.1029022100705497,
-           avg_dscr=1.3460458391604466, shl_terminal=6629.459631504193,
-           distributions=5002.162578513825, sponsor_receipts=14904.066887275436
-  Wind:    revenue=213093.25362988273, opex=17617.771476803053,
-           cash_tax=32612.879216704838, senior_principal=32250.0,
-           senior_ds=42650.79738447129
-  Oborovo: revenue=237686.92241665165 (post-N.2: 237686.92241665168),
-           opex=55782.95083863444 (post-N.2: 55782.950838634424),
-           ebitda=181903.97157801723 (post-N.2: 181903.97157801728),
-           senior_ds=62985.39289808685 (post-N.2: 62985.39289808684),
-           avg_dscr=1.2425786312134315 (post-N.2: 1.2425786312134317)
-TUHO:    revenue=423762.0018183332 (post-N.2: 423762.00181833334),
-         ebitda=338358.5508177341 (post-N.2: 338358.55081773404),
-         senior_interest=23046.055518013454 (post-N.2: 23046.05551801346),
-         senior_principal=43789.92111682597 (post-N.2: 43789.92111682598),
-         senior_ds=66835.97663483942 (post-N.2: 66835.97663483946),
-         min_dscr=1.398269618156276 (post-N.2: 1.3982696181562762),
-         avg_dscr=1.5301592230503733 (post-N.2: 1.5301592230503727),
-         construction_senior_idc_raw=1769.3542393177283 (post-N.2: 1769.3542393177286),
-         construction_senior_idc_capitalized=1552.2292137801358 (post-N.2: 1552.229213780136).
+PROVENANCE STATUS (R.11 restoration):
+  Scalars — ALL scalar values in this file are the actual bf71b21d originals,
+    restored from the N.2 ULP NOTE where they had drifted.
+  Period-vector hashes (Solar, Wind) — unaffected by N.2; retained as captured
+    at bf71b21d.
+  Period-vector hashes (Oborovo, TUHO operating schedules) — were overwritten by
+    N.2 ULP cascade when originally captured; the true bf71b21d originals are
+    unavailable without re-running the model at bf71b21d. Stored as
+    'UNAVAILABLE_AT_BF71'. No active test reads these keys.
+  Period-vector hashes (Oborovo, TUHO construction schedules) — were captured at
+    current production, not at a clean bf71b21d worktree; unavailable. Stored as
+    'UNAVAILABLE_AT_BF71'. No active test reads these keys.
+  Current-production values and hashes — live only in b4a_current_production_baseline.py.
+
+N.2 ULP NOTE: The N.2 distribution-accounting gating commit introduced ≤1-ULP
+floating-point cascade in Solar, Wind, Oborovo, and TUHO computed summations.
+The economic conclusions (DSCR, senior debt size, returns) are unchanged; only
+12th-decimal-place arithmetic artefacts differ. Scalar values HERE are bf71b21d
+originals. Post-N.2 values live in b4a_current_production_baseline.py.
+Affected fields and their post-N.2 counterparts (for cross-reference):
+  Solar:   opex   bf71=9233.000523588735  → post-N.2 9233.000523588737
+           cash_tax  bf71=9612.66059784277  → post-N.2 9612.660597842772
+           base_cfads bf71=75568.8876901546 → post-N.2 75568.88769015462
+           min_dscr bf71=1.1029022100705497 → post-N.2 1.10290221007055
+           avg_dscr bf71=1.3460458391604466 → post-N.2 1.346045839160447
+           shl_terminal bf71=6629.459631504193 → post-N.2 6629.45963150419
+           distributions bf71=5002.162578513825 → post-N.2 5002.162578513828
+           sponsor_receipts bf71=14904.066887275436 → post-N.2 14904.06688727544
+           senior_principal bf71=24750.000000000007 → post-N.2 24750.0
+  Wind:    revenue bf71=213093.25362988273 → post-N.2 213093.2536298828
+           opex bf71=17617.771476803053 → post-N.2 17617.771476803056
+           cash_tax bf71=32612.879216704838 → post-N.2 32612.879216704834
+           senior_principal bf71=32250.0 → post-N.2 32249.999999999996
+           senior_ds bf71=42650.79738447129 → post-N.2 42650.79738447128
+  Oborovo: revenue bf71=237686.92241665165 → post-N.2 237686.92241665168
+           opex bf71=55782.95083863444 → post-N.2 55782.950838634424
+           ebitda bf71=181903.97157801723 → post-N.2 181903.97157801728
+           senior_ds bf71=62985.39289808685 → post-N.2 62985.39289808684
+           avg_dscr bf71=1.2425786312134315 → post-N.2 1.2425786312134317
+  TUHO:    revenue bf71=423762.0018183332 → post-N.2 423762.00181833334
+           ebitda bf71=338358.5508177341 → post-N.2 338358.55081773404
+           senior_interest bf71=23046.055518013454 → post-N.2 23046.05551801346
+           senior_principal bf71=43789.92111682597 → post-N.2 43789.92111682598
+           senior_ds bf71=66835.97663483942 → post-N.2 66835.97663483946
+           min_dscr bf71=1.398269618156276 → post-N.2 1.3982696181562762
+           avg_dscr bf71=1.5301592230503733 → post-N.2 1.5301592230503727
+           construction_senior_idc_raw bf71=1769.3542393177283 → post-N.2 1769.3542393177286
+           construction_senior_idc_capitalized bf71=1552.2292137801358 → post-N.2 1552.229213780136
 """
 
 _B3_MAIN_BASELINE = {
@@ -183,15 +195,15 @@ _B3_MAIN_BASELINE = {
             'other_explicit_project_uses': 0.0,
             'total_project_uses': 57973.042280034315,  # bf71b21d original (post-N.2: 57973.04228003431)
             'period_vectors': {
-                # post-N.2 hashes; bf71b21d originals unavailable without re-run at bf71b21d
-                'senior_idc_accrual': '8a2d1d03a5659960fd33d9ba1dba5f9c0f6f65be4de5ed61c65ce73a6775002b',
-                'senior_idc_capitalized_uses': 'f83adb32ed09e43c6cc85217732e9ebca6aa9fb9c8ccb4161438c53bb3017ad4',
-                'senior_commitment_fee_accrual': 'bdb5bebcb47e4574e2461d64a9d031eb6247c6670174ffcbd7ff17594cdcc14b',
-                'structuring_fee': '070a6f34b40159e8b30e6185bdd162292b87d3c95150c5fa91fcb07943117a11',
-                'vat_payable': 'db7f492ba54b9671264451902f8a0e9e5b49b0ae0f7b4760d5d78fe6fb0421b3',
-                'vat_requirement': 'f52b7bbbac6658df6f7027172fdaab58fca41b89fb2a54e0e1d93e9aa1a1e2dc',
-                'vat_drawn': 'f52b7bbbac6658df6f7027172fdaab58fca41b89fb2a54e0e1d93e9aa1a1e2dc',
-                'vat_undrawn': '1ac062e5645a8c3d460967bc676e1716863ef439d3813ca0c0f371d8af156c9e',
+                # bf71b21d originals unavailable (not captured at a clean bf71b21d worktree)
+                'senior_idc_accrual': 'UNAVAILABLE_AT_BF71',
+                'senior_idc_capitalized_uses': 'UNAVAILABLE_AT_BF71',
+                'senior_commitment_fee_accrual': 'UNAVAILABLE_AT_BF71',
+                'structuring_fee': 'UNAVAILABLE_AT_BF71',
+                'vat_payable': 'UNAVAILABLE_AT_BF71',
+                'vat_requirement': 'UNAVAILABLE_AT_BF71',
+                'vat_drawn': 'UNAVAILABLE_AT_BF71',
+                'vat_undrawn': 'UNAVAILABLE_AT_BF71',
             },
         },
         'shl_first_op_opening': 15790.398721217909,  # bf71b21d original (post-N.2: 15790.398721217902)
@@ -201,14 +213,15 @@ _B3_MAIN_BASELINE = {
         'distributions': 61689.90265451222,
         'sponsor_receipts': 108480.6739128149,
         "period_vectors": {
-            # post-N.2 hashes (bf71b21d originals replaced by N.2 ULP cascade)
-            'senior_interest': 'c836af6c837b06c07fdf446a957a5e0c0018948648f0623c20d027c652152ef7',
-            'senior_principal': 'a2c30626e2b3c432d5e9cfbd05b2a9583eca7a2d1e9da9282258f4f80178b09d',
-            'senior_ds': '458ae3d27ed63332e7c660edb772b7856d156a49efaff74da785e4f407b5db31',
-            'senior_closing': 'c167677aee5a3663fdb0f4af9c92e251823be0f5da878763b107a345ab5020f5',
-            'shl_interest': 'b337717f829024db0d0a1f2e20b5f0b6a527530eec44f199c63b36ceea0b3b1c',
-            'shl_principal': 'e3aefe0175f2b6f7b4d0da9a0fd54114951eea1c0ec1b6378c1e056c6c7e025f',
-            'shl_closing': '246d4abbf306de9ba6bc9ab33efe54ca074335eb35e21586d3a674369d818673',
+            # bf71b21d originals unavailable (N.2 ULP cascade overwrote operating
+            # schedule hashes before capture; re-running at bf71b21d required)
+            'senior_interest': 'UNAVAILABLE_AT_BF71',
+            'senior_principal': 'UNAVAILABLE_AT_BF71',
+            'senior_ds': 'UNAVAILABLE_AT_BF71',
+            'senior_closing': 'UNAVAILABLE_AT_BF71',
+            'shl_interest': 'UNAVAILABLE_AT_BF71',
+            'shl_principal': 'UNAVAILABLE_AT_BF71',
+            'shl_closing': 'UNAVAILABLE_AT_BF71',
         },
     },
     'TUHO': {
@@ -260,14 +273,15 @@ _B3_MAIN_BASELINE = {
             'other_explicit_project_uses': 0.0,
             'total_project_uses': 73031.02983135793,
             'period_vectors': {
-                'senior_idc_accrual': '09e6ffdbf8741e83611a8d0371c7ab0ab4a238bd716612f6f64da4d57bf2c2df',
-                'senior_idc_capitalized_uses': 'e4817732f0ccdab2dc7c62ad497d708881287d71525162db9f9328e1c2d563e0',
-                'senior_commitment_fee_accrual': '872408a9097bf34cb9e67f0729a0006832d81c086e53f06143c4c8afac4f40de',
-                'structuring_fee': '487dcb536867f1ad1a964e1366be2b0238a9cd9b7a2f8d109a7083589a82a2af',
-                'vat_payable': 'a7e09ab9c2dcbc45a5a5ed5587b114535f793f2731e6f159e47cc17f3ddd2c9f',
-                'vat_requirement': 'f1a0a4c72e3f4148047dd1097eaad73c8efe213e51ba87b044aa4f0766e3e780',
-                'vat_drawn': 'f1a0a4c72e3f4148047dd1097eaad73c8efe213e51ba87b044aa4f0766e3e780',
-                'vat_undrawn': '9ec421f6366074a6ba9a9495724117b0b7126d0865b5225df1817872cf23bd25',
+                # bf71b21d originals unavailable (not captured at a clean bf71b21d worktree)
+                'senior_idc_accrual': 'UNAVAILABLE_AT_BF71',
+                'senior_idc_capitalized_uses': 'UNAVAILABLE_AT_BF71',
+                'senior_commitment_fee_accrual': 'UNAVAILABLE_AT_BF71',
+                'structuring_fee': 'UNAVAILABLE_AT_BF71',
+                'vat_payable': 'UNAVAILABLE_AT_BF71',
+                'vat_requirement': 'UNAVAILABLE_AT_BF71',
+                'vat_drawn': 'UNAVAILABLE_AT_BF71',
+                'vat_undrawn': 'UNAVAILABLE_AT_BF71',
             },
         },
         'shl_first_op_opening': 32261.528269800358,
@@ -277,14 +291,15 @@ _B3_MAIN_BASELINE = {
         'distributions': 151690.9613741361,
         'sponsor_receipts': 232607.02011878393,
         "period_vectors": {
-            # post-N.2 hashes (bf71b21d originals replaced by N.2 ULP cascade)
-            'senior_interest': 'bf406bbaf517f2716f0b6c34f1ffa6d16c1463a613b4a906005f6e37c3101973',
-            'senior_principal': 'f96aa4290cc97b169ff169905879fe53a838f1db2fcfdecf12ec2d055e04b126',
-            'senior_ds': '2d6ea0fab3d367bacf2be275ebb3175dc81e4ec90c30dcefe1a1a0a7d4ab4402',
-            'senior_closing': '9d872251680722d2324e98512bb7e7190c5f85a8504429417e7bf3025fc8631c',
-            'shl_interest': '363510977e5af68b6c4593226e8c9f7f3c36170b1af62587897e160ebb9cbc39',
-            'shl_principal': 'e4675a6457c4ea2b0e3df2a06fed77deab56b537b6151904610cf736d154188b',
-            'shl_closing': '78edefe4a829997511437e14de13c749a3380fc641fdb6940f473f472e49f81a',
+            # bf71b21d originals unavailable (N.2 ULP cascade overwrote operating
+            # schedule hashes before capture; re-running at bf71b21d required)
+            'senior_interest': 'UNAVAILABLE_AT_BF71',
+            'senior_principal': 'UNAVAILABLE_AT_BF71',
+            'senior_ds': 'UNAVAILABLE_AT_BF71',
+            'senior_closing': 'UNAVAILABLE_AT_BF71',
+            'shl_interest': 'UNAVAILABLE_AT_BF71',
+            'shl_principal': 'UNAVAILABLE_AT_BF71',
+            'shl_closing': 'UNAVAILABLE_AT_BF71',
         },
     },
 }
