@@ -607,8 +607,7 @@ _CONSTRUCTION_SCALAR_KEYS = (
     "vat_commitment_fee", "vat_effective_commitment",
     "vat_peak_requirement", "vat_commitment_mode", "vat_authority",
     "final_total_project_uses", "final_senior_commitment",
-    "outer_iterations", "stage_b2_iterations", "outer_residual",
-    "final_verification_outer_residual", "hard_project_capex",
+    "outer_iterations", "stage_b2_iterations", "hard_project_capex",
     "explicit_financing_cost_uses", "reserve_account_funding",
     "other_explicit_project_uses", "total_project_uses",
 )

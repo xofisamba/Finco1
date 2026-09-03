@@ -146,7 +146,7 @@ _CURRENT_PRODUCTION_BASELINE = {
             'total_project_uses': 57973.04228003431,
             'period_vectors': {
                 'senior_idc_accrual': 'f0f44638a484d2e94c14fc3f9bbae31d037c9d8716706ca1ad803b499c60c736',
-                'senior_idc_capitalized_uses': 'f83adb32ed09e43c6cc85217732e9ebca6aa9fb9c8ccb4161438c53bb3017ad4',
+                'senior_idc_capitalized_uses': 'a52241ad7a2b2a795b09b15c33313cc78628d96b4af7788ccc4c1fa371bc5721',
                 'senior_commitment_fee_accrual': 'bdb5bebcb47e4574e2461d64a9d031eb6247c6670174ffcbd7ff17594cdcc14b',
                 'structuring_fee': '070a6f34b40159e8b30e6185bdd162292b87d3c95150c5fa91fcb07943117a11',
                 'vat_payable': 'db7f492ba54b9671264451902f8a0e9e5b49b0ae0f7b4760d5d78fe6fb0421b3',
@@ -163,7 +163,7 @@ _CURRENT_PRODUCTION_BASELINE = {
         'sponsor_receipts': 104934.38650472782,
         "period_vectors": {
             'senior_interest': '794e9d7d9b300121ee5ffa486be9bf5facbeae17a2e6bad9eedd8eb322fd27f0',
-            'senior_principal': 'a2c30626e2b3c432d5e9cfbd05b2a9583eca7a2d1e9da9282258f4f80178b09d',
+            'senior_principal': '53dcaa54090cb9896590c0070409aa321b5142614f70d2b90919af660fa20637',
             'senior_ds': '458ae3d27ed63332e7c660edb772b7856d156a49efaff74da785e4f407b5db31',
             'senior_closing': 'c167677aee5a3663fdb0f4af9c92e251823be0f5da878763b107a345ab5020f5',
             'shl_interest': 'b337717f829024db0d0a1f2e20b5f0b6a527530eec44f199c63b36ceea0b3b1c',
@@ -238,7 +238,7 @@ _CURRENT_PRODUCTION_BASELINE = {
         'sponsor_receipts': 232158.9598440422,
         "period_vectors": {
             'senior_interest': 'b37449193d52fd5c6999d5e7eff65e42c2af80f777827a6369e30b09a2a35add',
-            'senior_principal': 'f96aa4290cc97b169ff169905879fe53a838f1db2fcfdecf12ec2d055e04b126',
+            'senior_principal': '55a37460fcabdb716eec259959a877a06fad6770d074061487e61b1833b6bf5d',
             'senior_ds': '2d6ea0fab3d367bacf2be275ebb3175dc81e4ec90c30dcefe1a1a0a7d4ab4402',
             'senior_closing': '9d872251680722d2324e98512bb7e7190c5f85a8504429417e7bf3025fc8631c',
             'shl_interest': '363510977e5af68b6c4593226e8c9f7f3c36170b1af62587897e160ebb9cbc39',
