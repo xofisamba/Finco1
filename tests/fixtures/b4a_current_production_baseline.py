@@ -1,18 +1,16 @@
 """Current-production baseline — DESCRIPTIVE_REGRESSION_EVIDENCE (production SHA).
 
 Captured from current production output at production SHA
-bf4b4f0d1bb0567601b016adf49d95abc9463054 (branch upstream-cash-reserve-interest-authority,
-prior to test/doc-only commits). This is the authoritative fixture for exact-equality
-regression tests (test_i1, test_i1b, test_i2, test_i3, test_i4). It reflects post-N.2 ULP
-cascade values for all four projects. Regression evidence ONLY: never read by runtime or
-financial code; no engine value was fitted to match it.
+8071da785d10ed853d383ae90518f2a39658cd92 (branch upstream-cash-reserve-interest-authority,
+S.2/S.3/S.4 commit — ONE _u2_accounting_and_fi_pass helper, true S.4 idempotence).
+Regression evidence ONLY: never read by runtime or financial code; no engine value was
+fitted to match it.
 
-All four projects show ≤few-ULP differences relative to bf71b21d in fields affected by the
-N.2 distribution-accounting gating commit (12th-decimal-place arithmetic artefacts only;
-economic conclusions unchanged). For example:
-  Solar: opex 9233.000523588737 here vs bf71 9233.000523588735 (Δ≈2 ULP)
-  Wind:  revenue 213093.2536298828 here vs bf71 213093.25362988273 (Δ≈1 ULP)
-For the bf71b21d originals of all ULP-affected fields see b4a_b3main_baseline.py N.2 ULP NOTE.
+Solar/Wind: unchanged from bf4b4f0d (not affected by S.2/S.3/S.4).
+Oborovo/TUHO: distribution-affected scalars (cash_tax, base_cfads, bank_cfads,
+distributions, sponsor_receipts) updated to reflect S.4 final_2 values. The S.4
+idempotence check now returns final_2 objects (T(T(converged_FI))) which differ
+slightly from the old M.11 pass. Period vectors (senior/SHL schedules) unchanged.
 """
 
 _CURRENT_PRODUCTION_BASELINE = {
@@ -102,9 +100,9 @@ _CURRENT_PRODUCTION_BASELINE = {
         'revenue': 237686.92241665168,
         'opex': 55782.950838634424,
         'ebitda': 181903.97157801728,
-        'cash_tax': 10437.90476711545,
-        'base_cfads': 171466.06681090177,
-        'bank_cfads': 141761.6415624344,
+        'cash_tax': 10445.005085786628,
+        'base_cfads': 171529.96967894235,
+        'bank_cfads': 141825.54443047504,
         'senior_debt_size': 42852.302723344226,
         'senior_interest': 20133.090174742636,
         'senior_principal': 42852.30272334422,
@@ -161,8 +159,8 @@ _CURRENT_PRODUCTION_BASELINE = {
         'shl_total_interest': 32103.921759523422,
         'shl_total_principal': 26713.379909759584,
         'shl_terminal': 0.0,
-        'distributions': 61689.90265451222,
-        'sponsor_receipts': 108480.6739128149,
+        'distributions': 61203.80552255284,
+        'sponsor_receipts': 104934.38650472782,
         "period_vectors": {
             'senior_interest': 'c836af6c837b06c07fdf446a957a5e0c0018948648f0623c20d027c652152ef7',
             'senior_principal': 'a2c30626e2b3c432d5e9cfbd05b2a9583eca7a2d1e9da9282258f4f80178b09d',
@@ -177,9 +175,9 @@ _CURRENT_PRODUCTION_BASELINE = {
         'revenue': 423762.00181833334,
         'opex': 85403.45100059909,
         'ebitda': 338358.55081773404,
-        'cash_tax': 38915.55406411077,
-        'base_cfads': 299442.99675362336,
-        'bank_cfads': 196285.59264084484,
+        'cash_tax': 38937.9310769745,
+        'base_cfads': 299544.93647889147,
+        'bank_cfads': 196387.53236611298,
         'senior_debt_size': 43789.92111682598,
         'senior_interest': 23046.05551801346,
         'senior_principal': 43789.92111682598,
@@ -236,8 +234,8 @@ _CURRENT_PRODUCTION_BASELINE = {
         'shl_total_interest': 52174.950030124644,
         'shl_total_principal': 42662.17052924682,
         'shl_terminal': 0.0,
-        'distributions': 151690.9613741361,
-        'sponsor_receipts': 232607.02011878393,
+        'distributions': 151242.90109939434,
+        'sponsor_receipts': 232158.9598440422,
         "period_vectors": {
             'senior_interest': 'bf406bbaf517f2716f0b6c34f1ffa6d16c1463a613b4a906005f6e37c3101973',
             'senior_principal': 'f96aa4290cc97b169ff169905879fe53a838f1db2fcfdecf12ec2d055e04b126',

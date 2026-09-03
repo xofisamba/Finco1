@@ -334,10 +334,11 @@ _B3_MAIN_FINGERPRINTS = {
     # Oborovo/TUHO: post-N.2 ULP cascade values. Distributions reflect post-U2
     # distribution accounting policy (WHT + legal reserve); bf71b21d originals:
     #   Oborovo: distributions=61689.90265451222; TUHO: distributions=151690.9613741361
+    # S.4 update (8071da7): true final_2 idempotence check alters distribution values slightly.
     "Oborovo": {"revenue": 237686.92241665168, "senior_ds": 62985.39289808684,
-                "distributions": 61203.805522551986},
+                "distributions": 61203.80552255284},
     "TUHO": {"revenue": 423762.00181833334, "senior_ds": 66835.97663483946,
-             "distributions": 151242.9010993855},
+             "distributions": 151242.90109939434},
 }
 
 
