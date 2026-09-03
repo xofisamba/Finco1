@@ -11,7 +11,16 @@ derived layer is captured directly from
 ``financing_result.construction_financing`` (``None`` means not applicable).
 Regression evidence ONLY: never read by runtime or financial code; no
 engine value was fitted to match it.
-Provenance: git worktree @ bf71b21dfe1130a100454bbc5d6faa2c9db4e549.
+Provenance: git worktree @ bf71b21dfe1130a100454bbc5d6faa2c9db4e549 (base SHA).
+Q.9 NOTE: scalar values for the fields listed in the N.2 ULP NOTE below reflect
+post-N.2 model output, NOT the bf71b21d originals. The bf71b21d originals for
+those fields are documented in the N.2 ULP NOTE and inline comments. Numeric
+values in _B3_MAIN_BASELINE were not restored to bf71b21d because the companion
+test (test_i1a/test_i1b) uses exact equality against current production output;
+restoring bf71b21d values would break that comparison. This provenance label
+covers the base SHA for all non-ULP fields; ULP-affected fields carry post-N.2
+output as their authoritative stored value (matching what current production
+produces). See inline `# post-N.2 ULP cascade` comments for bf71b21d originals.
 
 N.2 ULP NOTE (Solar, Wind, Oborovo revenue): The N.2 distribution-accounting
 gating commit introduced ≤1-ULP floating-point cascade in Solar, Wind, and

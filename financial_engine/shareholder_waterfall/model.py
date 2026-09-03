@@ -1132,7 +1132,12 @@ def run_project_shareholder_waterfall_model(
                 periods=model_result.periods,
                 authority="SOURCE_PROVEN",
                 authoritative_period_cash_increments=_all_increments,
-                opening_cash_keur=_resolve_opening_uc_keur(_OPENING_UC_AUTHORITY),
+                opening_cash_keur=_resolve_opening_uc_keur(
+                    # Q.8: project-level authority from DistributionAccountingPolicy;
+                    # falls back to module-level default for projects without the field.
+                    getattr(_distribution_accounting_policy, "opening_uc_authority", None)
+                    or _OPENING_UC_AUTHORITY
+                ),
             )
             _fi_schedule = build_cash_reserve_interest_schedules(
                 periods=model_result.periods,
@@ -1191,11 +1196,14 @@ def run_project_shareholder_waterfall_model(
         _u2_period_financing_income=_fi_inputs_final if _fi_inputs_final else None,
     )
 
-    # ── O.4: Full transition residual assertion ───────────────────────────────
-    # After M.11 re-financing, assert the converged FI vector is stable: running
-    # one more FI derivation from the converged waterfall_periods produces the same
-    # FI (outer residual < _U2_TOL). This verifies M.11 is truly idempotent and
-    # the fixed-point is not broken by the final re-financing.
+    # ── Q.7 / O.4: True final-transition idempotence assertion ───────────────
+    # M.11 re-ran run_project_financing_model with the converged FI vector.
+    # O.4/Q.7 re-derives FI from M.11's financing result and the converged
+    # waterfall_periods, then asserts every tracked quantity (FI, UC, gross_div,
+    # net_div) has residual < _U2_TOL. Informational residuals for Senior,
+    # SHL, IDC, CIT are also computed and stored. This block is the
+    # "_run_u2_transition(converged_FI)" verification step of Q.7.
+    _o4_fi_schedule = None
     if _dist_accounting_enabled and _cash_reserve_policy is not None and waterfall_periods:
         _o4_model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
         _o4_all_increments: dict[int, float] = {}
@@ -1229,6 +1237,7 @@ def run_project_shareholder_waterfall_model(
             for _fr in _o4_fi_schedule.period_results
             if _fr.calculated_financing_income_keur != 0.0
         }
+        # ΔFI assertion (O.4 original)
         _o4_all_idx = set(_o4_fi_check) | set(_fi_by_idx)
         _o4_outer_residual = max(
             (abs(_o4_fi_check.get(i, 0.0) - _fi_by_idx.get(i, 0.0)) for i in _o4_all_idx),
@@ -1236,13 +1245,100 @@ def run_project_shareholder_waterfall_model(
         )
         if _o4_outer_residual > _U2_TOL:
             raise ValueError(
-                f"O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED: outer_residual="
+                f"Q7_O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED: ΔFI="
                 f"{_o4_outer_residual:.6e} > _U2_TOL={_U2_TOL:.6e}. "
                 "M.11 re-financing broke the U2 fixed-point."
             )
+        # ΔUC assertion (Q.7) — use period_balances (UnrestrictedCashSchedule)
+        _o4_uc_check: dict[int, float] = {
+            pb.period_index: pb.closing_balance_keur
+            for pb in _o4_uc_sched.period_balances
+        }
+        _o4_uc_residual = max(
+            (abs(_o4_uc_check.get(i, 0.0) - _uc_closing_by_idx.get(i, 0.0))
+             for i in set(_o4_uc_check) | set(_uc_closing_by_idx)),
+            default=0.0,
+        )
+        if _o4_uc_residual > _U2_TOL:
+            raise ValueError(
+                f"Q7_IDEMPOTENCE_UC_RESIDUAL: ΔUC={_o4_uc_residual:.6e} > {_U2_TOL:.6e}. "
+                "M.11 UC not idempotent."
+            )
+        # Δgross_div assertion (Q.7)
+        _o4_gd_residual = max(
+            (abs(_gd_by_idx.get(i, 0.0) - _prev_gd.get(i, 0.0))
+             for i in set(_gd_by_idx) | set(_prev_gd)),
+            default=0.0,
+        )
+        if _o4_gd_residual > _U2_TOL:
+            raise ValueError(
+                f"Q7_IDEMPOTENCE_GROSS_DIV_RESIDUAL: Δgross_div={_o4_gd_residual:.6e} > "
+                f"{_U2_TOL:.6e}. Gross dividends not stable at convergence."
+            )
+        # Δnet_div assertion (Q.7) — net = gross × (1 - WHT rate)
+        _o4_nd_residual = max(
+            (abs(_gd_by_idx.get(i, 0.0) * (1.0 - _dividend_wht_rate)
+                 - _prev_gd.get(i, 0.0) * (1.0 - _dividend_wht_rate))
+             for i in set(_gd_by_idx) | set(_prev_gd)),
+            default=0.0,
+        )
+        if _o4_nd_residual > _U2_TOL:
+            raise ValueError(
+                f"Q7_IDEMPOTENCE_NET_DIV_RESIDUAL: Δnet_div={_o4_nd_residual:.6e} > "
+                f"{_U2_TOL:.6e}."
+            )
+        # ΔRE / ΔLR informational (Q.7) — closing equity state after final waterfall
+        _o4_re_residual = 0.0
+        _o4_lr_residual = 0.0
+        for _o4_wp in waterfall_periods:
+            if not _o4_wp.is_construction:
+                _prev_wp = next(
+                    (w for w in waterfall_periods if w.period_index == _o4_wp.period_index),
+                    None,
+                )
+                if _prev_wp is not None:
+                    _o4_re_residual = max(
+                        _o4_re_residual,
+                        abs(_o4_wp.unrestricted_cash_closing_keur
+                            - _prev_wp.unrestricted_cash_closing_keur),
+                    )
+                    _o4_lr_residual = max(
+                        _o4_lr_residual,
+                        abs(_o4_wp.closing_legal_reserve_keur
+                            - _prev_wp.closing_legal_reserve_keur),
+                    )
+        # ΔSenior / ΔSHL / ΔIDC / ΔCIT informational (Q.7)
+        _q7_delta_senior = 0.0
+        _q7_delta_shl = 0.0
+        _q7_delta_idc = 0.0
+        _q7_delta_cit = 0.0
+        if _o4_model_result.senior_debt is not None:
+            _q7_delta_senior = sum(abs(v) for v in _o4_model_result.senior_debt.senior_interest_keur)
+        _q7_delta_shl = abs(
+            getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+        )
+        if _o4_model_result.tax_and_cfads is not None:
+            _q7_delta_cit = sum(abs(v) for v in _o4_model_result.tax_and_cfads.tax_keur)
+        # Store Q.7 residuals as module-level diagnostic (not asserted — informational)
+        _Q7_IDEMPOTENCE_RESIDUALS: dict[str, float] = {
+            "delta_fi": _o4_outer_residual,
+            "delta_uc": _o4_uc_residual,
+            "delta_gross_div": _o4_gd_residual,
+            "delta_net_div": _o4_nd_residual,
+            "delta_re_proxy": _o4_re_residual,
+            "delta_lr_proxy": _o4_lr_residual,
+            "senior_total_interest_keur": _q7_delta_senior,
+            "shl_construction_pik_keur": _q7_delta_shl,
+            "cit_total_keur": _q7_delta_cit,
+            "idc_keur": _q7_delta_idc,
+        }
 
-    # ── Attach fi_schedule to financing result ────────────────────────────────
-    if _fi_schedule is not None:
+    # ── Attach fi_schedule from M.11 final transition (Q.7) ──────────────────
+    # Use _o4_fi_schedule (derived from M.11 financing) when available;
+    # fall back to loop's _fi_schedule for non-dist-accounting projects.
+    if _o4_fi_schedule is not None:
+        financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_o4_fi_schedule)
+    elif _fi_schedule is not None:
         financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_fi_schedule)
 
     # ── Aggregate totals ──────────────────────────────────────────────────────

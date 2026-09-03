@@ -721,6 +721,8 @@ def create_default_oborovo() -> ProjectInputs:
             authority=DistributionAccountingAuthority.SOURCE_PROVEN,
             dividend_wht_rate=0.05,
             legal_reserve_cap_fraction=0.10,
+            # Q.8: Project-level opening UC authority (greenfield axiom O.9)
+            opening_uc_authority="CAUSALLY_DERIVED_ZERO",
         ),
     )
 
@@ -1287,10 +1289,15 @@ def create_default_tuho_wind1() -> ProjectInputs:
         ),
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
-        # O.7: ConstructionPLStatement removed — pre_operational_opex_keur=48.268247369917627
-        # was residual-derived: SOURCE_OPENING_LOSS_KEUR - SHL_PIK, with no independent
-        # workbook cell reference. BLOCKED: no source-proven construction PNL component.
-        # Token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED.
+        # O.7/Q.1: ConstructionPLStatement absent — no source-proven construction PNL component.
+        # The 48.268247 kEUR gap is NOT pre-operational OPEX; it is the SHL construction
+        # interest mechanics gap: source SHL draw = 29135.176 kEUR (Excel IDC row 49),
+        # clean draw = 28741.109 kEUR (PR-9 senior solver residual), Δ = −394.067 kEUR.
+        # Same compound formula (P×((1.08)^(548/365)−1)) on different principal produces
+        # PIK gap of −48.268 kEUR. Root cause: PR-9 DSCR-sculpting gives senior=43789.921
+        # vs source senior=43359.274 (IDC!D48); residual SHL is smaller; no workbook cell
+        # authorises a ConstructionPLStatement to close the gap.
+        # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_INTEREST_AUTHORITY_BLOCKED.
     )
     # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
     # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.
@@ -1308,6 +1315,8 @@ def create_default_tuho_wind1() -> ProjectInputs:
             authority=DistributionAccountingAuthority.SOURCE_PROVEN,
             dividend_wht_rate=0.0,
             legal_reserve_cap_fraction=0.10,
+            # Q.8: Project-level opening UC authority (greenfield axiom O.9)
+            opening_uc_authority="CAUSALLY_DERIVED_ZERO",
         ),
         valuation=ValuationPolicies(
             project=ProjectValuationPolicy(

@@ -156,7 +156,20 @@ def test_n3_tuho_wht_zero():
 
 
 def test_n3_tuho_av_cash_interest():
-    """N.3: TUHO has exactly 20 non-zero FI periods; AV (idx=41) UC=544.865, FI=2.7019."""
+    """N.3/Q.3: TUHO 20 non-zero FI periods; AV (idx=41) UC=544.865, FI=2.7019 (clean model).
+
+    Q.3 TUHO cash bridge causal chain:
+      Source SHL draw = 29135.176 kEUR (IDC row 49, senior=43359.274 kEUR)
+      Clean SHL draw  = 28741.109 kEUR (PR-9 senior solver, senior=43789.921 kEUR)
+      Gap: ΔP = −394.067 kEUR → ΔPIK = −48.268 kEUR (compound formula, 548d, 8%)
+      → construction SHL-interest gap
+      → COD opening RE gap (clean RE = −clean_SHL_PIK vs source RE = −3568.688)
+      → RE gap flows into operating retained earnings
+      → AU (period idx=41) UC diverges: clean=544.865 vs source=550 kEUR
+      → AV (period idx=41) FI diverges: clean=2.7019 vs source=2.7274 kEUR
+    Source acceptance (Q.10): AU UC=550, AV FI=2.7273972602740044.
+    No source target enters production arithmetic.
+    """
     from app.project_factories import create_default_tuho_wind1
     r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
     fi = r.financing_result.cash_reserve_interest_schedules
@@ -494,20 +507,27 @@ def test_n14_cash_reserve_interest_authority_status():
         "construction_pl must be None (O.7: pre_op_opex plug removed, no source-proven value)"
     )
     assert getattr(proj_tuho.tax, "construction_pl", None) is None
-    # Final token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED
-    # This session does NOT deliver DELIVERED — O.7 blocked the construction NI component.
+    # Q.1: Reclassified token. Root cause is SHL construction interest mechanics gap
+    # (source senior=43359 kEUR vs clean=43790 kEUR → SHL draw −394 kEUR → PIK −48.268 kEUR).
+    # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_INTEREST_AUTHORITY_BLOCKED
 
 
 def test_p6_opening_uc_authority_contract():
-    """P.6: Typed opening UC authority — CAUSALLY_DERIVED_ZERO passes; UNRESOLVED fails closed."""
+    """P.6/Q.8: Typed opening UC authority — project-level and fail-closed contract."""
     from financial_engine.shareholder_waterfall.model import (
         _OPENING_UC_AUTHORITY,
         _OPENING_UC_AUTHORITY_VALID,
         _resolve_opening_uc_keur,
     )
+    from finco_core.inputs.distribution_accounting_policy import (
+        DistributionAccountingPolicy,
+        DistributionAccountingAuthority,
+        OPENING_UC_AUTHORITY_VALID,
+    )
+    from app.project_factories import create_default_oborovo, create_default_tuho_wind1
     import pytest as _pytest
 
-    # P.6: Current authority is CAUSALLY_DERIVED_ZERO (greenfield axiom, O.9)
+    # P.6: Module-level authority is CAUSALLY_DERIVED_ZERO (greenfield axiom, O.9)
     assert _OPENING_UC_AUTHORITY == "CAUSALLY_DERIVED_ZERO"
     assert _OPENING_UC_AUTHORITY in _OPENING_UC_AUTHORITY_VALID
 
@@ -522,6 +542,27 @@ def test_p6_opening_uc_authority_contract():
     # P.6: Unknown strings also fail closed
     with _pytest.raises(ValueError, match="P.6 OPENING_UC_AUTHORITY_UNRESOLVED"):
         _resolve_opening_uc_keur("SOME_UNKNOWN_AUTHORITY")
+
+    # Q.8: Project-level authority via DistributionAccountingPolicy field
+    # Oborovo and TUHO must carry CAUSALLY_DERIVED_ZERO at project level
+    oborovo = create_default_oborovo()
+    tuho = create_default_tuho_wind1()
+    assert oborovo.distribution_accounting_policy.opening_uc_authority == "CAUSALLY_DERIVED_ZERO"
+    assert tuho.distribution_accounting_policy.opening_uc_authority == "CAUSALLY_DERIVED_ZERO"
+
+    # Q.8: OPENING_UC_AUTHORITY_VALID in distribution_accounting_policy matches model
+    assert "CAUSALLY_DERIVED_ZERO" in OPENING_UC_AUTHORITY_VALID
+    assert "SOURCE_PROVEN_EXPLICIT_ZERO" in OPENING_UC_AUTHORITY_VALID
+
+    # Q.8: enabled=True with UNRESOLVED opening_uc_authority fails closed
+    with _pytest.raises(ValueError, match="opening_uc_authority"):
+        DistributionAccountingPolicy(
+            enabled=True,
+            authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+            dividend_wht_rate=0.0,
+            legal_reserve_cap_fraction=0.10,
+            opening_uc_authority="UNRESOLVED",  # must fail
+        )
 
 
 def test_p4_oborovo_dsra_source_alignment():
@@ -546,3 +587,138 @@ def test_p4_oborovo_dsra_source_alignment():
     )
     # O.1: eligible_dsra stays ELIGIBLE regardless of zero balance
     assert proj.cash_reserve_interest_policy.eligible_dsra == EligibilityStatus.ELIGIBLE
+
+
+# ── Q.6: DSRA balance vector = 0 ─────────────────────────────────────────────
+
+def test_q6_oborovo_dsra_balance_vector_zero():
+    """Q.6: Prove Oborovo DSRA balance = 0 in both source and clean. ELIGIBLE preserved.
+
+    Source: Inputs!I347=0 (dsra_target_months=0), Inputs!I348=0 (dsra_months=0).
+    Source construction period SHL fixture: no DSRA drawdown, no DSRA closing balance.
+    Clean: dsra_months=0, so DSRA balance vector is identically zero throughout.
+    eligible_dsra=ELIGIBLE is preserved (O.1/Q.6): zero balance is not INELIGIBLE.
+    """
+    import json, pathlib
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import EligibilityStatus
+
+    # Q.6: Source SHL fixture proves DSRA balance = 0 at construction close
+    fixture_path = pathlib.Path("tests/fixtures/excel_oborovo_shl_operating_truth.json")
+    with fixture_path.open() as f:
+        shl_fix = json.load(f)
+    construction = shl_fix["construction_period"]
+    # Source construction period: no DSRA field → balance = 0
+    assert construction.get("dsra_closing_balance_keur", 0.0) == 0.0, (
+        "Q.6: Source construction DSRA closing balance must be 0"
+    )
+
+    # Q.6: Clean model — dsra_months=0 → no DSRA balance
+    proj = create_default_oborovo()
+    assert proj.financing.dsra_months == 0, (
+        f"Q.6: Oborovo dsra_months={proj.financing.dsra_months} != 0"
+    )
+
+    # Q.6: ELIGIBLE preserved (O.1)
+    assert proj.cash_reserve_interest_policy.eligible_dsra == EligibilityStatus.ELIGIBLE, (
+        "Q.6: eligible_dsra must remain ELIGIBLE; zero balance is not INELIGIBLE"
+    )
+
+
+# ── Q.10: Source-fixture acceptance tests ────────────────────────────────────
+
+def test_q10_tuho_source_construction_shl_pik():
+    """Q.10: Source TUHO construction SHL interest = 3568.6878026481627 kEUR.
+
+    Source: IDC row 49 P=29135.176 kEUR, rate=8%, elapsed=548 days.
+    Formula: P × ((1.08)^(548/365) − 1).
+    Senior commitment IDC!D48 = 43359.2737822209 kEUR (excel_golden_tuho fixture).
+    Clean SHL PIK = 3520.419555278245 (PR-9 senior=43789.921 → SHL draw=28741.109).
+    Gap = −48.268 kEUR. No source target enters production arithmetic.
+    """
+    import json, pathlib, math
+
+    # Source senior from fixture
+    with pathlib.Path("tests/fixtures/excel_golden_tuho.json").open() as f:
+        golden = json.load(f)
+    source_senior = golden["golden_cells"]["senior_debt_idc_keur"]["value"]
+    assert abs(source_senior - 43359.2737822209) < 1e-6, (
+        f"Q.10: Source IDC!D48={source_senior} != 43359.274"
+    )
+
+    # Source construction SHL PIK: P=29135.176 (IDC row 49), r=8%, t=548/365
+    # This is a causal derivation for documentation; the value is NOT plugged into
+    # production code (Q.10 prohibition). The clean model derives SHL PIK from its
+    # own senior solver residual, not from this source principal.
+    source_p = 29135.176  # IDC!B49 — SHL Sponsor total at COD
+    source_pik = source_p * ((1.08) ** (548 / 365) - 1)
+    assert abs(source_pik - 3568.6878026481627) < 0.01, (
+        f"Q.10: Source SHL PIK={source_pik} != 3568.688 (derivation only, not production input)"
+    )
+
+    # Clean model SHL PIK (causal reference — not source)
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    clean_pik = r.financing_result.construction_financing.shl_construction_pik_keur
+    assert abs(clean_pik - 3520.419555278245) < 1e-4, (
+        f"Q.10: Clean SHL PIK={clean_pik} != 3520.420"
+    )
+
+    # Source opening RE = −source SHL PIK (construction NI = −PIK, greenfield RE starts 0)
+    source_opening_re = -source_pik
+    assert abs(source_opening_re - (-3568.6878026481627)) < 0.01, (
+        f"Q.10: Source opening RE={source_opening_re} != -3568.688"
+    )
+
+
+def test_q10_oborovo_source_construction_re_and_acct_cap():
+    """Q.10: Source Oborovo construction RE = −1169.6619115852516; period-40 acct_cap = 39.649650.
+
+    Source construction SHL PIK = 1169.6619115852516 kEUR (excel_oborovo_shl_operating_truth).
+    Source P&L period 40 distributable = 39.649650241465224 kEUR (l1f_dividend fixture).
+    Clean construction RE ≈ −1169.659 (CIT-accrual mismatch gap ≈ 0.003 kEUR).
+    Root cause: source CIT assessed H1-only with fiscal reintegration; clean spreads H1+H2.
+    No source target enters production arithmetic.
+    """
+    import json, pathlib
+
+    # Source construction SHL PIK = 1169.6619115852516 (ds_index=0)
+    with pathlib.Path("tests/fixtures/excel_oborovo_shl_operating_truth.json").open() as f:
+        shl_fix = json.load(f)
+    src_construction_pik = shl_fix["construction_period"]["gross_accrued_interest_keur"]
+    assert abs(src_construction_pik - 1169.6619115852516) < 1e-9, (
+        f"Q.10: Source construction PIK={src_construction_pik} != 1169.6619115852516"
+    )
+
+    # Source construction RE = −PIK (greenfield axiom O.9)
+    src_construction_re = -src_construction_pik
+    assert abs(src_construction_re - (-1169.6619115852516)) < 1e-9
+
+    # Source period-40 distributable = accounting_cap = 39.649650241465224 kEUR
+    with pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").open() as f:
+        l1f = json.load(f)
+    src_acct_cap_p40 = l1f["oborovo"]["dividend_cash_block"]["CF125"]["period_40_value_keur"]
+    assert abs(src_acct_cap_p40 - 39.6496502414652) < 1e-6, (
+        f"Q.10: Source acct_cap period 40={src_acct_cap_p40} != 39.649650"
+    )
+
+    # Clean model construction RE = −shl_construction_pik_keur (causal reference)
+    # Construction NI = −SHL PIK (greenfield, only financing item in construction period).
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    clean_pik = r.financing_result.construction_financing.shl_construction_pik_keur
+    clean_construction_re = -clean_pik
+    # Clean ≈ −1169.659 due to CIT-accrual mismatch (gap < 0.01 kEUR vs source)
+    assert abs(clean_construction_re - (-1169.6619115852516)) < 0.01, (
+        f"Q.10: Clean construction RE={clean_construction_re}, source=-1169.662 (gap < 0.01)"
+    )
+
+    # Q.10: 20 non-zero FI periods idx 41–60
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    non_zero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
+    assert len(non_zero) == 20
+    idxs = sorted(p.period_index for p in non_zero)
+    assert idxs[0] == 41 and idxs[-1] == 60, (
+        f"Q.10: FI periods idx range [{idxs[0]},{idxs[-1]}] != [41,60]"
+    )

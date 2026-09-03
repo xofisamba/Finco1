@@ -19,6 +19,16 @@ class DistributionAccountingAuthority(str, Enum):
     SOURCE_PROVEN = "SOURCE_PROVEN"
 
 
+# Q.8: Valid opening UC authorities — project-level typed contract.
+# SOURCE_PROVEN_EXPLICIT_ZERO: workbook cell reference provided.
+# CAUSALLY_DERIVED_ZERO: greenfield axiom (O.9) — no uncommitted cash at FC.
+# UNRESOLVED: fails closed; must be resolved before enabling distribution accounting.
+OPENING_UC_AUTHORITY_VALID: frozenset[str] = frozenset({
+    "SOURCE_PROVEN_EXPLICIT_ZERO",
+    "CAUSALLY_DERIVED_ZERO",
+})
+
+
 @dataclass(frozen=True)
 class DistributionAccountingPolicy:
     """Authority for the dividend accounting layer (WHT, legal reserve, accounting cap)."""
@@ -26,12 +36,23 @@ class DistributionAccountingPolicy:
     authority: DistributionAccountingAuthority = DistributionAccountingAuthority.UNRESOLVED
     dividend_wht_rate: float = 0.0        # e.g. 0.05 for Oborovo, 0.0 for TUHO
     legal_reserve_cap_fraction: float = 0.10  # default 10%
+    # Q.8: Project-level opening UC authority. Must be SOURCE_PROVEN_EXPLICIT_ZERO or
+    # CAUSALLY_DERIVED_ZERO when enabled=True. UNRESOLVED fails closed.
+    # Default CAUSALLY_DERIVED_ZERO applies the greenfield axiom (O.9) to all projects.
+    opening_uc_authority: str = "CAUSALLY_DERIVED_ZERO"
 
     def __post_init__(self) -> None:
         if self.enabled and self.authority == DistributionAccountingAuthority.UNRESOLVED:
             raise ValueError(
                 "DistributionAccountingPolicy: enabled=True requires authority != UNRESOLVED. "
                 "Resolve authority before enabling the dividend accounting layer."
+            )
+        if self.enabled and self.opening_uc_authority not in OPENING_UC_AUTHORITY_VALID:
+            raise ValueError(
+                f"DistributionAccountingPolicy: opening_uc_authority="
+                f"{self.opening_uc_authority!r} is not in {sorted(OPENING_UC_AUTHORITY_VALID)}. "
+                "Provide SOURCE_PROVEN_EXPLICIT_ZERO (workbook cell) or CAUSALLY_DERIVED_ZERO "
+                "(greenfield axiom O.9). UNRESOLVED fails closed."
             )
         if not (0.0 <= self.dividend_wht_rate <= 1.0):
             raise ValueError(
