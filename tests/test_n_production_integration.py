@@ -59,11 +59,12 @@ def test_o3_wht_authority_disagreement_raises():
     when policy is enabled must raise ValueError (fail closed).
     DistributionAccountingPolicy.dividend_wht_rate is the canonical owner.
     """
-    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority, OpeningUCAuthority
     policy = DistributionAccountingPolicy(
         enabled=True,
         authority=DistributionAccountingAuthority.SOURCE_PROVEN,
         dividend_wht_rate=0.05,
+        opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
     )
     with pytest.raises(ValueError, match="WHT authority conflict"):
         assert_wht_authority_consistent(tax_wht=0.10, policy=policy)
@@ -71,11 +72,12 @@ def test_o3_wht_authority_disagreement_raises():
 
 def test_o3_wht_authority_agreement_ok():
     """O.3: When rates match, no error is raised."""
-    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority, OpeningUCAuthority
     policy = DistributionAccountingPolicy(
         enabled=True,
         authority=DistributionAccountingAuthority.SOURCE_PROVEN,
         dividend_wht_rate=0.05,
+        opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
     )
     assert_wht_authority_consistent(tax_wht=0.05, policy=policy)  # no raise
 
