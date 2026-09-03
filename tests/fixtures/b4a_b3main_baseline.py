@@ -234,7 +234,7 @@ _B3_MAIN_BASELINE = {
             'construction_structuring_fee': 471.5143013349264,
             'construction_total_capitalized_financing': 2339.4903869128575,
             'vat_idc': 122.31400101334872,  # post-N.2 ULP cascade (bf71b21d: 122.31400101334873)
-            'vat_commitment_fee': 26.465752928759645,
+            'vat_commitment_fee': 26.465752928759642,  # post-N.2 (bf71b21d: 26.465752928759645)
             'vat_effective_commitment': 3361.5090166666664,
             'vat_peak_requirement': 3361.5090166666664,
             'vat_commitment_mode': 'DERIVED_PEAK_REQUIREMENT',
@@ -243,8 +243,8 @@ _B3_MAIN_BASELINE = {
             'final_senior_commitment': 43789.92111682598,
             'outer_iterations': 11,
             'stage_b2_iterations': 8,
-            'outer_residual': 1.394391802023165e-08,
-            'final_verification_outer_residual': 6.837126420577988e-10,
+            'outer_residual': 1.394255377817899e-08,  # post-N.2 (bf71b21d: 1.394391802023165e-08)
+            'final_verification_outer_residual': 6.834852683823556e-10,  # post-N.2 (bf71b21d: 6.837126420577988e-10)
             'hard_project_capex': 70691.53944444444,
             'explicit_financing_cost_uses': 2339.4903869134837,
             'reserve_account_funding': 0.0,
