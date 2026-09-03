@@ -155,24 +155,24 @@ _B3_MAIN_BASELINE = {
             'construction_senior_idc_capitalized': 1086.0191130858316,  # post-N.2 (bf71b21d: 1086.0191130858311)
             'construction_senior_commitment_fee': 188.56540868282144,  # post-N.2 (bf71b21d: 188.56540868282153)
             'construction_structuring_fee': 477.302687,
-            'construction_total_capitalized_financing': 1973.9567800340324,
-            'vat_idc': 208.44761845456716,
-            'vat_commitment_fee': 13.6219528108125,
+            'construction_total_capitalized_financing': 1973.9567800340328,  # post-N.2 (bf71b21d: 1973.9567800340324)
+            'vat_idc': 208.4476184545672,  # post-N.2 (bf71b21d: 208.44761845456716)
+            'vat_commitment_fee': 13.621952810812502,  # post-N.2 (bf71b21d: 13.6219528108125)
             'vat_effective_commitment': 4877.989945,
             'vat_peak_requirement': 4877.989945,
             'vat_commitment_mode': 'DERIVED_PEAK_REQUIREMENT',
             'vat_authority': 'TYPED_CONSTRUCTION_VAT_FACILITY_AUTHORITY',
-            'final_total_project_uses': 57973.042280034315,
+            'final_total_project_uses': 57973.04228003431,  # post-N.2 (bf71b21d: 57973.042280034315)
             'final_senior_commitment': 42852.302723344226,
             'outer_iterations': 9,
             'stage_b2_iterations': 7,
             'outer_residual': 1.3857516023563221e-08,
             'final_verification_outer_residual': 3.490185918053612e-10,
-            'hard_project_capex': 55999.0855,
-            'explicit_financing_cost_uses': 1973.9567800343161,
+            'hard_project_capex': 55999.085499999994,  # post-N.2 (bf71b21d: 55999.0855)
+            'explicit_financing_cost_uses': 1973.9567800343166,  # post-N.2 (bf71b21d: 1973.9567800343161)
             'reserve_account_funding': 0.0,
             'other_explicit_project_uses': 0.0,
-            'total_project_uses': 57973.042280034315,
+            'total_project_uses': 57973.04228003431,  # post-N.2 (bf71b21d: 57973.042280034315)
             'period_vectors': {
                 # post-N.2 hashes (bf71b21d originals in code comments)
                 'senior_idc_accrual': '8a2d1d03a5659960fd33d9ba1dba5f9c0f6f65be4de5ed61c65ce73a6775002b',
@@ -233,7 +233,7 @@ _B3_MAIN_BASELINE = {
             'construction_senior_commitment_fee': 166.96711785568684,
             'construction_structuring_fee': 471.5143013349264,
             'construction_total_capitalized_financing': 2339.4903869128575,
-            'vat_idc': 122.31400101334873,
+            'vat_idc': 122.31400101334872,  # post-N.2 ULP cascade (bf71b21d: 122.31400101334873)
             'vat_commitment_fee': 26.465752928759645,
             'vat_effective_commitment': 3361.5090166666664,
             'vat_peak_requirement': 3361.5090166666664,
