@@ -768,3 +768,23 @@ def test_q10_oborovo_source_construction_re_and_acct_cap():
     assert idxs[0] == 41 and idxs[-1] == 60, (
         f"Q.10: FI periods idx range [{idxs[0]},{idxs[-1]}] != [41,60]"
     )
+
+    # ── R.13: Oborovo source first-distribution and UC evidence (period 40 in source = period 41 in model) ──
+    # Source evidence from l1f_dividend_cash_row_mapping_source_evidence.json (Excel period index 40)
+    src_fcf_p40 = l1f["oborovo"]["dividend_cash_block"]["CF116"]["period_40_value_keur"]
+    src_distributable_p40 = l1f["oborovo"]["dividend_cash_block"]["CF125"]["period_40_value_keur"]
+    src_gross_div_p40 = l1f["oborovo"]["dividend_cash_block"]["CF130"]["period_40_value_keur"]
+    src_net_div_p40 = l1f["oborovo"]["dividend_cash_block"]["CF129"]["period_40_value_keur"]
+    src_uc_closing_p40 = l1f["oborovo"]["dividend_cash_block"]["CF144"]["period_40_value_keur"]
+    assert abs(src_fcf_p40 - 589.649650) < 0.01, f"R.13: Source FCF period 40={src_fcf_p40}"
+    assert abs(src_distributable_p40 - 39.649650) < 1e-4, f"R.13: Source distributable={src_distributable_p40}"
+    assert abs(src_gross_div_p40 - 39.649650) < 1e-4, f"R.13: Source gross_div={src_gross_div_p40}"
+    assert abs(src_net_div_p40 - 37.667168) < 1e-4, f"R.13: Source net_div={src_net_div_p40}"
+    assert abs(src_uc_closing_p40 - 550.0) < 0.01, f"R.13: Source UC closing={src_uc_closing_p40}"
+    # Source WHT = gross_div − net_div ≈ 1.982482 kEUR
+    src_wht_p40 = src_gross_div_p40 - src_net_div_p40
+    assert abs(src_wht_p40 - 1.982482) < 1e-4, f"R.13: Source WHT={src_wht_p40}"
+    # Source FCF decomposition: UC retained = 550.0, dividend = 39.650, FCF = 589.650
+    assert abs(src_fcf_p40 - (src_uc_closing_p40 + src_gross_div_p40)) < 0.01, (
+        f"R.13: Source FCF({src_fcf_p40}) != UC({src_uc_closing_p40}) + gross_div({src_gross_div_p40})"
+    )
