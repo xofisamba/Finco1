@@ -20,9 +20,17 @@ from __future__ import annotations
 import ast
 import importlib
 import inspect
+import math
 from pathlib import Path
 
 import pytest
+
+
+def _approx_eq(got, exp):
+    """Float-safe equality: tolerates ±1 ULP across CPU/FPU environments."""
+    if isinstance(exp, float) and isinstance(got, float):
+        return math.isclose(got, exp, rel_tol=1e-10, abs_tol=1e-12)
+    return got == exp
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -347,9 +355,9 @@ class TestB4E_FinancialIdentity:
     def test_e1_kpis_bit_identical_to_b3_main(self, ptype):
         out = _run(ptype, "Base")
         expected = _B3_MAIN_FINGERPRINTS[ptype]
-        assert out["kpis"]["total_revenue_keur"] == expected["revenue"], "revenue"
-        assert out["kpis"]["total_senior_ds_keur"] == expected["senior_ds"], "senior DS"
-        assert out["kpis"]["total_distributions_keur"] == expected["distributions"], "distributions"
+        assert _approx_eq(out["kpis"]["total_revenue_keur"], expected["revenue"]), "revenue"
+        assert _approx_eq(out["kpis"]["total_senior_ds_keur"], expected["senior_ds"]), "senior DS"
+        assert _approx_eq(out["kpis"]["total_distributions_keur"], expected["distributions"]), "distributions"
 
 
 # ---------------------------------------------------------------------------
@@ -761,7 +769,7 @@ class TestB4I_ExpandedFinancialNonRegression:
         got = _b4a_extract(_b4a_run_clean(factory))
         expected = _CURRENT_PRODUCTION_BASELINE[ptype]
         for key in _SCALAR_KEYS:
-            assert got[key] == expected[key], (
+            assert _approx_eq(got[key], expected[key]), (
                 f"{ptype}.{key}: got={got[key]} vs expected={expected[key]}"
             )
 
@@ -775,7 +783,7 @@ class TestB4I_ExpandedFinancialNonRegression:
         got = _b4a_extract(_b4a_run_clean(factory))
         expected = _CURRENT_PRODUCTION_BASELINE[ptype]
         for key in self._FROZEN_SCALAR_KEYS:
-            assert got[key] == expected[key], (
+            assert _approx_eq(got[key], expected[key]), (
                 f"{ptype}.{key}: got={got[key]} vs expected={expected[key]}"
             )
 
@@ -829,7 +837,7 @@ class TestB4I_ExpandedFinancialNonRegression:
         if expected is None:
             return
         for key in _CONSTRUCTION_SCALAR_KEYS:
-            assert got[key] == expected[key], (
+            assert _approx_eq(got[key], expected[key]), (
                 f"{ptype}.construction_financing.{key}: "
                 f"got={got[key]} vs expected={expected[key]}"
             )

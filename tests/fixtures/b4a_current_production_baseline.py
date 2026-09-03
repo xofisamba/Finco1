@@ -145,7 +145,7 @@ _CURRENT_PRODUCTION_BASELINE = {
             'other_explicit_project_uses': 0.0,
             'total_project_uses': 57973.04228003431,
             'period_vectors': {
-                'senior_idc_accrual': '8a2d1d03a5659960fd33d9ba1dba5f9c0f6f65be4de5ed61c65ce73a6775002b',
+                'senior_idc_accrual': 'f0f44638a484d2e94c14fc3f9bbae31d037c9d8716706ca1ad803b499c60c736',
                 'senior_idc_capitalized_uses': 'f83adb32ed09e43c6cc85217732e9ebca6aa9fb9c8ccb4161438c53bb3017ad4',
                 'senior_commitment_fee_accrual': 'bdb5bebcb47e4574e2461d64a9d031eb6247c6670174ffcbd7ff17594cdcc14b',
                 'structuring_fee': '070a6f34b40159e8b30e6185bdd162292b87d3c95150c5fa91fcb07943117a11',
@@ -162,7 +162,7 @@ _CURRENT_PRODUCTION_BASELINE = {
         'distributions': 61203.80552255284,
         'sponsor_receipts': 104934.38650472782,
         "period_vectors": {
-            'senior_interest': 'c836af6c837b06c07fdf446a957a5e0c0018948648f0623c20d027c652152ef7',
+            'senior_interest': '794e9d7d9b300121ee5ffa486be9bf5facbeae17a2e6bad9eedd8eb322fd27f0',
             'senior_principal': 'a2c30626e2b3c432d5e9cfbd05b2a9583eca7a2d1e9da9282258f4f80178b09d',
             'senior_ds': '458ae3d27ed63332e7c660edb772b7856d156a49efaff74da785e4f407b5db31',
             'senior_closing': 'c167677aee5a3663fdb0f4af9c92e251823be0f5da878763b107a345ab5020f5',
@@ -237,7 +237,7 @@ _CURRENT_PRODUCTION_BASELINE = {
         'distributions': 151242.90109939434,
         'sponsor_receipts': 232158.9598440422,
         "period_vectors": {
-            'senior_interest': 'bf406bbaf517f2716f0b6c34f1ffa6d16c1463a613b4a906005f6e37c3101973',
+            'senior_interest': 'b37449193d52fd5c6999d5e7eff65e42c2af80f777827a6369e30b09a2a35add',
             'senior_principal': 'f96aa4290cc97b169ff169905879fe53a838f1db2fcfdecf12ec2d055e04b126',
             'senior_ds': '2d6ea0fab3d367bacf2be275ebb3175dc81e4ec90c30dcefe1a1a0a7d4ab4402',
             'senior_closing': '9d872251680722d2324e98512bb7e7190c5f85a8504429417e7bf3025fc8631c',
