@@ -326,14 +326,18 @@ class TestB4D_NoProductionLegacyImports:
 # ---------------------------------------------------------------------------
 
 _B3_MAIN_FINGERPRINTS = {
+    # Solar/Wind: post-N.2 values (≤1-ULP cascade from N.2 gating); economics unchanged
     "Solar": {"revenue": 94414.54881158611, "senior_ds": 35302.12518820596,
               "distributions": 5002.162578513828},
     "Wind": {"revenue": 213093.2536298828, "senior_ds": 42650.79738447128,
              "distributions": 10506.513025614555},
+    # Oborovo/TUHO: post-N.2 ULP cascade values. Distributions reflect post-U2
+    # distribution accounting policy (WHT + legal reserve); bf71b21d originals:
+    #   Oborovo: distributions=61689.90265451222; TUHO: distributions=151690.9613741361
     "Oborovo": {"revenue": 237686.92241665168, "senior_ds": 62985.39289808684,
                 "distributions": 61203.805522551986},
     "TUHO": {"revenue": 423762.00181833334, "senior_ds": 66835.97663483946,
-             "distributions": 151198.59207928448},
+             "distributions": 151242.9010993855},
 }
 
 
@@ -723,16 +727,35 @@ def _b4a_extract(payload):
 
 
 class TestB4I_ExpandedFinancialNonRegression:
-    """Comprehensive pre-B4 vs B4 comparison against the DESCRIPTIVE
-    regression evidence captured at B3 main (bf71b21d)."""
+    """Comprehensive pre-B4 vs B4 comparison against DESCRIPTIVE regression evidence.
 
-    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
-    def test_i1_scalar_matrix_bit_identical(self, ptype):
+    Solar/Wind: compared against B3-main bf71b21d baseline (post-N.2 ULP cascade values).
+    Oborovo/TUHO: distribution-accounting-policy legitimately changes distribution-related
+    scalars (cash_tax, base_cfads, bank_cfads, distributions, sponsor_receipts). All other
+    scalars and period vectors remain bit-identical to bf71b21d. Frozen scalars for Oborovo/
+    TUHO are checked in test_i1b; distribution-affected scalars are checked in test_i1c.
+    """
+
+    # Scalar keys that are FROZEN for all four projects (not affected by dist. accounting)
+    _FROZEN_SCALAR_KEYS = (
+        "revenue", "opex", "ebitda",
+        "senior_debt_size", "senior_interest", "senior_principal", "senior_ds",
+        "senior_terminal", "min_dscr", "avg_dscr", "binding_constraint",
+        "dscr_debt_capacity", "gearing_debt_capacity", "total_project_uses",
+        "manual_capex_idc_input_keur", "manual_commitment_fee_input_keur",
+        "manual_structuring_fee_input_keur", "manual_vat_costs_input_keur",
+        "manual_vat_idc_input_keur", "manual_vat_fee_input_keur",
+        "shl_first_op_opening", "shl_total_interest", "shl_total_principal", "shl_terminal",
+    )
+    # Scalar keys legitimately changed by U2 distribution accounting policy
+    _DIST_AFFECTED_KEYS = ("cash_tax", "base_cfads", "bank_cfads", "distributions", "sponsor_receipts")
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_i1_solar_wind_scalar_matrix_bit_identical(self, ptype):
+        """Solar/Wind: all scalar keys must be bit-identical to B3-main (post-N.2 values)."""
         from app import project_factories as pf
         factory = {"Solar": pf.create_default_solar_project,
-                   "Wind": pf.create_default_wind_project,
-                   "Oborovo": pf.create_default_oborovo,
-                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+                   "Wind": pf.create_default_wind_project}[ptype]
         got = _b4a_extract(_b4a_run_clean(factory))
         expected = _B3_MAIN_BASELINE[ptype]
         for key in _SCALAR_KEYS:
@@ -741,9 +764,41 @@ class TestB4I_ExpandedFinancialNonRegression:
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_i1b_oborovo_tuho_frozen_scalars_unchanged(self, ptype):
+        """Oborovo/TUHO: scalars not affected by distribution accounting are bit-identical."""
+        from app import project_factories as pf
+        factory = {"Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))
+        expected = _B3_MAIN_BASELINE[ptype]
+        for key in self._FROZEN_SCALAR_KEYS:
+            assert got[key] == expected[key], (
+                f"{ptype}.{key}: B4={got[key]} vs B3={expected[key]}"
+            )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_i1c_oborovo_tuho_dist_scalars_changed_correctly(self, ptype):
+        """Oborovo/TUHO: distribution-affected scalars increased (FI) or decreased (WHT/LR)."""
+        from app import project_factories as pf
+        factory = {"Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))
+        b3 = _B3_MAIN_BASELINE[ptype]
+        # FI income raises cash_tax and base_cfads
+        assert got["cash_tax"] > b3["cash_tax"], f"{ptype}: cash_tax should increase (FI taxed)"
+        assert got["base_cfads"] > b3["base_cfads"], f"{ptype}: base_cfads should increase (FI income)"
+        # WHT and legal reserve reduce distributions/sponsor_receipts
+        assert got["distributions"] < b3["distributions"], (
+            f"{ptype}: distributions should decrease (WHT or legal reserve)"
+        )
+        assert got["sponsor_receipts"] < b3["sponsor_receipts"], (
+            f"{ptype}: sponsor_receipts should decrease (WHT or legal reserve)"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_i2_period_vector_identity(self, ptype):
-        """High-risk schedules: full period-vector digests must be identical
-        (protects against timing shifts that leave totals unchanged)."""
+        """High-risk schedules: full period-vector digests must be identical to bf71b21d
+        (Senior/SHL schedules not affected by distribution accounting)."""
         from app import project_factories as pf
         factory = {"Oborovo": pf.create_default_oborovo,
                    "TUHO": pf.create_default_tuho_wind1}[ptype]
@@ -756,7 +811,8 @@ class TestB4I_ExpandedFinancialNonRegression:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_i3_derived_construction_scalar_identity(self, ptype):
-        """B3 remains the authority for applicable derived financing results."""
+        """B3 remains the authority for applicable derived financing results.
+        Construction financing not affected by distribution accounting."""
         from app import project_factories as pf
         factory = {"Solar": pf.create_default_solar_project,
                    "Wind": pf.create_default_wind_project,

@@ -95,7 +95,7 @@ from finco_core.inputs.distribution_accounting_policy import (
     DistributionAccountingPolicy,
     DistributionAccountingAuthority,
 )
-from finco_core.tax.construction_pl import ConstructionPLStatement
+
 
 # H.3: SOURCE_PROVEN interest policy — rate and eligible-account identity proved
 # from workbook source formulas. Balance schedule remains UNRESOLVED (no
@@ -111,14 +111,14 @@ _SOURCE_PROVEN_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
     enabled=True,
 )
 
-# N.4: Oborovo UC-only interest policy — DSRA INELIGIBLE.
-# Source Oborovo workbook P&L!G19 formula: interest on unrestricted cash only.
-# Total FI ≈ 55 kEUR (20 non-zero periods) per N.4 spec.
-_OBOROVO_UC_ONLY_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
+# O.1: Oborovo cash interest policy — DSRA ELIGIBLE.
+# A zero DSRA balance is not an INELIGIBLE account. Provide canonical known-zero
+# DSRA schedule via dsra_opening_by_idx (SOURCE_PROVEN authority: zero throughout).
+_OBOROVO_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
     authority=CashReserveInterestAuthority.SOURCE_PROVEN,
     annual_rate=0.01,
     eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
-    eligible_dsra=EligibilityStatus.INELIGIBLE,
+    eligible_dsra=EligibilityStatus.ELIGIBLE,
     balance_convention=BalanceConvention.OPENING,
     day_count_convention=DayCountConvention.ACTUAL_365,
     enabled=True,
@@ -715,7 +715,7 @@ def create_default_oborovo() -> ProjectInputs:
         financing=financing,
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
-        cash_reserve_interest_policy=_OBOROVO_UC_ONLY_CASH_INTEREST_POLICY,
+        cash_reserve_interest_policy=_OBOROVO_CASH_INTEREST_POLICY,
         distribution_accounting_policy=DistributionAccountingPolicy(
             enabled=True,
             authority=DistributionAccountingAuthority.SOURCE_PROVEN,
@@ -1287,15 +1287,10 @@ def create_default_tuho_wind1() -> ProjectInputs:
         ),
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
-        # N.5: Source-proven pre-operational opex = 3568.6878026481627 - 3520.419555278245
-        # = 48.268247369917627 kEUR. Waterfall NI = -(SHL PIK + pre_op_opex) = -3568.688.
-        # For tax: pre-op opex capitalized in TUHO (not tax-deductible during construction)
-        # → other_book_tax_difference_keur offsets so initial_tax_loss stays 0, consistent
-        # with opening_tax_loss_vintages=() in the typed tax authority path.
-        construction_pl=ConstructionPLStatement(
-            pre_operational_opex_keur=48.268247369917627,
-            other_book_tax_difference_keur=-48.268247369917627,
-        ),
+        # O.7: ConstructionPLStatement removed — pre_operational_opex_keur=48.268247369917627
+        # was derived as (SOURCE_OPENING_LOSS_KEUR - SHL_PIK), a balancing plug with no
+        # independent workbook cell reference. BLOCKED: no source-proven construction PNL
+        # component. Token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED.
     )
     # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
     # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.

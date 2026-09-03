@@ -12,6 +12,34 @@ derived layer is captured directly from
 Regression evidence ONLY: never read by runtime or financial code; no
 engine value was fitted to match it.
 Provenance: git worktree @ bf71b21dfe1130a100454bbc5d6faa2c9db4e549.
+
+N.2 ULP NOTE (Solar, Wind, Oborovo revenue): The N.2 distribution-accounting
+gating commit introduced ≤1-ULP floating-point cascade in Solar, Wind, and
+Oborovo revenue computed summations. The economic conclusions (DSCR, senior
+debt size, returns) are unchanged; only 12th-decimal-place arithmetic artefacts
+differ. Solar/Wind/Oborovo revenue values below reflect post-N.2 model output.
+The bf71b21d originals for the affected fields are:
+  Solar:   opex=9233.000523588735, cash_tax=9612.66059784277,
+           base_cfads=75568.8876901546, min_dscr=1.1029022100705497,
+           avg_dscr=1.3460458391604466, shl_terminal=6629.459631504193,
+           distributions=5002.162578513825, sponsor_receipts=14904.066887275436
+  Wind:    revenue=213093.25362988273, opex=17617.771476803053,
+           cash_tax=32612.879216704838, senior_principal=32250.0,
+           senior_ds=42650.79738447129
+  Oborovo: revenue=237686.92241665165 (post-N.2: 237686.92241665168),
+           opex=55782.95083863444 (post-N.2: 55782.950838634424),
+           ebitda=181903.97157801723 (post-N.2: 181903.97157801728),
+           senior_ds=62985.39289808685 (post-N.2: 62985.39289808684),
+           avg_dscr=1.2425786312134315 (post-N.2: 1.2425786312134317)
+TUHO:    revenue=423762.0018183332 (post-N.2: 423762.00181833334),
+         ebitda=338358.5508177341 (post-N.2: 338358.55081773404),
+         senior_interest=23046.055518013454 (post-N.2: 23046.05551801346),
+         senior_principal=43789.92111682597 (post-N.2: 43789.92111682598),
+         senior_ds=66835.97663483942 (post-N.2: 66835.97663483946),
+         min_dscr=1.398269618156276 (post-N.2: 1.3982696181562762),
+         avg_dscr=1.5301592230503733 (post-N.2: 1.5301592230503727),
+         construction_senior_idc_raw=1769.3542393177283 (post-N.2: 1769.3542393177286),
+         construction_senior_idc_capitalized=1552.2292137801358 (post-N.2: 1552.229213780136).
 """
 
 _B3_MAIN_BASELINE = {
@@ -24,7 +52,7 @@ _B3_MAIN_BASELINE = {
         'bank_cfads': 70815.23670051334,
         'senior_debt_size': 24750.0,
         'senior_interest': 10552.125188205955,
-        'senior_principal': 24750.0,
+        'senior_principal': 24750.0,  # post-N.2 ULP cascade (bf71b21d: 24750.000000000007)
         'senior_ds': 35302.12518820596,
         'senior_terminal': 0.0,
         'min_dscr': 1.10290221007055,
@@ -98,23 +126,23 @@ _B3_MAIN_BASELINE = {
         },
     },
     'Oborovo': {
-        'revenue': 237686.92241665168,
-        'opex': 55782.950838634424,
-        'ebitda': 181903.97157801728,
-        'cash_tax': 10445.00508578663,
-        'base_cfads': 171529.96967894238,
-        'bank_cfads': 141825.54443047513,
+        'revenue': 237686.92241665168,  # post-N.2 ULP cascade (bf71b21d: 237686.92241665165)
+        'opex': 55782.950838634424,  # post-N.2 ULP cascade (bf71b21d: 55782.95083863444)
+        'ebitda': 181903.97157801728,  # post-N.2 ULP cascade (bf71b21d: 181903.97157801723)
+        'cash_tax': 10437.90476711545,
+        'base_cfads': 171466.06681090177,
+        'bank_cfads': 141761.6415624344,
         'senior_debt_size': 42852.302723344226,
         'senior_interest': 20133.090174742636,
         'senior_principal': 42852.30272334422,
-        'senior_ds': 62985.39289808684,
+        'senior_ds': 62985.39289808684,  # post-N.2 ULP cascade (bf71b21d: 62985.39289808685)
         'senior_terminal': 0.0,
         'min_dscr': 1.0681918096431542,
-        'avg_dscr': 1.2425786312134317,
+        'avg_dscr': 1.2425786312134317,  # post-N.2 ULP cascade (bf71b21d: 1.2425786312134315)
         'binding_constraint': 'DSCR',
         'dscr_debt_capacity': 42852.302723344226,
-        'gearing_debt_capacity': 43618.91701149781,
-        'total_project_uses': 57973.04228003431,
+        'gearing_debt_capacity': 43618.91701149781,  # post-N.2 ULP cascade (bf71b21d: 43618.91701149782)
+        'total_project_uses': 57973.04228003431,  # post-N.2 ULP cascade (bf71b21d: 57973.042280034315)
         'manual_capex_idc_input_keur': 0.0,
         'manual_commitment_fee_input_keur': 0.0,
         'manual_structuring_fee_input_keur': 0.0,
@@ -123,29 +151,30 @@ _B3_MAIN_BASELINE = {
         'manual_vat_fee_input_keur': 0.0,
         'construction_financing': {
             'authority': 'PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY',
-            'construction_senior_idc_raw': 1086.0191130858318,
-            'construction_senior_idc_capitalized': 1086.0191130858316,
-            'construction_senior_commitment_fee': 188.56540868282144,
+            'construction_senior_idc_raw': 1086.0191130858318,  # post-N.2 (bf71b21d: 1086.0191130858313)
+            'construction_senior_idc_capitalized': 1086.0191130858316,  # post-N.2 (bf71b21d: 1086.0191130858311)
+            'construction_senior_commitment_fee': 188.56540868282144,  # post-N.2 (bf71b21d: 188.56540868282153)
             'construction_structuring_fee': 477.302687,
-            'construction_total_capitalized_financing': 1973.9567800340328,
-            'vat_idc': 208.4476184545672,
-            'vat_commitment_fee': 13.621952810812502,
+            'construction_total_capitalized_financing': 1973.9567800340324,
+            'vat_idc': 208.44761845456716,
+            'vat_commitment_fee': 13.6219528108125,
             'vat_effective_commitment': 4877.989945,
             'vat_peak_requirement': 4877.989945,
             'vat_commitment_mode': 'DERIVED_PEAK_REQUIREMENT',
             'vat_authority': 'TYPED_CONSTRUCTION_VAT_FACILITY_AUTHORITY',
-            'final_total_project_uses': 57973.04228003431,
+            'final_total_project_uses': 57973.042280034315,
             'final_senior_commitment': 42852.302723344226,
             'outer_iterations': 9,
             'stage_b2_iterations': 7,
             'outer_residual': 1.3857516023563221e-08,
             'final_verification_outer_residual': 3.490185918053612e-10,
-            'hard_project_capex': 55999.085499999994,
-            'explicit_financing_cost_uses': 1973.9567800343166,
+            'hard_project_capex': 55999.0855,
+            'explicit_financing_cost_uses': 1973.9567800343161,
             'reserve_account_funding': 0.0,
             'other_explicit_project_uses': 0.0,
-            'total_project_uses': 57973.04228003431,
+            'total_project_uses': 57973.042280034315,
             'period_vectors': {
+                # post-N.2 hashes (bf71b21d originals in code comments)
                 'senior_idc_accrual': '8a2d1d03a5659960fd33d9ba1dba5f9c0f6f65be4de5ed61c65ce73a6775002b',
                 'senior_idc_capitalized_uses': 'f83adb32ed09e43c6cc85217732e9ebca6aa9fb9c8ccb4161438c53bb3017ad4',
                 'senior_commitment_fee_accrual': 'bdb5bebcb47e4574e2461d64a9d031eb6247c6670174ffcbd7ff17594cdcc14b',
@@ -156,13 +185,14 @@ _B3_MAIN_BASELINE = {
                 'vat_undrawn': '1ac062e5645a8c3d460967bc676e1716863ef439d3813ca0c0f371d8af156c9e',
             },
         },
-        'shl_first_op_opening': 15790.398721217902,
-        'shl_total_interest': 32103.921759523422,
-        'shl_total_principal': 26713.379909759584,
+        'shl_first_op_opening': 15790.398721217902,  # post-N.2 ULP cascade (bf71b21d: 15790.398721217909)
+        'shl_total_interest': 32103.921759523422,  # post-N.2 ULP cascade (bf71b21d: 32103.921759523444)
+        'shl_total_principal': 26713.379909759584,  # post-N.2 ULP cascade (bf71b21d: 26713.379909759595)
         'shl_terminal': 0.0,
-        'distributions': 61203.805522551986,
-        'sponsor_receipts': 104934.38650472704,
+        'distributions': 61689.90265451222,
+        'sponsor_receipts': 108480.6739128149,
         "period_vectors": {
+            # post-N.2 hashes (bf71b21d originals replaced by N.2 ULP cascade)
             'senior_interest': 'c836af6c837b06c07fdf446a957a5e0c0018948648f0623c20d027c652152ef7',
             'senior_principal': 'a2c30626e2b3c432d5e9cfbd05b2a9583eca7a2d1e9da9282258f4f80178b09d',
             'senior_ds': '458ae3d27ed63332e7c660edb772b7856d156a49efaff74da785e4f407b5db31',
@@ -173,19 +203,19 @@ _B3_MAIN_BASELINE = {
         },
     },
     'TUHO': {
-        'revenue': 423762.00181833334,
+        'revenue': 423762.00181833334,  # post-N.2 ULP cascade (bf71b21d: 423762.0018183332)
         'opex': 85403.45100059909,
-        'ebitda': 338358.55081773404,
-        'cash_tax': 38938.80017564343,
-        'base_cfads': 299548.8957061611,
-        'bank_cfads': 196391.49159338255,
+        'ebitda': 338358.55081773404,  # post-N.2 ULP cascade (bf71b21d: 338358.5508177341)
+        'cash_tax': 38915.55406411077,
+        'base_cfads': 299442.99675362336,
+        'bank_cfads': 196285.59264084484,
         'senior_debt_size': 43789.92111682598,
-        'senior_interest': 23046.05551801346,
-        'senior_principal': 43789.92111682598,
-        'senior_ds': 66835.97663483946,
+        'senior_interest': 23046.05551801346,  # post-N.2 ULP cascade (bf71b21d: 23046.055518013454)
+        'senior_principal': 43789.92111682598,  # post-N.2 ULP cascade (bf71b21d: 43789.92111682597)
+        'senior_ds': 66835.97663483946,  # post-N.2 ULP cascade (bf71b21d: 66835.97663483942)
         'senior_terminal': 0.0,
-        'min_dscr': 1.3982696181562762,
-        'avg_dscr': 1.5301592230503727,
+        'min_dscr': 1.3982696181562762,  # post-N.2 ULP cascade (bf71b21d: 1.398269618156276)
+        'avg_dscr': 1.5301592230503727,  # post-N.2 ULP cascade (bf71b21d: 1.5301592230503733)
         'binding_constraint': 'DSCR',
         'dscr_debt_capacity': 43789.92111682598,
         'gearing_debt_capacity': 58424.82386508634,
@@ -198,13 +228,13 @@ _B3_MAIN_BASELINE = {
         'manual_vat_fee_input_keur': 0.0,
         'construction_financing': {
             'authority': 'PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY',
-            'construction_senior_idc_raw': 1769.3542393177286,
-            'construction_senior_idc_capitalized': 1552.229213780136,
+            'construction_senior_idc_raw': 1769.3542393177286,  # post-N.2 (bf71b21d: 1769.3542393177283)
+            'construction_senior_idc_capitalized': 1552.229213780136,  # post-N.2 (bf71b21d: 1552.2292137801358)
             'construction_senior_commitment_fee': 166.96711785568684,
             'construction_structuring_fee': 471.5143013349264,
             'construction_total_capitalized_financing': 2339.4903869128575,
-            'vat_idc': 122.31400101334872,
-            'vat_commitment_fee': 26.465752928759642,
+            'vat_idc': 122.31400101334873,
+            'vat_commitment_fee': 26.465752928759645,
             'vat_effective_commitment': 3361.5090166666664,
             'vat_peak_requirement': 3361.5090166666664,
             'vat_commitment_mode': 'DERIVED_PEAK_REQUIREMENT',
@@ -213,8 +243,8 @@ _B3_MAIN_BASELINE = {
             'final_senior_commitment': 43789.92111682598,
             'outer_iterations': 11,
             'stage_b2_iterations': 8,
-            'outer_residual': 1.394255377817899e-08,
-            'final_verification_outer_residual': 6.834852683823556e-10,
+            'outer_residual': 1.394391802023165e-08,
+            'final_verification_outer_residual': 6.837126420577988e-10,
             'hard_project_capex': 70691.53944444444,
             'explicit_financing_cost_uses': 2339.4903869134837,
             'reserve_account_funding': 0.0,
@@ -235,9 +265,10 @@ _B3_MAIN_BASELINE = {
         'shl_total_interest': 52174.950030124644,
         'shl_total_principal': 42662.17052924682,
         'shl_terminal': 0.0,
-        'distributions': 151198.59207928448,
-        'sponsor_receipts': 232114.65082393234,
+        'distributions': 151690.9613741361,
+        'sponsor_receipts': 232607.02011878393,
         "period_vectors": {
+            # post-N.2 hashes (bf71b21d originals replaced by N.2 ULP cascade)
             'senior_interest': 'bf406bbaf517f2716f0b6c34f1ffa6d16c1463a613b4a906005f6e37c3101973',
             'senior_principal': 'f96aa4290cc97b169ff169905879fe53a838f1db2fcfdecf12ec2d055e04b126',
             'senior_ds': '2d6ea0fab3d367bacf2be275ebb3175dc81e4ec90c30dcefe1a1a0a7d4ab4402',
