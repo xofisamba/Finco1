@@ -85,19 +85,21 @@ class IncomeStatementPeriod:
     opex_keur: float
     ebitda_keur: float
     book_depreciation_keur: float
-    # Financing income sits BELOW EBITDA (never augments EBITDA).
-    # Formula: ebit = ebitda - book_dep + financing_income.
-    # Zero by policy for projects without a cash-interest schedule (Solar/Wind).
-    financing_income_keur: float = 0.0
-    ebit_keur: float = 0.0
+    # Financing income: BELOW EBITDA AND BELOW EBIT. Never augments EBITDA.
+    # EBIT = EBITDA - book_dep (canonical; FI is NOT added to EBIT).
+    # NetFinancial = FI - senior_interest - shl_interest.
+    # EBT = EBIT + NetFinancial.
+    # Zero by policy for projects without a U2 cash-reserve-interest schedule.
+    financing_income_keur: float
+    ebit_keur: float
 
-    senior_interest_expense_keur: float = 0.0
-    shl_interest_expense_keur: float = 0.0
-    net_financial_result_keur: float = 0.0
+    senior_interest_expense_keur: float
+    shl_interest_expense_keur: float
+    net_financial_result_keur: float
 
-    earnings_before_tax_keur: float = 0.0
-    cit_accrual_keur: float = 0.0
-    net_income_keur: float = 0.0
+    earnings_before_tax_keur: float
+    cit_accrual_keur: float
+    net_income_keur: float
 
     authority: dict = field(default_factory=dict)
 

@@ -59,15 +59,20 @@ class TestC3A_SupportedMatrix:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_a1_core_statements_assemble_with_honest_statuses(self, ptype):
         run, fs = _assemble(ptype)
-        # Correction A: P&L may not claim OK while financing income
-        # (interest on unrestricted cash) has no clean authority.
-        assert fs.income_statement_status.value == "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"
+        # H-series: FI authority from U2 schedule or ZERO_BY_POLICY; income_statement OK.
+        assert fs.income_statement_status.value == "OK", (
+            f"{ptype}: expected income_statement_status OK after H-series, "
+            f"got {fs.income_statement_status.value}"
+        )
         assert fs.tax_bridge_status.value == "OK"
         # PF cash is OK: construction rows mapped + operating waterfall full.
         assert fs.cash_flow_status.value == "OK"
         assert len(fs.income_statement_periods) > 0
         assert len(fs.pf_cash_waterfall_periods) > 0
-        assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
+        # UC authority retired: consumed from G2C CovenantGatedWaterfallPeriod.
+        assert fs.unrestricted_cash_status.value == "OK", (
+            f"{ptype}: expected unrestricted_cash_status OK, got {fs.unrestricted_cash_status.value}"
+        )
         # U1 Integration: canonical BookDepreciableAssetBasis is now available for all
         # four projects. GFA is AVAILABLE (not blocked).
         assert fs.fixed_asset_status.value == "OK", (
@@ -75,9 +80,8 @@ class TestC3A_SupportedMatrix:
             f"{fs.fixed_asset_status.value}"
         )
         assert fs.retained_earnings_status.value in (
-            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE",   # Correction C §10
+            "OK",
             "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
-        assert fs.status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_a2_no_legacy_engine_execution(self, ptype, monkeypatch):
@@ -109,13 +113,16 @@ class TestC3B_IncomeStatementIdentities:
         _, fs = _assemble(ptype)
         for p in fs.income_statement_periods:
             assert p.revenue_keur - p.opex_keur == pytest.approx(p.ebitda_keur, abs=1e-9)
+            # H.2: EBIT = EBITDA - BookDep (FI is NOT in EBIT).
             assert p.ebitda_keur - p.book_depreciation_keur == pytest.approx(p.ebit_keur, abs=1e-9)
+            # H.2: NetFinancial = FI - SeniorInterest - SHLGrossInterest.
+            assert p.net_financial_result_keur == pytest.approx(
+                p.financing_income_keur - p.senior_interest_expense_keur - p.shl_interest_expense_keur,
+                abs=1e-9)
             assert p.ebit_keur + p.net_financial_result_keur == pytest.approx(
                 p.earnings_before_tax_keur, abs=1e-9)
             assert p.earnings_before_tax_keur - p.cit_accrual_keur == pytest.approx(
                 p.net_income_keur, abs=1e-9)
-            assert p.net_financial_result_keur == pytest.approx(
-                -(p.senior_interest_expense_keur + p.shl_interest_expense_keur), abs=1e-9)
 
 
 # ---------------------------------------------------------------------------

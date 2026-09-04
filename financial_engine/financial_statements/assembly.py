@@ -420,17 +420,46 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     _legal_reserve_authority = _apc.legal_reserve_authority
     _book_cap_authority = _apc.book_capitalization_authority
     _opening_re_pol_authority = _apc.opening_re_authority
-    # Cash interest authority: consume from AccountingPolicyConfig (SOURCE_PROVEN for
-    # Oborovo/TUHO after U2 delivery; UNRESOLVED for generic Solar/Wind).
-    _cash_interest_authority = _apc.cash_interest_authority
-
-    # U2 integration: extract per-period financing income from canonical schedule.
-    # Zero for generic projects (no cash_reserve_interest_schedules on ProjectFinancingResult).
+    # H.3: FI authority comes from the U2 schedule itself, not from a C3 policy flag.
+    # Resolution:
+    #   schedule is None + policy None/disabled → FI=0, ZERO_BY_POLICY
+    #   schedule is None + policy enabled+unresolved → FINANCING_INCOME_AUTHORITY_UNAVAILABLE
+    #   schedule present, authority != UNRESOLVED → consume schedule authority
     _cri = getattr(fin, "cash_reserve_interest_schedules", None)
+    _cri_policy = getattr(project_inputs, "cash_reserve_interest_policy", None) if project_inputs is not None else None
     _fi_by_period: dict = {}
+    _fi_authority_str: str = "ZERO_BY_POLICY"
+    _fi_resolved: bool = True  # default: zero by policy (no schedule, no enabled policy)
     if _cri is not None:
+        # H.4: validate FI axis using canonical axis contract.
+        _fi_axis_indices = [int(pr.period_index) for pr in _cri.period_results]
+        _fi_dates = {int(pr.period_index): (pr.period_start, pr.period_end) for pr in _cri.period_results}
+        # Uniqueness check.
+        if len(_fi_axis_indices) != len(set(_fi_axis_indices)):
+            raise _AxisMismatch(
+                "FI schedule has duplicate period_index entries"
+            )
+        # Match against model axis.
+        _model_indices = sorted(int(getattr(mp, "period_index", i)) for i, mp in enumerate(model_periods))
+        if sorted(_fi_axis_indices) != _model_indices:
+            raise _AxisMismatch(
+                f"FI schedule period indices {sorted(_fi_axis_indices)} "
+                f"do not match model period indices {_model_indices}"
+            )
+        # Consume values and authority.
         for _pr in _cri.period_results:
             _fi_by_period[int(_pr.period_index)] = float(_pr.calculated_financing_income_keur)
+        _raw_cri_auth = getattr(_cri, "authority", None)
+        if _raw_cri_auth is None or str(_raw_cri_auth) == AccountingPolicyAuthority.UNRESOLVED.value:
+            _fi_resolved = False
+            _fi_authority_str = "UNRESOLVED"
+        else:
+            _fi_authority_str = str(_raw_cri_auth)
+    elif _cri_policy is not None and getattr(_cri_policy, "enabled", False):
+        # Policy enabled but no schedule produced → authority gap.
+        _fi_resolved = False
+        _fi_authority_str = "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"
+    # else: no policy / policy disabled → FI=0, ZERO_BY_POLICY, resolved.
 
     # GFA component classification: from typed config when present, otherwise generic.
     _book_cap_components = _apc.book_capitalization_components or {
@@ -547,16 +576,23 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         opex = float(getattr(mp, "opex_keur", 0.0) or 0.0)
         ebitda = float(getattr(mp, "ebitda_keur", 0.0) or 0.0)
         book_dep = float(getattr(mp, "book_depreciation_keur", 0.0) or 0.0)
-        # Financing income: BELOW EBITDA (never augments EBITDA). Zero for projects without U2.
+        # H.2: EBIT = EBITDA - BookDep. FI is NOT added to EBIT.
+        ebit = float(getattr(mp, "ebit_keur", 0.0) or 0.0)
+        # H.5: FI authority is from the U2 schedule contract, never from value != 0.
         fi = _fi_by_period.get(int(idx), 0.0)
-        ebit = float(getattr(mp, "ebit_keur", 0.0) or 0.0) + fi
+        _fi_auth_label = (
+            LineAuthority.EXISTING_CLEAN_AUTHORITY.value
+            if _cri is not None
+            else LineAuthority.GENERIC_FINCO_ACCOUNTING_POLICY.value
+        )
 
         senior_int = _at(senior.senior_interest_keur, si) if si is not None else 0.0
         senior_int = senior_int or 0.0
         # P&L SHL interest = gross accrued (cash + PIK) — never cash-only.
         shl_gross = _at(shl.shl_gross_interest_keur, shi) if shi is not None else 0.0
         shl_gross = shl_gross or 0.0
-        net_financial = -(senior_int + shl_gross)
+        # H.2: NetFinancial = FI - SeniorInterest - SHLGrossInterest; EBT = EBIT + NetFinancial.
+        net_financial = fi - senior_int - shl_gross
         ebt = ebit + net_financial
         cit_accrual = _at(tax.tax_keur, ti) if ti is not None else 0.0
         cit_accrual = cit_accrual or 0.0
@@ -589,15 +625,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "opex": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
                 "ebitda": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
                 "book_depreciation": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
+                "financing_income": _fi_auth_label,
                 "senior_interest": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
                 "shl_interest": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
                 "cit_accrual": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
-                "financing_income": (
-                    LineAuthority.EXISTING_CLEAN_AUTHORITY.value
-                    if fi != 0.0
-                    else LineAuthority.GENERIC_FINCO_ACCOUNTING_POLICY.value
-                ),
-                "ebit_ebt_net_income": LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value,
+                "ebit_ebt_net_financial_net_income": LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value,
             },
         ))
 
@@ -673,24 +705,29 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             net_fixed_assets_keur=_nfa,
         ))
 
-        # Retained earnings (Correction C §4-§6, Option B): construction
-        # periods accumulate the COD opening balance (NI counted ONCE);
-        # the RE roll-forward schedule is emitted for OPERATING periods
-        # only, starting at the COD opening. Collect inputs for the
-        # post-loop legal-reserve roll-forward (Correction D §19-§23).
-        legal_dist = float(getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0)
+        # RE inputs collection: construction periods accumulate NI for COD opening RE.
+        # Operating periods are queued with gross_dividend_paid_keur (H.9: gross, not net).
+        # H.7: UC consumed directly from canonical typed field. EmptyWp proxy has no such field → None.
+        _wp_is_real = hasattr(wp, "unrestricted_cash_closing_keur")
+        _wp_uc_close = wp.unrestricted_cash_closing_keur if _wp_is_real else None
+        _wp_lr_open = getattr(wp, "opening_legal_reserve_keur", None) if _wp_is_real else None
+        _wp_lr_transfer = getattr(wp, "legal_reserve_transfer_keur", None) if _wp_is_real else None
+        _wp_lr_close = getattr(wp, "closing_legal_reserve_keur", None) if _wp_is_real else None
+        # H.9: use gross_dividend_paid_keur for RE roll-forward (gross corporate, not net-of-WHT).
+        gross_div = float(getattr(wp, "gross_dividend_paid_keur", 0.0) or 0.0) if _wp_is_real else 0.0
+        legal_dist = float(getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0) if _wp_is_real else 0.0
         is_construction_period = bool(getattr(mp, "is_construction", False))
         if is_construction_period:
             if opening_re_authority:
                 construction_ni_sum += net_income
         else:
+            # Store: period_index, net_income, gross_div, period_end, wp_lr_open, wp_lr_transfer, wp_lr_close
             _op_re_inputs.append(
-                (int(idx), net_income, legal_dist, getattr(mp, "period_end", None))
+                (int(idx), net_income, gross_div, getattr(mp, "period_end", None),
+                 _wp_lr_open, _wp_lr_transfer, _wp_lr_close)
             )
 
-        # Balance sheet presentation: balances are clean closing authority;
-        # unrestricted cash / gross FA / equity accounts are truthfully
-        # unavailable → balance_check NOT claimed (no residual-cash insert).
+        # Balance sheet: build with canonical clean balances; equity filled post-loop.
         cumulative_share_capital += float(
             getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
         cumulative_share_premium += float(
@@ -698,105 +735,142 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         dsra_close = (
             float(dpr.closing_balance_keur) if dpr is not None else None
         )
+        # H.7: UC is the canonical typed field; None when wp absent (not zero).
+        _uc_val = _wp_uc_close
         bs_periods.append(BalanceSheetPeriod(
             period_index=int(idx),
             period_end=getattr(mp, "period_end", None),
             senior_debt_balance_keur=_at(senior.senior_debt_closing_keur, si),
             shl_balance_keur=(
                 float(getattr(wp, "actual_shl_closing_balance_keur", 0.0) or 0.0)
-                if wp is not None else None
+                if _wp_is_real else None
             ),
             shl_unpaid_principal_keur=(
                 float(getattr(wp, "unpaid_shl_principal_keur", 0.0) or 0.0)
-                if wp is not None else None
+                if _wp_is_real else None
             ),
             distribution_account_balance_keur=(
                 float(getattr(wp, "distribution_account_closing_keur", 0.0) or 0.0)
-                if wp is not None else None
+                if _wp_is_real else None
             ),
             dsra_balance_keur=dsra_close,
-            unrestricted_cash_keur=(
-                float(getattr(wp, "unrestricted_cash_closing_keur", 0.0) or 0.0)
-                if wp is not None else None
-            ),
+            unrestricted_cash_keur=_wp_uc_close,
             gross_fixed_assets_keur=gfa_keur,
             accumulated_book_depreciation_keur=cumulative_book_dep,
             share_capital_keur=cumulative_share_capital,
             share_premium_keur=cumulative_share_premium,
-            retained_earnings_keur=None,
-            balance_check_keur=None,
+            retained_earnings_keur=None,   # filled post-loop
+            balance_check_keur=None,        # filled post-loop
         ))
 
-    # Correction D §19-§23: legal-reserve roll-forward using the existing
-    # Correction E §18: legal reserve requires EXPLICIT typed activation via
-    # LegalReservePolicy(enabled=True) in AccountingPolicyConfig.  A scalar
-    # TaxParams.legal_reserve_cap default is not sufficient — it may reflect a
-    # compatibility default rather than a proven source accounting policy.
-    # The kernel: transfer = min(NI, cap − opening_reserve) when NI > 0 and
-    # reserve < cap; otherwise 0.  RE closing = opening + NI − dist − transfer.
-    # COD opening RE = typed pre-construction RE + authoritative construction NI.
-    # construction_ni_sum is accumulated only during construction periods when
-    # opening_re_authority is True (so NI is counted exactly once).
+    # H.8: canonical LR comes from CovenantGatedWaterfallPeriod (U2 upstream output).
+    # C3 must NOT recompute LR. No roll_forward_equity_state call.
+    # H.9: RE roll-forward = opening_RE + NI - gross_div - LR_transfer.
+    # H.10: BS periods rebuilt post-loop with equity filled in.
     cod_opening_re = (
         (_pre_re_keur + construction_ni_sum) if opening_re_authority and _pre_re_keur is not None
         else None
     )
-    _lr_computed = False
-    _lr_results_by_idx: dict = {}
+    # Check whether U2 LR fields are present (any operating period with non-None wp LR).
+    _lr_from_wp = any(
+        _wlr is not None
+        for _, _ni, _gdiv, _pend, _wlr_o, _wlr_t, _wlr_c in _op_re_inputs
+        for _wlr in (_wlr_o, _wlr_t, _wlr_c)
+    )
+    _lr_computed = _lr_from_wp
     _lr_closing_by_idx: dict = {}
-    if _op_re_inputs and _lr_policy is not None and _lr_policy.enabled:
-        _fin_pol = getattr(project_inputs, "financing", None) if project_inputs is not None else None
-        _sc_keur = float(getattr(_fin_pol, "share_capital_keur", 0.0) or 0.0)
-        _lr_cap = _lr_policy.cap_fraction
-        from financial_engine.tax.interest_limitation import (
-            EquityStatePeriodInput as _EquityInput,
-            roll_forward_equity_state as _roll_equity,
-        )
-        _eq_inputs = tuple(
-            _EquityInput(
-                period_index=pidx,
-                net_income_keur=ni,
-                gross_dividends_keur=ld,
-            )
-            for pidx, ni, ld, _pend in _op_re_inputs
-        )
-        _lr_results_all = _roll_equity(
-            _eq_inputs,
-            share_capital_keur=_sc_keur,
-            legal_reserve_cap_fraction=_lr_cap,
-            opening_legal_reserve_keur=0.0,
-            opening_retained_earnings_keur=cod_opening_re or 0.0,
-        )
-        _lr_results_by_idx = {r.period_index: r for r in _lr_results_all}
-        _lr_closing_by_idx = {
-            r.period_index: r.closing_legal_reserve_keur for r in _lr_results_all
-        }
-        _lr_computed = True
 
-    # Build retained-earnings periods post-loop so legal-reserve transfers
-    # can be included in the sequential opening → closing roll-forward.
     _re_open = cod_opening_re
-    for _pidx, _ni, _ld, _pend in _op_re_inputs:
-        _lrt = 0.0
-        if _lr_computed and _pidx in _lr_results_by_idx:
-            _lrt = float(_lr_results_by_idx[_pidx].legal_reserve_transfer_keur)
+    re_periods_by_idx: dict = {}
+    for _pidx, _ni, _gdiv, _pend, _wlr_open, _wlr_transfer, _wlr_close in _op_re_inputs:
+        # H.8: canonical LR transfer from U2 waterfall period.
+        _lrt = float(_wlr_transfer) if _wlr_transfer is not None else 0.0
+        _lr_close_val = float(_wlr_close) if _wlr_close is not None else None
+        if _lr_close_val is not None:
+            _lr_closing_by_idx[_pidx] = _lr_close_val
+        # H.9: RE closing = opening + NI - gross_dividend - LR_transfer.
         _re_close = (
             None if _re_open is None
-            else _re_open + _ni - _ld - _lrt
+            else _re_open + _ni - _gdiv - _lrt
         )
+        re_periods_by_idx[_pidx] = (_re_open, _re_close, _wlr_close, _pend, _ni, _gdiv, _lrt)
         re_periods.append(RetainedEarningsPeriod(
             period_index=_pidx,
             period_end=_pend,
             opening_retained_earnings_keur=_re_open,
             net_income_keur=_ni,
-            legal_equity_distribution_keur=_ld,
-            legal_reserve_allocation_keur=_lrt if _lr_computed else None,
+            legal_equity_distribution_keur=_gdiv,
+            legal_reserve_allocation_keur=_lrt if _lr_from_wp else None,
             closing_retained_earnings_keur=_re_close,
         ))
         if _re_open is not None:
             _re_open = _re_close
 
-    # Status codes for newly resolved items.
+    # H.10: rebuild BS periods with equity populated.
+    # Build a lookup from period_index to RE closing and LR closing.
+    _bs_by_idx = {bsp.period_index: bsp for bsp in bs_periods}
+    bs_periods = []
+    _tolerance = 1e-4
+    for _bsp_orig in sorted(_bs_by_idx.values(), key=lambda x: x.period_index):
+        _bidx = _bsp_orig.period_index
+        _re_info = re_periods_by_idx.get(_bidx)
+        _re_close_val = _re_info[1] if _re_info is not None else None
+        _lr_close_bsp = float(_lr_closing_by_idx[_bidx]) if _bidx in _lr_closing_by_idx else None
+        # H.11: real BS identity. Assets = NFA + UC + DSRA + DA. L+E = Senior + SHL + SC + SP + LR + RE.
+        # NFA = GFA - accum_dep (None when GFA unavailable).
+        _nfa_v = (
+            (_bsp_orig.gross_fixed_assets_keur - _bsp_orig.accumulated_book_depreciation_keur)
+            if _bsp_orig.gross_fixed_assets_keur is not None else None
+        )
+        _total_assets: float | None = None
+        _total_le: float | None = None
+        _balance_check: float | None = None
+        if (
+            _nfa_v is not None
+            and _bsp_orig.unrestricted_cash_keur is not None
+            and _bsp_orig.dsra_balance_keur is not None
+            and _bsp_orig.distribution_account_balance_keur is not None
+            and _re_close_val is not None
+            and _lr_close_bsp is not None
+            and _bsp_orig.senior_debt_balance_keur is not None
+            and _bsp_orig.shl_balance_keur is not None
+            and _bsp_orig.share_capital_keur is not None
+            and _bsp_orig.share_premium_keur is not None
+        ):
+            _total_assets = (
+                _nfa_v
+                + _bsp_orig.unrestricted_cash_keur
+                + _bsp_orig.dsra_balance_keur
+                + _bsp_orig.distribution_account_balance_keur
+            )
+            _total_le = (
+                (_bsp_orig.senior_debt_balance_keur or 0.0)
+                + (_bsp_orig.shl_balance_keur or 0.0)
+                + (_bsp_orig.share_capital_keur or 0.0)
+                + (_bsp_orig.share_premium_keur or 0.0)
+                + _lr_close_bsp
+                + _re_close_val
+            )
+            _balance_check = _total_assets - _total_le
+        bs_periods.append(BalanceSheetPeriod(
+            period_index=_bidx,
+            period_end=_bsp_orig.period_end,
+            senior_debt_balance_keur=_bsp_orig.senior_debt_balance_keur,
+            shl_balance_keur=_bsp_orig.shl_balance_keur,
+            shl_unpaid_principal_keur=_bsp_orig.shl_unpaid_principal_keur,
+            distribution_account_balance_keur=_bsp_orig.distribution_account_balance_keur,
+            dsra_balance_keur=_bsp_orig.dsra_balance_keur,
+            unrestricted_cash_keur=_bsp_orig.unrestricted_cash_keur,
+            gross_fixed_assets_keur=_bsp_orig.gross_fixed_assets_keur,
+            accumulated_book_depreciation_keur=_bsp_orig.accumulated_book_depreciation_keur,
+            share_capital_keur=_bsp_orig.share_capital_keur,
+            share_premium_keur=_bsp_orig.share_premium_keur,
+            legal_reserve_keur=_lr_close_bsp,
+            retained_earnings_keur=_re_close_val,
+            balance_check_keur=_balance_check,
+        ))
+
+    # H.12: status logic — only OK after each statement is behaviorally complete.
     _fixed_asset_status = (
         StatementStatus.OK if gfa_keur is not None
         else StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE
@@ -805,19 +879,31 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         StatementStatus.OK if _lr_computed
         else StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE
     )
-
-    # UC is now consumed from CovenantGatedWaterfallPeriod.unrestricted_cash_closing_keur.
-    # FI is consumed from ProjectFinancingResult.cash_reserve_interest_schedules.
-    # Both authorities are retired; BS is complete when LR and RE are also available.
-    _uc_resolved = True  # always: wp.unrestricted_cash_closing_keur is canonical G2C output
-    _fi_resolved = (
-        _cash_interest_authority != AccountingPolicyAuthority.UNRESOLVED
+    # H.7: UC resolved when canonical field present for all OPERATING BS periods.
+    # Construction periods without a G2C date join legitimately have None UC.
+    _op_period_indices = {_pidx for _pidx, *_ in _op_re_inputs}
+    _uc_resolved = all(
+        bsp.unrestricted_cash_keur is not None
+        for bsp in bs_periods
+        if bsp.period_index in _op_period_indices
+    ) if _op_period_indices else True
+    _uc_status = StatementStatus.OK if _uc_resolved else StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
+    # H.11: BS complete only when real balance_check is present and near-zero for all periods.
+    _bs_checks = [bsp.balance_check_keur for bsp in bs_periods if bsp.balance_check_keur is not None]
+    _bs_identity_ok = bool(_bs_checks) and all(abs(v) <= _tolerance for v in _bs_checks)
+    _bs_complete = _uc_resolved and _lr_computed and opening_re_authority and _bs_identity_ok
+    _bs_status = (
+        StatementStatus.OK if _bs_complete else (
+            StatementStatus.BALANCE_SHEET_DOES_NOT_BALANCE if _bs_checks and not _bs_identity_ok else
+            StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE if not _lr_computed else
+            StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE if not opening_re_authority else
+            StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
+        )
     )
-    _bs_complete = _uc_resolved and _lr_computed and opening_re_authority
     if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
     elif not _bs_complete:
-        overall = StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE if gfa_keur is None else StatementStatus.OK
+        overall = _bs_status
     else:
         overall = StatementStatus.OK
 
@@ -830,24 +916,31 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         **({"gross_fixed_assets": _gfa_unavailable_msg} if gfa_keur is None else {}),
         **({} if _lr_computed else {
             "legal_reserve": (
-                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: LegalReservePolicy not "
-                "set in AccountingPolicyConfig or not enabled."
+                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: CovenantGatedWaterfallPeriod "
+                "legal reserve fields absent or distribution accounting inactive."
             )
         }),
-        # §29/§30: CIT is modeled directly as accrued / cash timing in the clean
-        # tax engine; no separate CIT payable roll-forward account is required.
+        **({} if _uc_resolved else {
+            "unrestricted_cash": (
+                "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: unrestricted_cash_closing_keur "
+                "absent for one or more BS periods."
+            )
+        }),
         "tax_payable": (
             "TAX_PAYABLE_NOT_APPLICABLE: CIT accrual and cash timing are handled "
-            "directly in the clean tax engine; no separate CIT payable roll-forward "
-            "is part of the accounting presentation. Terminal unpaid tax is surfaced "
-            "explicitly. Source evidence does not require a separate payable balance."
+            "directly in the clean tax engine. Terminal unpaid tax surfaced explicitly."
         ),
         **({} if _fi_resolved else {
             "financing_income": (
-                "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: cash_interest_authority "
-                "is UNRESOLVED in AccountingPolicyConfig (Solar/Wind: zero by policy)."
+                f"FINANCING_INCOME_AUTHORITY_UNAVAILABLE: {_fi_authority_str}"
             ),
         }),
+        **({} if _bs_identity_ok else {
+            "balance_sheet_identity": (
+                "BALANCE_SHEET_DOES_NOT_BALANCE: one or more periods have "
+                f"abs(total_assets - total_l_plus_e) > tolerance={_tolerance}"
+            )
+        } if _bs_checks else {}),
     })
 
     return FinancialStatementsResult(
@@ -858,8 +951,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "g2c_dscr_authority": senior.binding_constraint,
             "construction_rows_mapped": len(construction_rows),
         },
-        # FI authority retired: P&L financing income consumed from U2
-        # ProjectFinancingResult.cash_reserve_interest_schedules (zero for Solar/Wind).
+        # H.3: income_statement_status OK when FI authority is resolved from U2 schedule
+        # or when FI is zero-by-policy (no enabled policy, no schedule).
         income_statement_status=(
             StatementStatus.OK if _fi_resolved
             else StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
@@ -876,7 +969,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         funding_audit=funding_audit,
         fixed_asset_status=_fixed_asset_status,
         fixed_asset_periods=tuple(fa_periods),
-        # RE roll-forward uses C3 NI (with FI); authority is now opening_re_authority.
         retained_earnings_status=(
             StatementStatus.OK if opening_re_authority else opening_re_status
         ),
@@ -884,33 +976,27 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         opening_retained_earnings_status=opening_re_status,
         cod_opening_retained_earnings_keur=cod_opening_re,
         legal_reserve_status=_legal_reserve_status,
-        # UC authority retired: consumed from CovenantGatedWaterfallPeriod.unrestricted_cash_closing_keur.
-        unrestricted_cash_status=StatementStatus.OK,
-        balance_sheet_status=(
-            StatementStatus.OK if _bs_complete else (
-                StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE if not _lr_computed else
-                StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
-            )
-        ),
+        unrestricted_cash_status=_uc_status,
+        balance_sheet_status=_bs_status,
         balance_sheet_periods=tuple(bs_periods),
         accounting_policies=AccountingPolicies(
             shl_construction_accounting_authority=_shl_accounting_authority,
             legal_reserve_authority=_legal_reserve_authority,
             book_capitalization_authority=_book_cap_authority,
             opening_re_authority=_opening_re_pol_authority,
-            cash_interest_income_authority=_cash_interest_authority,
+            cash_interest_income_authority=AccountingPolicyAuthority.UNRESOLVED,  # deprecated; authority from schedule
             book_capitalization_components=_book_cap_components,
             provenance={
                 "baseline": "clean-engine results only (no legacy statement modules)",
                 "axis": "model.periods; G2C joined by cashflow_date == period_end",
-                "provenance_mechanism": "AccountingPolicyConfig (typed input from factory)",
-                "this_project_source_proven": (
-                    _book_cap_authority == AccountingPolicyAuthority.SOURCE_PROVEN
-                ),
+                "fi_authority": _fi_authority_str,
+                "fi_schedule_present": _cri is not None,
+                "lr_source": "CovenantGatedWaterfallPeriod (U2 canonical)" if _lr_computed else "UNAVAILABLE",
+                "lr_closing_by_period": _lr_closing_by_idx,
                 "gfa_computed": gfa_keur is not None,
                 "gfa_report": gfa_report,
-                "legal_reserve_computed": _lr_computed,
-                "legal_reserve_closing_by_period": _lr_closing_by_idx,
+                "bs_identity_checks": len(_bs_checks),
+                "bs_max_residual": max((abs(v) for v in _bs_checks), default=None),
             },
         ),
         unavailable_reasons=unavailable,
@@ -926,13 +1012,16 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 LineAuthority.EXISTING_CLEAN_AUTHORITY.value if gfa_keur is not None
                 else LineAuthority.UNRESOLVED.value
             ),
-            "unrestricted_cash": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
+            "unrestricted_cash": (
+                LineAuthority.EXISTING_CLEAN_AUTHORITY.value if _uc_resolved
+                else LineAuthority.UNRESOLVED.value
+            ),
             "opening_retained_earnings": (
                 _map_opening_re_label(_apc)
                 if opening_re_authority else LineAuthority.UNRESOLVED.value
             ),
             "legal_reserve": (
-                LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value if _lr_computed
+                LineAuthority.EXISTING_CLEAN_AUTHORITY.value if _lr_computed
                 else LineAuthority.UNRESOLVED.value
             ),
         },
