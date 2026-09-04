@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
     from finco_core.inputs.construction_financing import ConstructionFinancingInput
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestPolicy
+    from finco_core.inputs.distribution_accounting_policy import DistributionAccountingPolicy
 
 
 class PeriodFrequency(Enum):
@@ -1644,6 +1646,17 @@ class ProjectInputs:
     # Typed accounting-policy config set by project factories (outside
     # financial_engine/).  Assembly reads this — never project identity.
     accounting_policy_config: "AccountingPolicyConfig | None" = None
+    cash_reserve_interest_policy: "CashReserveInterestPolicy | None" = None
+    distribution_accounting_policy: "DistributionAccountingPolicy | None" = None
+
+    def __post_init__(self) -> None:
+        from finco_core.inputs.distribution_accounting_policy import (
+            assert_wht_authority_consistent,
+        )
+        assert_wht_authority_consistent(
+            self.tax.wht_sponsor_dividends,
+            self.distribution_accounting_policy,
+        )
 
 
 def _hash_accounting_policy(apc) -> tuple:
@@ -1768,4 +1781,17 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         ),
         # Accounting policy config — determines C3 output semantics.
         _hash_accounting_policy(inputs.accounting_policy_config),
+        # U2: cash/reserve interest policy — None sentinel for backward compat
+        (
+            (
+                inputs.cash_reserve_interest_policy.authority.value,
+                inputs.cash_reserve_interest_policy.annual_rate,
+                inputs.cash_reserve_interest_policy.day_count_convention.value,
+                inputs.cash_reserve_interest_policy.balance_convention.value,
+                inputs.cash_reserve_interest_policy.eligible_unrestricted_cash.value,
+                inputs.cash_reserve_interest_policy.eligible_dsra.value,
+                inputs.cash_reserve_interest_policy.enabled,
+            )
+            if inputs.cash_reserve_interest_policy is not None else None
+        ),
     )

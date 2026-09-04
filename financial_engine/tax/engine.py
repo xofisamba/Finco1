@@ -98,8 +98,30 @@ def calculate_tax(
     interest_map = _build_interest_map(tax_input.period_interest)
     adj_map = _build_adj_map(tax_input.period_adjustments)
 
+    # U2: Build financing-income map from period_financing_income (below EBITDA).
+    # UNRESOLVED + nonzero raises — must not silently enter taxable income.
+    # Unknown authority strings raise — fail closed against future enum drift.
+    _KNOWN_AUTHORITIES = {"UNRESOLVED", "GENERIC_FINCO_POLICY", "SOURCE_PROVEN"}
+    financing_income_map: dict[int, float] = {}
+    for fi in getattr(tax_input, "period_financing_income", ()):
+        _auth = getattr(fi, "authority", "UNRESOLVED")
+        if _auth not in _KNOWN_AUTHORITIES:
+            raise ValueError(
+                f"calculate_tax: PeriodFinancingIncomeInput period_index="
+                f"{fi.period_index} has unknown authority={_auth!r}. "
+                f"Valid: {sorted(_KNOWN_AUTHORITIES)}"
+            )
+        if _auth == "UNRESOLVED" and fi.financing_income_keur != 0.0:
+            raise ValueError(
+                f"calculate_tax: UNRESOLVED authority on period_index="
+                f"{fi.period_index} with nonzero financing_income_keur="
+                f"{fi.financing_income_keur}. UNRESOLVED must fail closed (0.0)."
+            )
+        if _auth != "UNRESOLVED":
+            financing_income_map[fi.period_index] = fi.financing_income_keur
+
     # ── Step 1-2: Build calendar-year bases ───────────────────────────────────
-    bases = build_tax_year_bases(periods, interest_map, adj_map, policy)
+    bases = build_tax_year_bases(periods, interest_map, adj_map, policy, financing_income_map)
 
     # ── Step 3: ATAD + taxable income + LCF + CIT per tax year ───────────────
     atad_results = []
@@ -119,10 +141,13 @@ def calculate_tax(
         annual_atad = allocate_atad_to_periods(annual_atad, period_interests)
         atad_results.append(annual_atad)
 
-    # Annual taxable income before LCF
+    # Annual taxable income before LCF.
+    # U2: financing_income_keur (cash/reserve interest) enters taxable income here.
+    # EBITDA = revenue - opex is UNCHANGED. Financing income is below EBITDA.
     taxable_before_lcf = [
         (
             basis.ebitda_keur
+            + basis.financing_income_keur        # U2: financing income (below EBITDA)
             - basis.tax_depreciation_keur
             - atad.deductible_interest_keur
             + basis.other_fiscal_reintegration_keur
@@ -136,6 +161,7 @@ def calculate_tax(
         loss_use_allowed = tuple(
             (
                 basis.ebitda_keur
+                + basis.financing_income_keur        # U2: financing income is above EBT
                 - basis.tax_depreciation_keur
                 - basis.total_interest_keur
                 - basis.shl_non_deductible_interest_keur
@@ -170,6 +196,7 @@ def calculate_tax(
             disallowed_interest_keur=atad.disallowed_interest_keur,
             atad_binding_rule=atad.binding_rule,
             ebitda_keur=basis.ebitda_keur,
+            financing_income_keur=basis.financing_income_keur,
             tax_depreciation_keur=basis.tax_depreciation_keur,
             other_fiscal_reintegration_keur=basis.other_fiscal_reintegration_keur,
             taxable_income_before_lcf_keur=ti_before,
@@ -318,6 +345,10 @@ def calculate_tax(
                 f.shl_non_deductible_interest_keur
                 for f in frags_for_year if f.source_period_index == idx
             )
+            yr_financing_income = sum(
+                f.financing_income_keur
+                for f in frags_for_year if f.source_period_index == idx
+            )
             yr_ti_share = ar.taxable_income_before_lcf_keur * alloc_frac
             yr_cit = ar.current_tax_liability_keur * alloc_frac
 
@@ -332,6 +363,7 @@ def calculate_tax(
                 shl_non_deductible_interest_keur=yr_shl_non_deductible,
                 taxable_income_share_keur=yr_ti_share,
                 cit_accrual_keur=yr_cit,
+                financing_income_keur=yr_financing_income,
             ))
 
         # Primary year = year with largest allocation fraction (display-only).
@@ -383,6 +415,7 @@ def calculate_tax(
                 period_interest.additional_non_deductible_component_keur
                 if period_interest else 0.0
             ),
+            financing_income_keur=financing_income_map.get(idx, 0.0),
         ))
 
     return TaxAndCfadsResult(

@@ -831,6 +831,7 @@ SENIOR_DEBT_RUN_PATH_ID = "financial_engine.orchestrator.run_senior_debt_model"
 _PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
 
 
+
 def _merge_financing_tax_input(
     base_tax_input: object,
     senior_interest_by_period: dict[int, float] | None = None,
@@ -950,6 +951,7 @@ def _merge_financing_tax_input(
         opening_loss_vintages=base_tax_input.opening_loss_vintages,
         period_interest=tuple(merged_interest[idx] for idx in sorted(merged_interest)),
         period_adjustments=base_tax_input.period_adjustments,
+        period_financing_income=base_tax_input.period_financing_income,
     )
 
 
@@ -1693,7 +1695,7 @@ def _run_senior_debt_model_with_shl(
       seeds converge to the same fixed-point result.
     """
     from financial_engine.cfads import calculate_canonical_cfads
-    from financial_engine.inputs import TaxCfadsModelInput
+    from financial_engine.inputs import TaxCfadsModelInput, TaxCalculationInput, PeriodInterestInput
     from financial_engine.senior_debt.inputs import SeniorDebtInputs
     from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
     from financial_engine.senior_debt.policy import SeniorDebtPolicy
@@ -2480,8 +2482,6 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         )
 
     # Step 6: Recompute Base CFADS with final senior interest (authoritative base result).
-    # The solver converged on bank CFADS; now update the Base tax/CFADS using the same
-    # final senior interest so that result.tax_and_cfads is the correct Base CFADS.
     # Correction B: validate final senior interest against independently-derived senior_axis.
     final_senior_interest = _strict_period_map(
         sd_result.period_indices,
@@ -2511,6 +2511,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         opening_loss_vintages=base_tax_input.opening_loss_vintages,
         period_interest=tuple(merged_base.values()),
         period_adjustments=base_tax_input.period_adjustments,
+        period_financing_income=base_tax_input.period_financing_income,
     )
     base_tax_result = calculate_tax(phase2b_result.periods, base_updated_tax)
     base_cfads_results = calculate_canonical_cfads(

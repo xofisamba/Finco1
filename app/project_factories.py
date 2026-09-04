@@ -58,6 +58,7 @@ from finco_core.inputs.senior_rate_schedule import (
     SeniorRateSchedule,
 )
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
+
 from finco_core.inputs.construction_financing import (
     ConstructionCapexTimingInput,
     ConstructionCommitmentFeeInput,
@@ -88,6 +89,18 @@ from financial_engine.financial_statements.contracts import (
     AccountingPolicyConfig,
     BookCapitalizationTreatment,
     LegalReservePolicy,
+)
+from finco_core.inputs.cash_reserve_interest_policy import (
+    CashReserveInterestPolicy,
+    CashReserveInterestAuthority,
+    EligibilityStatus,
+    BalanceConvention,
+    DayCountConvention,
+)
+from finco_core.inputs.distribution_accounting_policy import (
+    DistributionAccountingPolicy,
+    DistributionAccountingAuthority,
+    OpeningUCAuthority,
 )
 
 
@@ -167,6 +180,35 @@ _GENERIC_CLEAN_ACCOUNTING_POLICY = AccountingPolicyConfig(
 )
 
 
+# U2 DELIVERED: SOURCE_PROVEN interest policy — rate and eligible-account identity proved
+# from workbook source formulas. Unrestricted cash is causally derived through the
+# canonical distribution-accounting roll-forward (U2 fixed-point). Opening UC has typed
+# authority. Cash reserve interest is produced by the converged U2 transition.
+# Source numeric parity exceptions are downstream of upstream financing/tax authority.
+_SOURCE_PROVEN_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
+    authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+    annual_rate=0.01,
+    eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+    eligible_dsra=EligibilityStatus.ELIGIBLE,
+    balance_convention=BalanceConvention.OPENING,
+    day_count_convention=DayCountConvention.ACTUAL_365,
+    enabled=True,
+)
+
+# O.1: Oborovo cash interest policy — DSRA ELIGIBLE.
+# A zero DSRA balance is not an INELIGIBLE account. Provide canonical known-zero
+# DSRA schedule via dsra_opening_by_idx (SOURCE_PROVEN authority: zero throughout).
+_OBOROVO_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
+    authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+    annual_rate=0.01,
+    eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+    eligible_dsra=EligibilityStatus.ELIGIBLE,
+    balance_convention=BalanceConvention.OPENING,
+    day_count_convention=DayCountConvention.ACTUAL_365,
+    enabled=True,
+)
+
+
 # =============================================================================
 # Oborovo Solar PV (53.63 MWp, Croatia, 30-year horizon)
 # =============================================================================
@@ -182,7 +224,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Useful life = 20y for all hard CAPEX (workbook Dep tab column B confirmed).
     # Payment schedules: equal monthly spread (12-month construction) unless
     # workbook proves a different pattern (upfront, milestone, completion).
-    # All items are auditable to source rows; none are invented residuals.
+    # All items are independently auditable to source workbook rows — no residual component.
     # Sum = 55,999.0855 kEUR from exact workbook row precision.
     _OBR_HARD_LIFE = 20  # source: Oborovo Dep tab, column B, confirmed 2026-07-22
     _EQ = tuple(1/12 for _ in range(12))  # equal 12-month construction spread (default)
@@ -297,7 +339,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Hard CAPEX sum check: exact source rows sum to 55,999.0855 kEUR.
     # The former 55,997.7 kEUR narrative was decimal truncation across
     # Construction Management, Contingencies, Project Acquisition/Development,
-    # and Project Rights — every item traces to a named workbook row.
+    # and Project Rights — each row independently sourced, no residual adjustment.
 
     capex = CapexStructure(
         epc_contract=epc_contract,
@@ -656,7 +698,7 @@ def create_default_oborovo() -> ProjectInputs:
         target_dscr=1.15,
         lockup_dscr=1.10,
         min_llcr=1.15,  # Oborovo source: Inputs!D224 = Inputs!C177 = 1.15
-        dsra_months=6,
+        dsra_months=0,  # P.4: Source Inputs!I347=0 (construction) and Inputs!I348=0 (operation) — DSRA absent in source workbook. Zero target, zero balance; eligible_dsra=ELIGIBLE preserved per O.1.
         equity_irr_method="shl_plus_dividends",  # Stack O: Golden Excel equity IRR = SHL interest while SHL outstanding + dividends after; "combined" (capex-debt base, distributions only) gave 6.24% vs golden 10.60%
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,  # C3B3A: clean DSCR-sculpted solver path
@@ -744,6 +786,11 @@ def create_default_oborovo() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
+    # U2 DELIVERED (Oborovo): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$455.
+    # DSRA (CF rows 91, 105) ELIGIBLE per P&L!G19. Opening UC typed authority.
+    # UC causally derived via canonical distribution-accounting roll-forward (U2 fixed-point).
+    # Parity exception: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE
+    # (source distributes EBITDA−bank_cash_tax; clean uses actual corporate-cash-tax timing).
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -754,6 +801,15 @@ def create_default_oborovo() -> ProjectInputs:
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
         accounting_policy_config=_OBOROVO_ACCOUNTING_POLICY,
+        cash_reserve_interest_policy=_OBOROVO_CASH_INTEREST_POLICY,
+        distribution_accounting_policy=DistributionAccountingPolicy(
+            enabled=True,
+            authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+            dividend_wht_rate=0.05,
+            legal_reserve_cap_fraction=0.10,
+            # Q.8: Project-level opening UC authority (greenfield axiom O.9)
+            opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
+        ),
     )
 
 
@@ -1005,7 +1061,9 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         atad_enabled=True,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,
-        wht_sponsor_dividends=0.05,
+        # L.1B: Source-proven via CF!B118 = 0.00% (TUHO workbook direct extraction).
+        # Previous 0.05 was factory default; CF!B118 overrides — dividend WHT = 0%.
+        wht_sponsor_dividends=0.00,
         wht_sponsor_shl_interest=0.0,  # 0% WHT on SHL interest per Excel R406
         shl_cap_applies=True,
         cit_cash_tax_start_operating_index=25,  # TUHO Excel: first non-zero R67 at P25
@@ -1024,6 +1082,10 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
+    # U2 DELIVERED (TUHO wind1 base): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$438.
+    # DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19. UC causally derived via U2 fixed-point.
+    # Parity exception: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    # (canonical senior solver produces different SHL principal/PIK from source workbook).
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -1032,6 +1094,7 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         revenue=revenue,
         financing=financing,
         tax=tax,
+        cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
     )
 
 
@@ -1312,13 +1375,37 @@ def create_default_tuho_wind1() -> ProjectInputs:
         ),
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
+        # O.7/Q.1: ConstructionPLStatement absent — no source-proven construction PNL component.
+        # The 48.268247 kEUR gap is NOT pre-operational OPEX; it is the SHL construction
+        # interest mechanics gap: source SHL draw = 29135.176 kEUR (Excel IDC row 49),
+        # clean draw = 28741.109 kEUR (PR-9 senior solver residual), Δ = −394.067 kEUR.
+        # Same compound formula (P×((1.08)^(548/365)−1)) on different principal produces
+        # PIK gap of −48.268 kEUR. Root cause: PR-9 DSCR-sculpting gives senior=43789.921
+        # vs source senior=43359.274 (IDC!D48); residual SHL is smaller; no workbook cell
+        # authorises a ConstructionPLStatement to close the gap.
+        # Classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
+        # Mechanism: construction SHL principal/PIK delta is the immediate numeric vehicle;
+        # the canonical G2A financing-stack authority is the root cause.
     )
+    # U2 DELIVERED (TUHO wind1 U2): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$438.
+    # DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19. Opening UC typed authority.
+    # UC causally derived via canonical distribution-accounting roll-forward (U2 fixed-point).
+    # Parity exception: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
     return replace(
         legacy,
         info=info,
         capex=capex,
         financing=financing,
         tax=tax,
+        cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
+        distribution_accounting_policy=DistributionAccountingPolicy(
+            enabled=True,
+            authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+            dividend_wht_rate=0.0,
+            legal_reserve_cap_fraction=0.10,
+            # Q.8: Project-level opening UC authority (greenfield axiom O.9)
+            opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
+        ),
         valuation=ValuationPolicies(
             project=ProjectValuationPolicy(
                 annual_discount_rate=0.066,

@@ -355,8 +355,10 @@ def test_covenant_gate_reduces_equity_returns_when_locking():
 # ── Totals reconcile ─────────────────────────────────────────────────────────
 
 def test_total_sponsor_receipts_sum_solar(solar_result):
+    # M.8: total_sponsor_receipts uses NET dividends (post-WHT) + SHL receipts.
+    # total_legal_equity_distributions_keur = gross dividend (pre-WHT) since Phase L.
     expected = (
-        solar_result.total_legal_equity_distributions_keur
+        solar_result.total_net_dividend_received_keur
         + solar_result.total_shl_cash_interest_received_keur
         + solar_result.total_shl_principal_received_keur
     )

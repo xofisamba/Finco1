@@ -40,6 +40,11 @@
     }
   },
   "workbook_inputs": {
+    "dsra_inputs": {
+      "Inputs_I347_dsra_target_months": 0,
+      "Inputs_I348_dsra_months": 0,
+      "source_note": "SOURCE_PROVEN_EXPLICIT_ZERO: Oborovo workbook Inputs!I347=0, Inputs!I348=0"
+    },
     "shl_draw_keur": {
       "value": 14620.773894815633,
       "cell": "Inputs!D325",

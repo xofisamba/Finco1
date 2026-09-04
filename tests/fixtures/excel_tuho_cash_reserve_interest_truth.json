@@ -1,0 +1,278 @@
+{
+  "_meta": {
+    "source_file": "20260330_TUHO_BP.xlsm",
+    "correction": "U2 Correction E",
+    "branch": "upstream-cash-reserve-interest-authority",
+    "extraction_method": "openpyxl dual-load (data_only=False for formulas, data_only=True for cached values)",
+    "authority": "DIRECT_WORKBOOK_EXTRACTION",
+    "note": "All evidence extracted directly from TUHO workbook cells. No inference from P&L outputs or template similarity to Oborovo."
+  },
+  "pnl_sheet": "P&L",
+  "cf_sheet": "CF",
+  "pnl_header_rows": {
+    "row_3_year": {
+      "label_colA": "Year",
+      "colG_formula": "=Flags!G7",
+      "colG_cached": 0,
+      "colH_formula": "=Flags!H7",
+      "colH_cached": 1,
+      "role": "year_index_post_construction_guard",
+      "note": "(H$3>0) in row 19 formula tests year > 0 i.e. post-construction",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    },
+    "row_5_project_life": {
+      "label_colA": "Project Life",
+      "colG_formula": "=Flags!G12",
+      "colG_cached": false,
+      "colH_formula": "=Flags!H12",
+      "colH_cached": true,
+      "role": "boolean_in_life_flag",
+      "note": "H$5 is a boolean TRUE/FALSE flag, NOT a day-count fraction. Used as multiplier (1 or 0) in cash formula.",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    },
+    "row_6_day_fraction": {
+      "label_colA": "Operation Period (incl. Leap)",
+      "colG_formula": "=Flags!G13",
+      "colG_cached": 0,
+      "colH_formula": "=Flags!H13",
+      "colH_cached": 0.4958904109589041,
+      "colI_cached": 0.5041095890410959,
+      "role": "actual_day_count_fraction",
+      "note": "H$6 is the period day fraction (e.g. 181/365 = 0.4959 for first semi-annual period).",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    }
+  },
+  "pnl_B19_rate": {
+    "cell": "P&L!B19",
+    "formula_mode_value": "=Inputs!$D$438",
+    "data_mode_cached": 0.01,
+    "conclusion": "FORMULA_CELL_linking_to_Inputs_D438_HARDCODE_0.01",
+    "authority": "SOURCE_PROVEN_FORMULA_LINK"
+  },
+  "inputs_D438_rate": {
+    "cell": "Inputs!D438",
+    "label_colA": "Cash Interest",
+    "formula_mode_value": 0.01,
+    "data_mode_cached": 0.01,
+    "conclusion": "HARDCODE_numeric_literal_not_formula",
+    "authority": "HARDCODE_CONFIRMED",
+    "csv_conflict": {
+      "editable_input_disposition_v5_1_csv_line_89": "DERIVED_FROM_EXISTING_INPUT",
+      "verdict": "CSV_INCORRECT — direct workbook formula-mode returns numeric 0.01, not a formula string. Source JSON HARDCODE classification is correct. Direct workbook evidence overrides CSV."
+    }
+  },
+  "pnl_row19_reserve": {
+    "label_colA": "Interests from Reserve Accounts",
+    "colH_formula": "=(H$3>0)*$B19*(CF!G95+CF!G81)*H$6",
+    "colH_cached": 0,
+    "first_nonzero_col": null,
+    "first_nonzero_val_keur": null,
+    "zero_all_periods": true,
+    "note": "TUHO earns no reserve/DSRA interest for any period.",
+    "authority": "SOURCE_PROVEN_FORMULA"
+  },
+  "pnl_row20_cash": {
+    "label_colA": "Interests from Cash",
+    "colH_formula": "=(CF!G135>0)*$B19*CF!G135*H$5*H$6",
+    "colH_cached": 0,
+    "first_nonzero_col": "AV",
+    "first_nonzero_val_keur": 2.7273972602740044,
+    "formula_at_first_nonzero_col": "=(CF!AU135>0)*$B19*CF!AU135*AV$5*AV$6",
+    "authority": "SOURCE_PROVEN_FORMULA"
+  },
+  "pnl_row21_withholding": {
+    "label_colA": "Withholding Tax",
+    "colH_formula": "=-SUM(H19:H20)*$B21*H$6",
+    "colH_cached": 0,
+    "zero_all_periods": true,
+    "note": "B21=0 (confirmed zero WHT rate).",
+    "authority": "SOURCE_PROVEN_FORMULA"
+  },
+  "cf_row135_cash": {
+    "label_colA": "Cash end of the year",
+    "row": 135,
+    "colG_formula": "=F135+G122",
+    "colG_cached": 0,
+    "colF_cached": null,
+    "first_nonzero_col": "AU",
+    "first_nonzero_val_keur": 550.0000000000064,
+    "samples_from_first_nonzero": {
+      "AU": 550.0000000000064,
+      "AV": 550.0000000000064,
+      "AW": 550.0000000000064,
+      "AX": 550.0000000000064,
+      "AY": 550.0000000000064
+    },
+    "context_row134_label": null,
+    "context_row136_label": "Negative cash check",
+    "account_identity": "unrestricted_surplus_cash_closing_balance",
+    "authority": "SOURCE_PROVEN_FORMULA",
+    "note": "Identity proved from label, formula pattern (=F135+G122 cumulative), and structural context (above: blank, below: Negative cash check)."
+  },
+  "cf_row81_senior_dsra": {
+    "label_colA": "End",
+    "row": 81,
+    "section_header_row": 75,
+    "section_header_label": "DSRA",
+    "colG_formula": "=SUM(G77:G80)",
+    "colG_cached": 0,
+    "first_nonzero_col": null,
+    "first_nonzero_val_keur": null,
+    "zero_all_periods": true,
+    "context_prev_row_label": "Shortfall",
+    "context_next_row_label": "DSRA",
+    "account_identity": "Senior_DSRA_ending_balance",
+    "balance_convention": "PRIOR_PERIOD_CLOSING",
+    "balance_convention_proof": "Row 77 Beginning = =F81 (prior period End), confirming opening = prior closing.",
+    "authority": "SOURCE_PROVEN_FORMULA",
+    "note": "Section DSRA (rows 75-82): Target(76), Beginning(77)=F81, Funding(78), Operation(79), Shortfall(80), End(81)=SUM(77:80). Zero all periods — no Senior DSRA interest earned."
+  },
+  "cf_row95_jdsra": {
+    "label_colA": "End",
+    "row": 95,
+    "section_header_row": 89,
+    "section_header_label": "J-DSRA",
+    "colG_formula": "=SUM(G91:G94)",
+    "colG_cached": 0,
+    "first_nonzero_col": null,
+    "first_nonzero_val_keur": null,
+    "zero_all_periods": true,
+    "context_prev_row_label": "Shortfall",
+    "context_next_row_label": "J-DSRA",
+    "account_identity": "Junior_DSRA_ending_balance",
+    "balance_convention": "PRIOR_PERIOD_CLOSING",
+    "balance_convention_proof": "Row 91 Beginning = =F95 (prior period End), confirming opening = prior closing.",
+    "authority": "SOURCE_PROVEN_FORMULA",
+    "note": "Section J-DSRA (rows 89-96): Target(90), Beginning(91)=F95, Funding(92), Operation(93), Shortfall(94), End(95)=SUM(91:94). Zero all periods — no J-DSRA interest earned."
+  },
+  "balance_convention": {
+    "verdict": "PRIOR_PERIOD_CLOSING_EQUALS_CURRENT_OPENING",
+    "proof_cf135": "P&L!H20 uses CF!G135; P&L!AV20 uses CF!AU135 — one column earlier. CF!G135 formula =F135+G122 (prior F closing + G inflow).",
+    "proof_cf81": "CF row 77 Beginning = =F81 (prior period End).",
+    "proof_cf95": "CF row 91 Beginning = =F95 (prior period End).",
+    "authority": "SOURCE_PROVEN_FORMULA"
+  },
+  "correction_g_findings": {
+    "correction": "U2 Correction G",
+    "minimum_cash_policy_input_search": {
+      "verdict": "NO_EXPLICIT_MINIMUM_CASH_INPUT_FOUND",
+      "search_scope": "All rows in Inputs sheet, all labels containing 'cash', 'retain', 'minimum', 'floor', 'reserve cash', 'liquidity'",
+      "found_rows": [
+        {
+          "row": 438,
+          "label": "Cash Interest",
+          "value": 0.01,
+          "role": "interest_rate_only"
+        }
+      ],
+      "conclusion": "The 550 kEUR cash balance (CF!AU135) is a model OUTPUT (emergent waterfall result), not a source policy input. No minimum retained cash / distribution floor / liquidity reserve input exists in the Inputs sheet.",
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    },
+    "cf_row122_decomposition": {
+      "label": "Change in cash",
+      "row": 122,
+      "colG_formula": "=G106-G120",
+      "components": {
+        "G106": {
+          "label": "Free Cash Flow for dividends",
+          "formula": "=G102+SUM(G103:G104)",
+          "sub_components": {
+            "G102": "FCF for Shareholder Loan (=G99)",
+            "G103": "Withholding Tax SHL (=-DS!G123*G5)",
+            "G104": "Net SHL (=-DS!G128)"
+          }
+        },
+        "G120": {
+          "label": "Gross Dividends",
+          "formula": "=G119+G118",
+          "sub_components": {
+            "G119": "Net Dividends (=G115-G118)",
+            "G118": "Withholding Tax on dividends (=G115*$B$118)"
+          }
+        }
+      },
+      "cash_roll_forward": {
+        "identity": "CF!G135 = CF!F135 + CF!G122",
+        "meaning": "closing_cash[p] = closing_cash[p-1] + change_in_cash[p]",
+        "change_in_cash_meaning": "FCF_after_SHL_service_and_WHT minus gross_dividends"
+      },
+      "bank_cfads_treatment": {
+        "cf_row66_formula": "=SUM('P&L'!G19:G21)-'P&L'!G28",
+        "cf_row69_formula": "=SUM(G20,G38,G63,G66,G67)+$B$70*(G$3=0)",
+        "verdict": "BANK_CFADS_INCLUDES_FINANCING_INCOME",
+        "conclusion": "CF row 69 (Free Cash Flow for Banks) explicitly includes G66 (reserve/cash interest income). Bank CFADS includes both unrestricted cash interest (P&L!G20) and reserve account interest (P&L!G19)."
+      },
+      "dsra_account_eligibility": {
+        "P&L_row19_formula": "=(G$3>0)*$B19*(CF!F95+CF!F81)*G$6",
+        "verdict": "ACCOUNTS_ELIGIBLE_BALANCE_CURRENTLY_ZERO",
+        "conclusion": "DSRA (CF81) and J-DSRA (CF95) are ELIGIBLE accounts in the workbook formula. Current balance is zero for all periods. INELIGIBLE classification was incorrect — accounts are eligible but happen to have zero balance.",
+        "correct_classification": "DSRA account = ELIGIBLE; observed balance = 0.0 for all periods"
+      },
+      "cash_balance_observation": {
+        "CORRECTION_I_SUPERSEDES_THIS_FIELD": true,
+        "verdict": "PREVIOUS_CONCLUSION_WRONG",
+        "prior_false_claim": "Only col AU (last period, yr=20): 550.0 kEUR — INCORRECT",
+        "prior_false_claim_p&l_all_zero": "p&l_row20_all_periods_zero=true — INCORRECT",
+        "correction": "Samples AU-AY (see cf_row135_cash.samples_from_first_nonzero) all show 550.0 kEUR. AU is the first period with nonzero cash, not the only one. P&L row 20 is nonzero from col AV onwards (see pnl_row20_cash and numerical_handshake). Exact total requires re-extraction from source workbook. Minimum confirmed: at least 4 non-zero P&L row20 periods (AV through AY minimum).",
+        "confirmed_first_nonzero_cash_col": "AU",
+        "confirmed_cash_balance_keur": 550.0000000000064,
+        "confirmed_first_nonzero_interest_col": "AV",
+        "confirmed_first_nonzero_interest_keur": 2.7273972602740044,
+        "cf135_samples_confirmed": {
+          "AU": 550.0,
+          "AV": 550.0,
+          "AW": 550.0,
+          "AX": 550.0,
+          "AY": 550.0
+        },
+        "interest_within_project_life": true,
+        "authority": "SOURCE_PROVEN_FORMULA",
+        "note": "Correction G wrongly interpreted samples_from_first_nonzero as a single-point observation. AU is first nonzero, not last period."
+      },
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    }
+  },
+  "numerical_handshake": {
+    "period_col_pnl": "AV",
+    "pnl_cash_interest_cell": "P&L!AV20",
+    "pnl_cash_interest_val_keur": 2.7273972602740044,
+    "cf_balance_col": "AU",
+    "cf_balance_cell": "CF!AU135",
+    "cf135_balance_keur": 550.0000000000064,
+    "B19_rate_cell": "P&L!B19 = =Inputs!$D$438 = 0.01",
+    "rate": 0.01,
+    "H5_life_flag_cell": "P&L!AV5",
+    "H5_life_flag": true,
+    "H6_day_fraction_cell": "P&L!AV6",
+    "H6_day_fraction": 0.4958904109589041,
+    "expected_keur": 2.7273972602740044,
+    "actual_keur": 2.7273972602740044,
+    "residual_keur": 0.0,
+    "verdict": "MACHINE_PRECISION_MATCH",
+    "formula_verification": "550.000 x 0.01 x TRUE x 0.4958904... = 2.72739726... kEUR = P&L!AV20 cached"
+  },
+  "correction_i_findings": {
+    "correction": "U2 Correction I",
+    "source_reconciliation": {
+      "verdict": "CORRECTION_G_ZERO_INTEREST_CONCLUSION_INCORRECT",
+      "evidence": "pnl_row20_cash.first_nonzero_col=AV and numerical_handshake both prove non-zero interest.",
+      "confirmed_nonzero_interest_at_AV": 2.7273972602740044,
+      "confirmed_balance_AU_through_AY": 550.0,
+      "known_nonzero_interest_periods": [
+        "AV",
+        "AW",
+        "AX",
+        "AY"
+      ],
+      "known_nonzero_interest_count_minimum": 4,
+      "total_interest_keur_known_minimum": 10.908,
+      "total_interest_keur_exact": "REQUIRES_FULL_WORKBOOK_RE_EXTRACTION",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    },
+    "opening_cash_authority": {
+      "verdict": "ZERO_ASSUMED_OPENING",
+      "proof": "CF!F135 = colF_cached = null (construction period 0 cash = 0). Project starts with no retained cash.",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    }
+  }
+}

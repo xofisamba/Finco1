@@ -169,6 +169,22 @@ class CovenantGatedWaterfallPeriod:
 
     # Equity distribution: residual after SHL service from fcf_for_distribution (R116)
     legal_equity_distribution_keur: float
+
+    # U2 Phase L: Pre-distribution accounting cap layer
+    # Source: TUHO CF106-CF135, Oborovo CF116-CF144
+    fcf_for_dividends_keur: float          # = legal_equity_distribution_keur (post-SHL residual)
+    accounting_dividend_capacity_keur: float  # MAX(0, opening_RE + net_income - legal_reserve_transfer)
+    cash_dividend_capacity_keur: float     # opening_unrestricted_cash + fcf_for_dividends
+
+    distributable_keur: float              # MAX(0, MIN(accounting_cap, cash_cap))
+    gross_dividend_paid_keur: float        # = distributable (WHT-neutral for corporate cash)
+    dividend_wht_rate: float               # 0.0 for TUHO, 0.05 for Oborovo
+    dividend_wht_keur: float               # gross_dividend * wht_rate
+    net_dividend_received_keur: float      # gross_dividend * (1 - wht_rate)
+    unrestricted_cash_opening_keur: float  # prior period's unrestricted_cash_closing
+    change_in_unrestricted_cash_keur: float  # fcf_for_dividends - gross_dividend_paid
+    unrestricted_cash_closing_keur: float  # opening + change
+
     cash_shortfall_keur: float
 
     # Sponsor contributions (construction periods)
@@ -181,6 +197,12 @@ class CovenantGatedWaterfallPeriod:
     # Net cashflows for return metrics
     pure_equity_net_cashflow_keur: float
     total_sponsor_net_cashflow_keur: float
+
+    # O.8: Legal reserve causal roll-forward (exposed for auditability)
+    # Default 0.0: periods where distribution accounting is inactive carry no LR movement.
+    opening_legal_reserve_keur: float = 0.0   # legal reserve at start of period
+    legal_reserve_transfer_keur: float = 0.0  # transfer to legal reserve this period
+    closing_legal_reserve_keur: float = 0.0   # legal reserve at end of period
 
 
 @dataclass(frozen=True)
@@ -210,6 +232,10 @@ class CovenantGatedWaterfallResult:
     # Distribution Account totals (causal — CF108/109/110)
     total_distribution_account_locked_keur: float  # sum of da_closing across all periods
     distribution_account_status: str               # causal status string
+
+    # U2 Phase L: dividend totals
+    total_gross_dividend_paid_keur: float
+    total_net_dividend_received_keur: float
 
     # BULLET SHL maturity status
     shl_bullet_unpaid_at_maturity: bool     # True if any period had underfunded BULLET

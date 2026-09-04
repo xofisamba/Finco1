@@ -329,6 +329,7 @@ def _run_with_construction_idc(
     baseline_commit_sha: str,
     outer_tolerance_keur: float,
     outer_max_iterations: int,
+    _u2_period_financing_income: "tuple | None" = None,
 ) -> "ProjectFinancingResult":
     """Outer G2A / construction IDC fixed point for construction_financing.enabled=True.
 
@@ -512,6 +513,7 @@ def _run_with_construction_idc(
         _typed_shl_context=(
             _seed_shl_context if _seed_shl_context.accrual_enabled else None
         ),
+        _u2_period_financing_income=_u2_period_financing_income,
     )
 
     # Neutral seed: inner_result from step 1 is used directly as the starting state.
@@ -572,6 +574,7 @@ def _run_with_construction_idc(
                 if _iteration_shl_context.accrual_enabled
                 else None
             ),
+            _u2_period_financing_income=_u2_period_financing_income,
         )
 
         # Check outer convergence across all material state components.
@@ -647,6 +650,7 @@ def _run_with_construction_idc(
         _typed_shl_context=(
             _verify_shl_context if _verify_shl_context.accrual_enabled else None
         ),
+        _u2_period_financing_income=_u2_period_financing_income,
     )
     _idempotence_residual = max(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
@@ -897,6 +901,7 @@ def run_project_financing_model(
     convergence_tolerance_keur: float = 1e-7,
     maximum_iterations: int = 50,
     _typed_shl_context: _TypedConstructionShlContext | None = None,
+    _u2_period_financing_income: "tuple | None" = None,
 ) -> ProjectFinancingResult:
     """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
     fin = project_inputs.financing
@@ -915,6 +920,7 @@ def run_project_financing_model(
             baseline_commit_sha=baseline_commit_sha,
             outer_tolerance_keur=convergence_tolerance_keur,
             outer_max_iterations=maximum_iterations,
+            _u2_period_financing_income=_u2_period_financing_income,
         )
         return result
 
@@ -1139,6 +1145,15 @@ def run_project_financing_model(
                     ),
                 ),
             )
+        # U2 Phase L: inject cash-reserve financing income into tax input
+        if _u2_period_financing_income and capacity_model_input.tax is not None:
+            capacity_model_input = replace(
+                capacity_model_input,
+                tax=replace(
+                    capacity_model_input.tax,
+                    period_financing_income=_u2_period_financing_income,
+                ),
+            )
         capacity_result = run_senior_debt_model(capacity_model_input)
         if capacity_result.senior_debt is None:
             raise RuntimeError("G2A DSCR capacity result is unavailable")
@@ -1172,6 +1187,15 @@ def run_project_financing_model(
                     post_construction_principal_contribution_keur=(
                         _iter_post_construction_principal
                     ),
+                ),
+            )
+        # U2 Phase L: inject cash-reserve financing income into funded tax input
+        if _u2_period_financing_income and funded_model_input.tax is not None:
+            funded_model_input = replace(
+                funded_model_input,
+                tax=replace(
+                    funded_model_input.tax,
+                    period_financing_income=_u2_period_financing_income,
                 ),
             )
         model_result = run_senior_debt_model(funded_model_input)
