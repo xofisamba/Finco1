@@ -98,10 +98,11 @@ from finco_core.inputs.distribution_accounting_policy import (
 )
 
 
-# H.3: SOURCE_PROVEN interest policy — rate and eligible-account identity proved
-# from workbook source formulas. Balance schedule remains UNRESOLVED (no
-# authoritative cash roll-forward data). Authority composition in
-# build_cash_reserve_interest_schedules yields UNRESOLVED income (zero).
+# U2 DELIVERED: SOURCE_PROVEN interest policy — rate and eligible-account identity proved
+# from workbook source formulas. Unrestricted cash is causally derived through the
+# canonical distribution-accounting roll-forward (U2 fixed-point). Opening UC has typed
+# authority. Cash reserve interest is produced by the converged U2 transition.
+# Source numeric parity exceptions are downstream of upstream financing/tax authority.
 _SOURCE_PROVEN_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
     authority=CashReserveInterestAuthority.SOURCE_PROVEN,
     annual_rate=0.01,
@@ -703,10 +704,11 @@ def create_default_oborovo() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
-    # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
-    # =Inputs!$D$455. DSRA (CF rows 91, 105) ELIGIBLE per P&L!G19 formula.
-    # Balance schedule is UNRESOLVED (no authoritative roll-forward data) — authority
-    # composition in build_cash_reserve_interest_schedules yields UNRESOLVED income.
+    # U2 DELIVERED (Oborovo): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$455.
+    # DSRA (CF rows 91, 105) ELIGIBLE per P&L!G19. Opening UC typed authority.
+    # UC causally derived via canonical distribution-accounting roll-forward (U2 fixed-point).
+    # Parity exception: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE
+    # (source distributes EBITDA−bank_cash_tax; clean uses actual corporate-cash-tax timing).
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -997,10 +999,10 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
-    # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
-    # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.
-    # Balance schedule is UNRESOLVED (no authoritative roll-forward data) — authority
-    # composition in build_cash_reserve_interest_schedules yields UNRESOLVED income.
+    # U2 DELIVERED (TUHO wind1 base): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$438.
+    # DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19. UC causally derived via U2 fixed-point.
+    # Parity exception: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    # (canonical senior solver produces different SHL principal/PIK from source workbook).
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -1300,10 +1302,10 @@ def create_default_tuho_wind1() -> ProjectInputs:
         # authorises a ConstructionPLStatement to close the gap.
         # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED.
     )
-    # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
-    # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.
-    # Balance schedule is UNRESOLVED (no authoritative roll-forward data) — authority
-    # composition in build_cash_reserve_interest_schedules yields UNRESOLVED income.
+    # U2 DELIVERED (TUHO wind1 U2): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$438.
+    # DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19. Opening UC typed authority.
+    # UC causally derived via canonical distribution-accounting roll-forward (U2 fixed-point).
+    # Parity exception: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
     return replace(
         legacy,
         info=info,

@@ -129,15 +129,22 @@ def test_n2_solar_net_equals_legal_equity_distribution():
 # ── N.3: TUHO production schedule ─────────────────────────────────────────────
 
 def test_n3_tuho_production_schedule_source_proven():
-    """N.3: TUHO produces SOURCE_PROVEN cash reserve schedule with exact total FI."""
+    """N.3: TUHO produces SOURCE_PROVEN cash reserve schedule.
+
+    CANONICAL_CLEAN_NUMERIC_RESULT: 124.31673813224894 kEUR (20 non-zero periods,
+    opening UC ≈ 544.865 kEUR — SOURCE_PROVEN mechanics authority).
+    SOURCE_WORKBOOK_REFERENCE: source FI ≈ 55.000 kEUR; gap is downstream of
+    TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
+    124.317 is NOT the exact source workbook total.
+    """
     from app.project_factories import create_default_tuho_wind1
     r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
     fi = r.financing_result.cash_reserve_interest_schedules
     assert fi is not None
     assert fi.authority == "SOURCE_PROVEN"
-    # Exact total FI (O.11): 20 non-zero periods, UC=544.865 (pre_op_opex removed per O.7)
+    # CANONICAL_CLEAN_NUMERIC_RESULT (U2 converged): 124.317 kEUR
     assert abs(fi.total_financing_income_keur - 124.31673813224894) < 1e-6, (
-        f"TUHO total FI={fi.total_financing_income_keur} != 124.317"
+        f"TUHO total FI={fi.total_financing_income_keur} != 124.317 (canonical clean)"
     )
 
 
@@ -232,7 +239,14 @@ def test_n4_oborovo_wht_five_percent():
 
 
 def test_n4_oborovo_total_financing_income():
-    """N.4: Oborovo has exactly 20 non-zero FI periods; total FI = 71.003 kEUR (ELIGIBLE DSRA)."""
+    """N.4: Oborovo has 20 non-zero FI periods; CANONICAL_CLEAN_NUMERIC_RESULT = 71.003 kEUR.
+
+    SOURCE_PROVEN_MECHANICS: annual rate, eligible accounts (DSRA eligible), day count.
+    CANONICAL_CLEAN_NUMERIC_RESULT: 71.00318671182808 kEUR (20 non-zero periods, DSRA eligible).
+    SOURCE_WORKBOOK_REFERENCE: source FI ≈ 55.000 kEUR; gap is downstream of
+    OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE.
+    71.003 is NOT the exact source workbook total.
+    """
     from app.project_factories import create_default_oborovo
     r = run_project_shareholder_waterfall_model(create_default_oborovo())
     fi = r.financing_result.cash_reserve_interest_schedules
