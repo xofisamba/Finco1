@@ -254,7 +254,8 @@ def test_n5_tuho_construction_ni_components():
 
     pre_op_opex=48.268 was a balancing plug (SOURCE_OPENING_LOSS_KEUR - SHL_PIK)
     with no independent workbook cell reference. BLOCKED per O.7.
-    Token: CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED.
+    Stale token retired (V.7): CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED.
+    Active reclassification: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED.
     """
     from app.project_factories import create_default_tuho_wind1
     proj = create_default_tuho_wind1()
@@ -510,7 +511,7 @@ def test_n14_cash_reserve_interest_authority_status():
     # Assert the model state that causes the BLOCKED status:
     #   construction_pl=None (removed), no pre_op_opex plug, FI exact-matched above.
     assert proj_tuho.tax.construction_pl is None, (
-        "CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED: "
+        "CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED: "
         "construction_pl must be None (O.7: pre_op_opex plug removed, no source-proven value)"
     )
     assert getattr(proj_tuho.tax, "construction_pl", None) is None
@@ -813,24 +814,46 @@ def test_s7_oborovo_clean_production_behavioral():
       FCF = 695.977, acct_cap = 0, gross_div = 0 (RE = -46.664 kEUR, negative).
       First clean distribution: cidx=41.
 
-    Classification: OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED
+    Classification: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL
 
-    Root cause (U.3–U.5 SHL and RE bridge):
-      1. SHL opening balance at DS[1]/cidx=1: source=15790.436, clean=15790.399 (diff=-0.037 kEUR
-         from construction PIK rounding: source=1169.662, clean=1169.659).
-      2. PARTIAL_CASH_PARTIAL_PIK split diverges DS[1]–DS[24]: clean DA available differs from
-         source DA available (canonical DSCR-sculpted senior DS vs source Excel senior DS) →
-         different cash/PIK split each period → diverging SHL balance evolution.
-      3. Cumulative excess clean SHL gross interest DS[1]–DS[40]: +65.123 kEUR.
-      4. Different SHL gross interest → different fiscal reintegration → different LCF usage timing
-         → cumulative excess clean CIT DS[1]–DS[40]: +71.193 kEUR.
-      5. Net RE gap at DS[40]: clean RE = -46.664 vs source RE = +89.650 (gap = -136.314 kEUR).
-      6. Source acct_cap = 39.650 (RE - legal reserve); clean acct_cap = 0 (RE negative).
-      7. Distribution gate OPEN at cidx=40 in clean (senior fully repaid at cidx=28;
-         within_senior_maturity=False for all periods 29+). Gate is NOT the cause.
+    Period mapping (V.1): DS[n] → clean_period_index = n (confirmed by date alignment).
+      Source DS[1] bop=2030-07-01/eop=2030-12-31; clean cidx=1: start=2030-06-30/end=2030-12-31.
+      One-day boundary convention difference (source inclusive, clean exclusive); mapping is n→n.
 
-    Closing this gap would require matching the exact source senior DS schedule (workbook replay)
-    or adjusting the SHL PARTIAL_CASH/PIK arithmetic — both violate governance constraints.
+    First authority gap (V.3 — B7 Bank CFADS residual):
+      DS1–DS5 Bank CFADS: source = clean exactly (delta = 0.000 kEUR each period).
+      DS6 FIRST DIVERGENCE: source=2648.870, clean=2657.781, delta=+8.910 kEUR.
+      This is the accepted B7 Bank CFADS / Senior cash residual from the canonical
+      DSCR-sculpted senior debt service schedule vs the source Excel senior schedule.
+      SHL balance evolution is the PROPAGATION MECHANISM — not the root authority gap.
+
+    Propagation chain (V.4 — RECONCILIATION evidence):
+      accepted B7 Bank CFADS residual (DS6: source=2648.870, clean=2657.781, delta=+8.910 kEUR)
+        → clean post-Senior / DA available higher at DS6 (+8.905 kEUR)
+        → PARTIAL_CASH_PARTIAL_PIK split diverges: clean pays 8.899 kEUR more cash to SHL at DS6
+        → SHL balance evolution diverges from DS6 onward
+        → cumulative excess clean SHL gross interest DS[1]–DS[40]: +65.123 kEUR
+        → different fiscal reintegration → different LCF usage timing
+        → cumulative excess clean CIT DS[1]–DS[40]: +71.193 kEUR
+        → RE gap at DS[40]: clean=-46.664, source=+89.650, gap=-136.314 kEUR
+        → clean acct_cap=0 at cidx=40 (RE negative); source acct_cap=39.650
+        → no distribution at cidx=40 → first clean distribution at cidx=41
+
+    U2 mechanics vs source-workbook parity (V.5):
+      SOURCE-PROVEN U2 mechanics (authority delivered):
+        cash-interest rate, eligible account policy, day-count, UC rollforward, WHT, U2 fixed-point.
+      SOURCE-WORKBOOK NUMERIC PARITY (not achievable without violating governance):
+        UC at cidx=40: clean=695.977 vs source=550.000
+        FI total: clean=71.003 vs source=55.000 (estimated)
+        These gaps are PROPAGATION consequences of the accepted B7 Bank CFADS residual.
+
+    Architecture verdict: U2_CANONICAL_CLEAN_AUTHORITY_DELIVERED_WITH_DOCUMENTED_UPSTREAM_SOURCE_PARITY_EXCEPTIONS
+
+    Distribution gate OPEN at cidx=40 in clean (senior_last_period_index=28;
+    within_senior_maturity=False for all periods ≥29). Gate is NOT the cause of timing gap.
+
+    Closing the RE lineage gap would require matching the exact source senior DS schedule
+    (workbook replay) — which violates governance constraints.
 
     This test proves the source evidence, asserts clean model consistency (U2 fixed-point
     convergence + idempotence), and documents the known classification.
@@ -874,16 +897,15 @@ def test_s7_oborovo_clean_production_behavioral():
     ops = [wp for wp in r.waterfall_periods if not wp.is_construction]
     wp_by_idx = {wp.period_index: wp for wp in r.waterfall_periods}
 
-    # OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED:
-    # At DS[40] / clean cidx=40: source acct_cap=39.650 (RE=+89.650), clean acct_cap=0 (RE=-46.664).
-    # RE gap = -136.314 kEUR driven by cumulative excess clean SHL gross interest (+65.123 kEUR)
-    # + excess clean CIT (+71.193 kEUR) through DS[1]-DS[40], caused by divergent PARTIAL_CASH_PARTIAL_PIK
-    # split from DS[1] onward (canonical DSCR-sculpted senior DS differs from source senior DS →
-    # different DA available → different cash/PIK split → diverging SHL balance → different NI/LCF).
+    # OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL:
+    # First authority gap = DS6 B7 Bank CFADS residual (source=2648.870, clean=2657.781, +8.910 kEUR).
+    # SHL balance evolution / CIT / RE gap are PROPAGATION RECONCILIATION of that upstream residual.
+    # At DS[40]/cidx=40: clean acct_cap=0 (RE=-46.664); source acct_cap=39.650 (RE=+89.650).
+    # RE gap=-136.314 kEUR = cumulative excess clean SHL interest (+65.123) + excess clean CIT (+71.193).
     clean_wp_40 = wp_by_idx.get(40)
     assert clean_wp_40 is not None
     assert clean_wp_40.accounting_dividend_capacity_keur == 0.0, (
-        "S.7: OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED — "
+        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL — "
         f"clean acct_cap at cidx=40={clean_wp_40.accounting_dividend_capacity_keur:.3f} != 0 "
         "(RE lineage divergence may have closed)"
     )
@@ -899,7 +921,7 @@ def test_s7_oborovo_clean_production_behavioral():
     )
     clean_fcf_p41 = first_dist.fcf_for_dividends_keur
     assert clean_fcf_p41 > src_fcf, (
-        "S.7: OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED — "
+        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL — "
         f"clean FCF at cidx=41 ({clean_fcf_p41:.3f}) should exceed source DS[40] FCF ({src_fcf:.3f}) "
         "due to full FCF carry from cidx=40 (acct_cap=0 blocked distribution)"
     )
