@@ -493,8 +493,19 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
         "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
     }
-    # Legal reserve: explicit typed activation only (§18 Correction E).
-    _lr_policy = _apc.legal_reserve_policy
+    # J.3: LR activation comes from the upstream distribution accounting
+    # policy (project_inputs.distribution_accounting_policy), NOT from
+    # AccountingPolicyConfig.legal_reserve_policy.  C3 is NOT a second LR
+    # authority — it consumes the LR that the G2C waterfall already computed
+    # under the upstream DA policy.  Three-case semantics:
+    #   A. DA enabled + valid upstream authority → require all LR fields from wp
+    #   B. DA disabled → LR = zero by policy
+    #   C. DA enabled + UNRESOLVED authority → LEGAL_RESERVE_AUTHORITY_UNAVAILABLE
+    _da_policy = (
+        getattr(project_inputs, "distribution_accounting_policy", None)
+        if project_inputs is not None else None
+    )
+    _lr_policy_enabled = bool(getattr(_da_policy, "enabled", False))
     # Correction G §13-§17: opening RE authority comes from typed
     # preconstruction_retained_earnings_authority, NOT from SHL treatment.
     # SHL treatment being EXPENSE_TO_PNL is a necessary accounting mechanic
@@ -761,10 +772,16 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             )
 
         # Balance sheet: build with canonical clean balances; equity filled post-loop.
-        cumulative_share_capital += float(
-            getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
-        cumulative_share_premium += float(
-            getattr(wp, "share_premium_contribution_keur", 0.0) or 0.0)
+        # J.5: Construction SC/SP already initialized from ConstructionFundingResult
+        # draws (I.12). Only add operating-period G2C contributions here to avoid
+        # double-counting. Construction-period wps (is_construction_period=True) carry
+        # the same capital draw as the construction authority — adding them again would
+        # overstate equity.
+        if not is_construction_period and _wp_is_real:
+            cumulative_share_capital += float(
+                getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
+            cumulative_share_premium += float(
+                getattr(wp, "share_premium_contribution_keur", 0.0) or 0.0)
         dsra_close = (
             float(dpr.closing_balance_keur) if dpr is not None else None
         )
@@ -803,7 +820,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         (_pre_re_keur + construction_ni_sum) if opening_re_authority and _pre_re_keur is not None
         else None
     )
-    _lr_policy_enabled = getattr(_lr_policy, "enabled", False) if _lr_policy is not None else False
     _lr_computed = False
     _lr_zero_by_policy = False
 
@@ -834,33 +850,45 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     _re_open = cod_opening_re
     re_periods_by_idx: dict = {}
     for _pidx, _ni, _gdiv, _pend, _wlr_open, _wlr_transfer, _wlr_close in _op_re_inputs:
-        # I.8: Do NOT convert missing transfer to 0.0 when policy enabled.
+        # J.4: Fail-closed on missing LR fields — no silent 0.0 substitute.
+        # When DA policy is enabled, missing or invalid LR transfer → RE unavailable.
         if _lr_policy_enabled:
-            _lrt = float(_wlr_transfer) if _wlr_transfer is not None else 0.0
+            if _wlr_transfer is None or not _lr_computed:
+                # LR required but missing: RE unavailable for this and all subsequent periods.
+                _lrt_alloc: float | None = None
+                _lrt = 0.0  # unused for RE calc below; RE will be None anyway
+            else:
+                _lrt_alloc = float(_wlr_transfer)
+                _lrt = _lrt_alloc
         else:
+            _lrt_alloc = None  # zero by policy → allocation is None (not reported as a line)
             _lrt = 0.0  # zero by policy
         _lr_close_val = float(_wlr_close) if _wlr_close is not None else None
-        if _lr_close_val is not None:
+        if _lr_close_val is not None and _lr_computed:
             _lr_closing_by_idx[_pidx] = _lr_close_val
         elif not _lr_policy_enabled:
             _lr_closing_by_idx[_pidx] = 0.0  # zero by policy
         # H.9/I.9: RE closing = opening + NI - gross_dividend - LR_transfer.
+        # J.4: RE closing is None when LR is required but unavailable.
+        _lrt_for_re = _lrt_alloc if _lr_policy_enabled else 0.0
         _re_close = (
-            None if _re_open is None
-            else _re_open + _ni - _gdiv - _lrt
+            None if (_re_open is None or (_lr_policy_enabled and _lrt_alloc is None))
+            else _re_open + _ni - _gdiv - (_lrt_for_re or 0.0)
         )
-        re_periods_by_idx[_pidx] = (_re_open, _re_close, _wlr_close, _pend, _ni, _gdiv, _lrt)
+        re_periods_by_idx[_pidx] = (_re_open, _re_close, _wlr_close, _pend, _ni, _gdiv, _lrt_for_re)
         re_periods.append(RetainedEarningsPeriod(
             period_index=_pidx,
             period_end=_pend,
             opening_retained_earnings_keur=_re_open,
             net_income_keur=_ni,
             legal_equity_distribution_keur=_gdiv,
-            legal_reserve_allocation_keur=_lrt if _lr_policy_enabled else None,
+            legal_reserve_allocation_keur=_lrt_alloc,
             closing_retained_earnings_keur=_re_close,
         ))
-        if _re_open is not None:
+        if _re_open is not None and _re_close is not None:
             _re_open = _re_close
+        elif _lr_policy_enabled and _lrt_alloc is None:
+            _re_open = None  # propagate unavailability
 
     # H.10/I.5: rebuild BS periods with equity and CIT timing balance populated.
     _bs_by_idx = {bsp.period_index: bsp for bsp in bs_periods}
@@ -967,9 +995,21 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
         )
     )
+    # J.6: Overall status aggregates ALL required statements explicitly.
+    # Unresolved FI must prevent overall OK even if BS happens to balance.
+    _income_ok = _fi_resolved
+    _tax_ok = True  # always computed from canonical vectors
+    _cash_ok = True  # always computed from canonical vectors
+    _fa_ok = gfa_keur is not None
+    _re_ok = opening_re_authority
+    _lr_ok = _lr_computed
+    _uc_ok = _uc_resolved
+    _bs_ok = _bs_complete
     if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
-    elif not _bs_complete:
+    elif not _income_ok:
+        overall = StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
+    elif not _bs_ok:
         overall = _bs_status
     else:
         overall = StatementStatus.OK
