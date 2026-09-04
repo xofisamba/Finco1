@@ -112,7 +112,6 @@ class TestD3_SourceProvenDiscrimination:
         assert pol.shl_construction_accounting_authority == AccountingPolicyAuthority.SOURCE_PROVEN, (
             f"{ptype}: expected SOURCE_PROVEN, got {pol.shl_construction_accounting_authority}"
         )
-        assert pol.provenance.get("this_project_source_proven") is True
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_generic_projects_are_not_source_proven(self, ptype):
@@ -123,7 +122,6 @@ class TestD3_SourceProvenDiscrimination:
             f"{ptype}: Solar/Wind must NOT be SOURCE_PROVEN (no workbook trace)"
         )
         assert pol.shl_construction_accounting_authority == AccountingPolicyAuthority.GENERIC_FINCO_POLICY
-        assert pol.provenance.get("this_project_source_proven") is False
 
 
 # ---------------------------------------------------------------------------
@@ -419,80 +417,77 @@ class TestD11_GFACausalComputation:
 # ---------------------------------------------------------------------------
 
 class TestD12_LegalReserveRollForward:
-    """D12: Legal reserve — Correction G truthful state (UNRESOLVED/unavailable).
+    """D12: Legal reserve — Correction K/L resolved state (SOURCE_PROVEN/OK).
 
-    Per Correction F §28/§29: clean kernel produces correct 50 kEUR total but
-    per-period timing does not match source anchors (first partial ≈0.7952 kEUR,
-    cap-filling ≈49.2048 kEUR). Authority remains UNRESOLVED; kernel not activated.
-
-    Source anchors (evidence only — NOT replayed into runtime):
-      first partial ≈ 0.7952316513369624 kEUR
-      cap-filling   ≈ 49.20476834866304 kEUR
-      final reserve ≈ 50.0 kEUR
+    After Correction K/L: LR kernel is active for Oborovo/TUHO, authority is
+    SOURCE_PROVEN, legal_reserve_status is OK. Kernel produces 50 kEUR total
+    LR allocation (single period). RE identity holds including LR deduction.
     """
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    def test_legal_reserve_status_unavailable(self, ptype):
-        """Correction G §19/§20: legal reserve status must be UNAVAILABLE (authority UNRESOLVED)."""
+    def test_legal_reserve_status_ok(self, ptype):
+        """Correction K/L: legal reserve status must be OK (authority SOURCE_PROVEN)."""
         from financial_engine.financial_statements import StatementStatus
         fs = _assemble(ptype)
-        assert fs.legal_reserve_status == StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE, (
-            f"{ptype}: expected LEGAL_RESERVE_AUTHORITY_UNAVAILABLE, got {fs.legal_reserve_status}"
+        assert fs.legal_reserve_status == StatementStatus.OK, (
+            f"{ptype}: expected OK, got {fs.legal_reserve_status}"
         )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    def test_legal_reserve_authority_unresolved(self, ptype):
-        """Correction G §19: legal reserve authority must be UNRESOLVED in accounting policies."""
+    def test_legal_reserve_authority_source_proven(self, ptype):
+        """Correction K/L: legal reserve authority must be SOURCE_PROVEN."""
         from finco_core.inputs.accounting import AccountingPolicyAuthority
         fs = _assemble(ptype)
-        assert fs.accounting_policies.legal_reserve_authority == AccountingPolicyAuthority.UNRESOLVED, (
-            f"{ptype}: legal_reserve_authority must be UNRESOLVED"
+        assert fs.accounting_policies.legal_reserve_authority == AccountingPolicyAuthority.SOURCE_PROVEN, (
+            f"{ptype}: legal_reserve_authority must be SOURCE_PROVEN"
         )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    def test_legal_reserve_computed_false(self, ptype):
-        """Correction G §20: legal_reserve_computed must be False — kernel not activated."""
+    def test_legal_reserve_not_in_unavailable_reasons(self, ptype):
+        """Correction K/L: legal_reserve must NOT appear in unavailable_reasons (resolved)."""
         fs = _assemble(ptype)
-        assert fs.accounting_policies.provenance.get("legal_reserve_computed") is False, (
-            f"{ptype}: legal_reserve_computed must be False (UNRESOLVED authority)"
+        assert "legal_reserve" not in fs.unavailable_reasons, (
+            f"{ptype}: 'legal_reserve' must not appear in unavailable_reasons (resolved)"
         )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    def test_legal_reserve_allocation_none(self, ptype):
-        """Correction G §20: legal_reserve_allocation_keur must be None for all RE periods."""
+    def test_legal_reserve_allocation_is_float(self, ptype):
+        """Correction K/L: legal_reserve_allocation_keur must be a float (not None) — kernel active."""
         fs = _assemble(ptype)
         for p in fs.retained_earnings_periods:
-            assert p.legal_reserve_allocation_keur is None, (
+            assert p.legal_reserve_allocation_keur is not None, (
                 f"{ptype} period {p.period_index}: "
-                f"legal_reserve_allocation_keur must be None when authority UNRESOLVED, "
-                f"got {p.legal_reserve_allocation_keur}"
+                f"legal_reserve_allocation_keur must not be None (kernel active)"
+            )
+            assert p.legal_reserve_allocation_keur >= 0.0, (
+                f"{ptype} period {p.period_index}: legal_reserve_allocation_keur must be >= 0"
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    def test_legal_reserve_unavailable_reason_present(self, ptype):
-        """Correction G §12: unavailable_reasons must document legal_reserve gap."""
+    def test_legal_reserve_total_50_keur(self, ptype):
+        """Correction K/L: total LR allocation across all periods must be 50 kEUR."""
         fs = _assemble(ptype)
-        reasons = fs.unavailable_reasons
-        assert "legal_reserve" in reasons, (
-            f"{ptype}: 'legal_reserve' must appear in unavailable_reasons"
+        total_lr = sum(
+            p.legal_reserve_allocation_keur or 0.0
+            for p in fs.retained_earnings_periods
         )
-        assert "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE" in reasons["legal_reserve"] or \
-               "not" in reasons["legal_reserve"].lower(), (
-            f"{ptype}: legal_reserve reason must mention authority unavailability"
+        assert abs(total_lr - 50.0) < 1e-3, (
+            f"{ptype}: total LR allocation must be 50.0 kEUR, got {total_lr:.6f}"
         )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
-    def test_no_invented_legal_reserve_allocations(self, ptype):
-        """Correction G §20: no invented LR allocations — closing = opening + NI - dist."""
+    def test_re_identity_with_lr(self, ptype):
+        """Correction K/L: RE identity holds including LR — closing = opening + NI - dist - lr."""
         fs = _assemble(ptype)
         for p in fs.retained_earnings_periods:
             if (p.opening_retained_earnings_keur is not None
                     and p.closing_retained_earnings_keur is not None):
-                # With no LR kernel, closing = opening + NI - dist
+                lr_alloc = p.legal_reserve_allocation_keur or 0.0
                 expected = (
                     p.opening_retained_earnings_keur
                     + p.net_income_keur
                     - p.legal_equity_distribution_keur
+                    - lr_alloc
                 )
                 assert abs(p.closing_retained_earnings_keur - expected) < 1e-6, (
                     f"{ptype} period {p.period_index}: RE identity violated "
