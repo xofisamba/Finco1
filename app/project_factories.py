@@ -141,13 +141,23 @@ _PRE_CONSTRUCTION_RE_SOURCE_PROVEN = dict(
     preconstruction_retained_earnings_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
 )
 
+# U2 delivered: legal reserve authority is now SOURCE_PROVEN (canonical
+# distribution-accounting roll-forward consumes NI including financing income).
+# Cash interest authority: SOURCE_PROVEN (U2 cash_reserve_interest_schedules).
+_SOURCE_PROVEN_LR = LegalReservePolicy(
+    enabled=True,
+    cap_fraction=0.10,
+    authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
+
 _OBOROVO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
     shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
-    legal_reserve_policy=_LR_UNRESOLVED,
-    legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
+    legal_reserve_policy=_SOURCE_PROVEN_LR,
+    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    cash_interest_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
 )
 
@@ -156,8 +166,9 @@ _TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
     shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
-    legal_reserve_policy=_LR_UNRESOLVED,
-    legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
+    legal_reserve_policy=_SOURCE_PROVEN_LR,
+    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    cash_interest_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
 )
 

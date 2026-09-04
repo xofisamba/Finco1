@@ -420,8 +420,17 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     _legal_reserve_authority = _apc.legal_reserve_authority
     _book_cap_authority = _apc.book_capitalization_authority
     _opening_re_pol_authority = _apc.opening_re_authority
-    # Cash interest income has no clean authority regardless of project.
-    _cash_interest_authority = AccountingPolicyAuthority.UNRESOLVED
+    # Cash interest authority: consume from AccountingPolicyConfig (SOURCE_PROVEN for
+    # Oborovo/TUHO after U2 delivery; UNRESOLVED for generic Solar/Wind).
+    _cash_interest_authority = _apc.cash_interest_authority
+
+    # U2 integration: extract per-period financing income from canonical schedule.
+    # Zero for generic projects (no cash_reserve_interest_schedules on ProjectFinancingResult).
+    _cri = getattr(fin, "cash_reserve_interest_schedules", None)
+    _fi_by_period: dict = {}
+    if _cri is not None:
+        for _pr in _cri.period_results:
+            _fi_by_period[int(_pr.period_index)] = float(_pr.calculated_financing_income_keur)
 
     # GFA component classification: from typed config when present, otherwise generic.
     _book_cap_components = _apc.book_capitalization_components or {
@@ -538,7 +547,9 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         opex = float(getattr(mp, "opex_keur", 0.0) or 0.0)
         ebitda = float(getattr(mp, "ebitda_keur", 0.0) or 0.0)
         book_dep = float(getattr(mp, "book_depreciation_keur", 0.0) or 0.0)
-        ebit = float(getattr(mp, "ebit_keur", 0.0) or 0.0)
+        # Financing income: BELOW EBITDA (never augments EBITDA). Zero for projects without U2.
+        fi = _fi_by_period.get(int(idx), 0.0)
+        ebit = float(getattr(mp, "ebit_keur", 0.0) or 0.0) + fi
 
         senior_int = _at(senior.senior_interest_keur, si) if si is not None else 0.0
         senior_int = senior_int or 0.0
@@ -551,7 +562,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         cit_accrual = cit_accrual or 0.0
         net_income = ebt - cit_accrual
 
-        for v in (revenue, opex, ebitda, book_dep, ebit, senior_int, shl_gross,
+        for v in (revenue, opex, ebitda, book_dep, fi, ebit, senior_int, shl_gross,
                   ebt, cit_accrual, net_income):
             if not _is_finite(v):
                 non_finite = True
@@ -565,6 +576,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             opex_keur=opex,
             ebitda_keur=ebitda,
             book_depreciation_keur=book_dep,
+            financing_income_keur=fi,
             ebit_keur=ebit,
             senior_interest_expense_keur=senior_int,
             shl_interest_expense_keur=shl_gross,
@@ -580,6 +592,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "senior_interest": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
                 "shl_interest": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
                 "cit_accrual": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
+                "financing_income": (
+                    LineAuthority.EXISTING_CLEAN_AUTHORITY.value
+                    if fi != 0.0
+                    else LineAuthority.GENERIC_FINCO_ACCOUNTING_POLICY.value
+                ),
                 "ebit_ebt_net_income": LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value,
             },
         ))
@@ -698,7 +715,10 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 if wp is not None else None
             ),
             dsra_balance_keur=dsra_close,
-            unrestricted_cash_keur=None,
+            unrestricted_cash_keur=(
+                float(getattr(wp, "unrestricted_cash_closing_keur", 0.0) or 0.0)
+                if wp is not None else None
+            ),
             gross_fixed_assets_keur=gfa_keur,
             accumulated_book_depreciation_keur=cumulative_book_dep,
             share_capital_keur=cumulative_share_capital,
@@ -786,14 +806,20 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         else StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE
     )
 
+    # UC is now consumed from CovenantGatedWaterfallPeriod.unrestricted_cash_closing_keur.
+    # FI is consumed from ProjectFinancingResult.cash_reserve_interest_schedules.
+    # Both authorities are retired; BS is complete when LR and RE are also available.
+    _uc_resolved = True  # always: wp.unrestricted_cash_closing_keur is canonical G2C output
+    _fi_resolved = (
+        _cash_interest_authority != AccountingPolicyAuthority.UNRESOLVED
+    )
+    _bs_complete = _uc_resolved and _lr_computed and opening_re_authority
     if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
+    elif not _bs_complete:
+        overall = StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE if gfa_keur is None else StatementStatus.OK
     else:
-        # Honest partial availability: unrestricted cash and complete balance
-        # sheet remain unavailable; P&L financing income (interest on cash/
-        # reserves) is an upstream engine gap — it cannot be added to C3 P&L
-        # without corresponding tax/CFADS effects.
-        overall = StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
+        overall = StatementStatus.OK
 
     if gfa_keur is None and _gfa_unavailable_msg is None:
         _gfa_unavailable_msg = (
@@ -801,11 +827,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "book_depreciable_asset_basis is absent from the financing result."
         )
     unavailable.update({
-        "balance_sheet": (
-            "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: closing unrestricted "
-            "cash requires a causal unrestricted-cash roll-forward that the "
-            "clean runtime does not yet provide; no residual-cash insert applied."
-        ),
         **({"gross_fixed_assets": _gfa_unavailable_msg} if gfa_keur is None else {}),
         **({} if _lr_computed else {
             "legal_reserve": (
@@ -815,43 +836,18 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         }),
         # §29/§30: CIT is modeled directly as accrued / cash timing in the clean
         # tax engine; no separate CIT payable roll-forward account is required.
-        # Terminal unpaid tax is surfaced explicitly.  NOT_APPLICABLE for the
-        # separate payable balance sheet line.
         "tax_payable": (
             "TAX_PAYABLE_NOT_APPLICABLE: CIT accrual and cash timing are handled "
             "directly in the clean tax engine; no separate CIT payable roll-forward "
             "is part of the accounting presentation. Terminal unpaid tax is surfaced "
             "explicitly. Source evidence does not require a separate payable balance."
         ),
-        # §27/§28: two distinct missing authorities — cash-balance roll-forward
-        # and interest-on-cash rate policy are related but separate gaps.
-        "unrestricted_cash_balance_rollforward": (
-            "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: no causal unrestricted-cash "
-            "roll-forward exists in the clean engine; typed eligible-cash-balance "
-            "input (period-by-period) is the prerequisite."
-        ),
-        "cash_reserve_interest": (
-            "CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED: no typed eligible-cash-balance "
-            "+ interest-rate-policy + timing contract exists in the clean engine; "
-            "interest on unrestricted cash and reserve balances cannot be computed. "
-            "Causal chain: eligible balance + rate + day-count → financing income "
-            "→ EBT → taxable income → CIT → Base CFADS → downstream waterfall."
-        ),
-        "financing_income": (
-            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: interest on unrestricted "
-            "cash / reserve balances has no clean authority; the P&L exposes "
-            "all known lines but is not a complete financing result."
-        ),
-        "income_statement": (
-            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: interest on unrestricted "
-            "cash / reserve balances has no clean authority; the P&L exposes "
-            "all known lines but is not a complete financing result."
-        ),
-        "unrestricted_cash": (
-            "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: no causal "
-            "unrestricted-cash roll-forward (§22-§24 source audit pending); "
-            "closing cash is never solved as a Balance Sheet residual."
-        ),
+        **({} if _fi_resolved else {
+            "financing_income": (
+                "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: cash_interest_authority "
+                "is UNRESOLVED in AccountingPolicyConfig (Solar/Wind: zero by policy)."
+            ),
+        }),
     })
 
     return FinancialStatementsResult(
@@ -862,10 +858,12 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "g2c_dscr_authority": senior.binding_constraint,
             "construction_rows_mapped": len(construction_rows),
         },
-        # Correction A: financing income (interest on unrestricted cash /
-        # reserve balances) has no clean authority — the P&L exposes all
-        # known lines but is NOT a complete financing result.
-        income_statement_status=StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE,
+        # FI authority retired: P&L financing income consumed from U2
+        # ProjectFinancingResult.cash_reserve_interest_schedules (zero for Solar/Wind).
+        income_statement_status=(
+            StatementStatus.OK if _fi_resolved
+            else StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
+        ),
         income_statement_periods=tuple(pnl_periods),
         tax_bridge_status=StatementStatus.OK,
         tax_bridge_periods=tuple(tax_periods),
@@ -878,22 +876,22 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         funding_audit=funding_audit,
         fixed_asset_status=_fixed_asset_status,
         fixed_asset_periods=tuple(fa_periods),
-        # Correction C §9-§10: full RE roll-forward consumes Net Income,
-        # whose authority is incomplete (financing income) — the roll-forward
-        # arithmetic is exposed but the status stays truthful, and it is
-        # separate from opening-RE / legal-reserve / unrestricted-cash status.
+        # RE roll-forward uses C3 NI (with FI); authority is now opening_re_authority.
         retained_earnings_status=(
-            StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
-            if opening_re_authority else opening_re_status
+            StatementStatus.OK if opening_re_authority else opening_re_status
         ),
         retained_earnings_periods=tuple(re_periods),
         opening_retained_earnings_status=opening_re_status,
         cod_opening_retained_earnings_keur=cod_opening_re,
         legal_reserve_status=_legal_reserve_status,
-        unrestricted_cash_status=(
-            StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
+        # UC authority retired: consumed from CovenantGatedWaterfallPeriod.unrestricted_cash_closing_keur.
+        unrestricted_cash_status=StatementStatus.OK,
+        balance_sheet_status=(
+            StatementStatus.OK if _bs_complete else (
+                StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE if not _lr_computed else
+                StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
+            )
         ),
-        balance_sheet_status=StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE,
         balance_sheet_periods=tuple(bs_periods),
         accounting_policies=AccountingPolicies(
             shl_construction_accounting_authority=_shl_accounting_authority,
@@ -928,7 +926,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 LineAuthority.EXISTING_CLEAN_AUTHORITY.value if gfa_keur is not None
                 else LineAuthority.UNRESOLVED.value
             ),
-            "unrestricted_cash": LineAuthority.UNRESOLVED.value,
+            "unrestricted_cash": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
             "opening_retained_earnings": (
                 _map_opening_re_label(_apc)
                 if opening_re_authority else LineAuthority.UNRESOLVED.value
