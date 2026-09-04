@@ -220,12 +220,12 @@ class RetainedEarningsPeriod:
 
 @dataclass(frozen=True)
 class BalanceSheetPeriod:
-    """Balance-sheet presentation (PARTIAL / honest-unavailable by design).
+    """Balance-sheet presentation (closed after Correction I).
 
     Senior, SHL, DA and DSRA balances are clean closing-balance authority.
-    Unrestricted cash requires a causal unrestricted-cash roll-forward that
-    the clean runtime does not yet provide — therefore the Balance Sheet is
-    NOT claimed complete and no residual-cash insert is applied.
+    net_cit_payable_keur: signed CIT accrual-vs-cash timing balance
+      (positive = tax payable liability; negative = tax receivable / prepaid asset).
+    BS identity: Assets - (L+E_excl_cit) - net_cit_payable = 0.
     """
 
     period_index: int
@@ -240,6 +240,7 @@ class BalanceSheetPeriod:
     accumulated_book_depreciation_keur: float | None
     share_capital_keur: float | None
     share_premium_keur: float | None
+    net_cit_payable_keur: float | None = None     # signed; None = not computed
     legal_reserve_keur: float | None = None       # None = LR not computed
     retained_earnings_keur: float | None = None
     balance_check_keur: float | None = None       # None = not claimed / incomplete

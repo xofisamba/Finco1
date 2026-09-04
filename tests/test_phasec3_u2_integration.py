@@ -1,7 +1,8 @@
-"""test_phasec3_u2_integration — Phase C3 Correction H acceptance tests (A–P).
+"""test_phasec3_u2_integration — Phase C3 Correction H/I acceptance tests (A–Z).
 
-Tests canonical U2 consumption, accounting semantics, FI axis, P&L identity,
-LR/RE/UC authority, BS identity, four-project semantics, and KPI regression.
+Tests canonical U2 consumption, accounting semantics, FI axis (ordered + dates),
+P&L identity, LR/RE/UC authority, CIT timing bridge, BS identity, four-project
+semantics, and KPI regression.
 
 No workbook vectors. No source-output fitting. No economic mutation.
 """
@@ -147,28 +148,34 @@ class TestE_FIAuthorityFromSchedule:
 # ---------------------------------------------------------------------------
 class TestF_FIAxisMismatch:
     def test_f_extra_fi_period_fails_closed(self):
-        from unittest.mock import MagicMock, patch
-        from financial_engine.financial_statements.contracts import StatementStatus
+        """FI schedule with wrong period index (9999) must fail STATEMENT_PERIOD_AXIS_MISMATCH."""
         result, _ = _run("Solar")
-        # Inject a fake CRI with wrong period indices.
-        fake_pr = MagicMock()
-        fake_pr.period_index = 9999
-        fake_pr.period_start = None
-        fake_pr.period_end = None
-        fake_pr.calculated_financing_income_keur = 1.0
-        fake_cri = MagicMock()
-        fake_cri.period_results = [fake_pr]
-        fake_cri.authority = "SOURCE_PROVEN"
-        with patch.object(
-            result.g2c_result.financing_result,
-            "cash_reserve_interest_schedules",
-            fake_cri,
-            create=True,
-        ):
-            proj = pf.create_default_solar_project()
-            fs = assemble_decision_complete_financial_statements(
-                result.g2c_result, project_inputs=proj
-            )
+        fin = result.g2c_result.financing_result
+
+        class _FakePR:
+            period_index = 9999
+            period_start = None
+            period_end = None
+            calculated_financing_income_keur = 1.0
+
+        class _FakeCRI:
+            period_results = (_FakePR(),)
+            authority = "SOURCE_PROVEN"
+
+        class _FakeFin:
+            def __getattr__(self, name):
+                return getattr(fin, name)
+            cash_reserve_interest_schedules = _FakeCRI()
+
+        class _FakeG2C:
+            def __getattr__(self, name):
+                return getattr(result.g2c_result, name)
+            financing_result = _FakeFin()
+
+        proj = pf.create_default_solar_project()
+        fs = assemble_decision_complete_financial_statements(
+            _FakeG2C(), project_inputs=proj
+        )
         assert fs.status == StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, (
             f"Expected STATEMENT_PERIOD_AXIS_MISMATCH, got {fs.status}"
         )
@@ -427,3 +434,330 @@ class TestP_KPIRegression:
         assert any(abs(v) > 1.0 for v in ni_vals), (
             f"{ptype}: all operating period NI values near zero — suspect regression"
         )
+
+
+# ---------------------------------------------------------------------------
+# Q — CIT payable roll-forward (I.2/I.6)
+# ---------------------------------------------------------------------------
+class TestQ_CITRollForward:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_q_cit_roll_forward_per_period(self, ptype):
+        """closing_net_cit = opening + cit_accrual - cash_tax for every period."""
+        _, fs = _run(ptype)
+        tb_by_idx = {tp.period_index: tp for tp in fs.tax_bridge_periods}
+        bs_by_idx = {bsp.period_index: bsp for bsp in fs.balance_sheet_periods}
+        # Reconstruct roll-forward from tax bridge and compare to BS.
+        running = 0.0
+        for pidx in sorted(bs_by_idx):
+            tp = tb_by_idx.get(pidx)
+            cit_acc = float(tp.cit_accrual_keur or 0.0) if tp else 0.0
+            cash_tax = float(tp.corporate_tax_cash_keur or 0.0) if tp else 0.0
+            running = running + cit_acc - cash_tax
+            bsp = bs_by_idx[pidx]
+            assert bsp.net_cit_payable_keur is not None, (
+                f"{ptype} period {pidx}: net_cit_payable_keur is None"
+            )
+            assert bsp.net_cit_payable_keur == pytest.approx(running, abs=1e-4), (
+                f"{ptype} period {pidx}: expected {running}, got {bsp.net_cit_payable_keur}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# R — CIT payable continuity (I.6)
+# ---------------------------------------------------------------------------
+class TestR_CITContinuity:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_r_cit_closing_equals_next_opening(self, ptype):
+        """Verify roll-forward continuity: closing[t] feeds opening[t+1] via roll."""
+        _, fs = _run(ptype)
+        tb_by_idx = {tp.period_index: tp for tp in fs.tax_bridge_periods}
+        sorted_indices = sorted(bsp.period_index for bsp in fs.balance_sheet_periods)
+        prev_cit = 0.0
+        for pidx in sorted_indices:
+            tp = tb_by_idx.get(pidx)
+            cit_acc = float(tp.cit_accrual_keur or 0.0) if tp else 0.0
+            cash_tax = float(tp.corporate_tax_cash_keur or 0.0) if tp else 0.0
+            expected_close = prev_cit + cit_acc - cash_tax
+            bsp_list = [b for b in fs.balance_sheet_periods if b.period_index == pidx]
+            assert bsp_list, f"{ptype}: no BS period for {pidx}"
+            assert bsp_list[0].net_cit_payable_keur == pytest.approx(expected_close, abs=1e-4)
+            prev_cit = expected_close
+
+
+# ---------------------------------------------------------------------------
+# S — Terminal unpaid-tax reconciliation (I.4)
+# ---------------------------------------------------------------------------
+class TestS_TerminalCITReconciliation:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_s_terminal_cit_matches_unpaid_tax(self, ptype):
+        """Final net CIT payable must reconcile to terminal_unpaid_tax_keur."""
+        _, fs = _run(ptype)
+        bs_sorted = sorted(fs.balance_sheet_periods, key=lambda b: b.period_index)
+        assert bs_sorted, f"{ptype}: no BS periods"
+        final_cit = bs_sorted[-1].net_cit_payable_keur
+        assert final_cit is not None, f"{ptype}: final net_cit_payable_keur is None"
+        terminal_unpaid = fs.terminal_unpaid_tax_keur
+        assert terminal_unpaid is not None
+        assert final_cit == pytest.approx(float(terminal_unpaid), abs=1e-4), (
+            f"{ptype}: final CIT roll-forward {final_cit} != terminal_unpaid_tax {terminal_unpaid}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T — FI reordered axis fails (I.7)
+# ---------------------------------------------------------------------------
+class TestT_FIReorderedAxisFails:
+    def test_t_fi_reordered_fails_closed(self):
+        """FI schedule with correct indices but wrong order must fail closed."""
+        from app.services.production_financial_authority import run_clean_production
+        proj = _FACTORY["Oborovo"]()
+        result = run_clean_production(proj, project_type="Oborovo")
+        fin = result.g2c_result.financing_result
+        cri = getattr(fin, "cash_reserve_interest_schedules", None)
+        if cri is None or len(cri.period_results) < 2:
+            pytest.skip("Oborovo has no CRI schedule or < 2 periods")
+        # Create a reversed copy of period_results.
+        reversed_periods = tuple(reversed(cri.period_results))
+
+        class _FakeCRI:
+            period_results = reversed_periods
+            authority = cri.authority
+
+        class _FakeFin:
+            def __getattr__(self, name):
+                return getattr(fin, name)
+            cash_reserve_interest_schedules = _FakeCRI()
+
+        class _FakeG2C:
+            def __getattr__(self, name):
+                return getattr(result.g2c_result, name)
+            financing_result = _FakeFin()
+
+        fs = assemble_decision_complete_financial_statements(
+            _FakeG2C(), project_inputs=result.project_inputs
+        )
+        assert fs.status == StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, (
+            f"Expected STATEMENT_PERIOD_AXIS_MISMATCH but got {fs.status}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# U — FI shifted date fails (I.7)
+# ---------------------------------------------------------------------------
+class TestU_FIShiftedDateFails:
+    def test_u_fi_shifted_period_end_fails_closed(self):
+        """FI schedule with correct index but shifted period_end must fail closed."""
+        from datetime import timedelta
+        from app.services.production_financial_authority import run_clean_production
+        proj = _FACTORY["Oborovo"]()
+        result = run_clean_production(proj, project_type="Oborovo")
+        fin = result.g2c_result.financing_result
+        cri = getattr(fin, "cash_reserve_interest_schedules", None)
+        if cri is None or not cri.period_results:
+            pytest.skip("Oborovo has no CRI schedule")
+
+        # Shift the period_end of the first period by 1 day.
+        first_pr = cri.period_results[0]
+        orig_end = getattr(first_pr, "period_end", None)
+        if orig_end is None:
+            pytest.skip("CRI period has no period_end")
+        shifted_end = orig_end + timedelta(days=1)
+
+        class _ShiftedPR:
+            period_index = first_pr.period_index
+            period_start = getattr(first_pr, "period_start", None)
+            period_end = shifted_end
+            calculated_financing_income_keur = first_pr.calculated_financing_income_keur
+
+        shifted_periods = (_ShiftedPR(),) + cri.period_results[1:]
+
+        class _FakeCRI:
+            period_results = shifted_periods
+            authority = cri.authority
+
+        class _FakeFin:
+            def __getattr__(self, name):
+                return getattr(fin, name)
+            cash_reserve_interest_schedules = _FakeCRI()
+
+        class _FakeG2C:
+            def __getattr__(self, name):
+                return getattr(result.g2c_result, name)
+            financing_result = _FakeFin()
+
+        fs = assemble_decision_complete_financial_statements(
+            _FakeG2C(), project_inputs=result.project_inputs
+        )
+        assert fs.status == StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, (
+            f"Expected STATEMENT_PERIOD_AXIS_MISMATCH but got {fs.status}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# V — LR opening + transfer = closing (I.8)
+# ---------------------------------------------------------------------------
+class TestV_LRIdentity:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_v_lr_opening_plus_transfer_equals_closing(self, ptype):
+        """For each operating period: closing_lr = opening_lr + transfer."""
+        result, fs = _run(ptype)
+        wps = result.g2c_result.waterfall_periods
+        wp_by_date = {w.cashflow_date: w for w in wps}
+        fin = result.g2c_result.financing_result
+        model_periods = list(fin.project_model_result.periods)
+        for mp in model_periods:
+            if bool(getattr(mp, "is_construction", False)):
+                continue
+            wp = wp_by_date.get(getattr(mp, "period_end", None))
+            if wp is None:
+                continue
+            lr_open = float(getattr(wp, "opening_legal_reserve_keur", 0.0) or 0.0)
+            lr_transfer = float(getattr(wp, "legal_reserve_transfer_keur", 0.0) or 0.0)
+            lr_close = float(getattr(wp, "closing_legal_reserve_keur", 0.0) or 0.0)
+            assert lr_open + lr_transfer == pytest.approx(lr_close, abs=1e-4), (
+                f"{ptype} period {mp.period_index}: "
+                f"LR identity failed: {lr_open} + {lr_transfer} != {lr_close}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# W — LR continuity (I.8)
+# ---------------------------------------------------------------------------
+class TestW_LRContinuity:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_w_lr_closing_equals_next_opening(self, ptype):
+        """closing_lr[t] == opening_lr[t+1] for consecutive operating periods."""
+        result, fs = _run(ptype)
+        wps = result.g2c_result.waterfall_periods
+        wp_by_date = {w.cashflow_date: w for w in wps}
+        fin = result.g2c_result.financing_result
+        model_periods = list(fin.project_model_result.periods)
+        op_wps = []
+        for mp in model_periods:
+            if bool(getattr(mp, "is_construction", False)):
+                continue
+            wp = wp_by_date.get(getattr(mp, "period_end", None))
+            if wp is not None:
+                op_wps.append((mp.period_index, wp))
+        for i in range(len(op_wps) - 1):
+            pidx, wp_t = op_wps[i]
+            pidx2, wp_t1 = op_wps[i + 1]
+            lr_close_t = float(getattr(wp_t, "closing_legal_reserve_keur", 0.0) or 0.0)
+            lr_open_t1 = float(getattr(wp_t1, "opening_legal_reserve_keur", 0.0) or 0.0)
+            assert lr_close_t == pytest.approx(lr_open_t1, abs=1e-4), (
+                f"{ptype}: LR closing[{pidx}]={lr_close_t} != LR opening[{pidx2}]={lr_open_t1}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# X — Missing LR field fails closed (I.8)
+# ---------------------------------------------------------------------------
+class TestX_MissingLRFieldFailsClosed:
+    def test_x_lr_policy_enabled_missing_field_classified(self):
+        """When LR policy enabled and a wp LR field is None, legal_reserve_status != OK.
+
+        Uses a mock G2C result with a fake waterfall period that returns None for
+        opening_legal_reserve_keur to exercise the fail-closed guard in assembly.
+        """
+        from app.services.production_financial_authority import run_clean_production
+        proj = _FACTORY["Oborovo"]()
+        result = run_clean_production(proj, project_type="Oborovo")
+        fin = result.g2c_result.financing_result
+        model_periods = list(fin.project_model_result.periods)
+        wps = result.g2c_result.waterfall_periods
+
+        # Find first operating waterfall period date.
+        first_op_date = None
+        for mp in model_periods:
+            if not bool(getattr(mp, "is_construction", False)):
+                first_op_date = getattr(mp, "period_end", None)
+                break
+        if first_op_date is None:
+            pytest.skip("No operating periods found")
+
+        # Create a fake wp with None opening_legal_reserve_keur.
+        class _NullLRWP:
+            def __getattr__(self, name):
+                real_wp = next((w for w in wps if w.cashflow_date == first_op_date), None)
+                if real_wp is not None:
+                    return getattr(real_wp, name)
+                raise AttributeError(name)
+            cashflow_date = first_op_date
+            opening_legal_reserve_keur = None  # triggers fail-closed
+            legal_reserve_transfer_keur = 0.0
+            closing_legal_reserve_keur = 0.0
+
+        fake_wps = [_NullLRWP() if w.cashflow_date == first_op_date else w for w in wps]
+
+        class _FakeG2C:
+            def __getattr__(self, name):
+                return getattr(result.g2c_result, name)
+            waterfall_periods = fake_wps
+
+        fs = assemble_decision_complete_financial_statements(
+            _FakeG2C(), project_inputs=result.project_inputs
+        )
+        # When LR policy is enabled and a field is None, LR is not computed → status != OK.
+        assert fs.legal_reserve_status != StatementStatus.OK, (
+            f"Expected legal_reserve_status != OK when LR field is None, got {fs.legal_reserve_status}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Y — Every operating period has a BS check (I.10)
+# ---------------------------------------------------------------------------
+class TestY_BSCoverageComplete:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_y_every_operating_period_has_bs_check(self, ptype):
+        """balance_check_keur must be non-None for every applicable operating period."""
+        result, fs = _run(ptype)
+        fin = result.g2c_result.financing_result
+        model_periods = list(fin.project_model_result.periods)
+        op_indices = {int(mp.period_index) for mp in model_periods
+                      if not bool(getattr(mp, "is_construction", False))}
+        bs_by_idx = {bsp.period_index: bsp for bsp in fs.balance_sheet_periods}
+        for pidx in sorted(op_indices):
+            bsp = bs_by_idx.get(pidx)
+            assert bsp is not None, f"{ptype}: no BS period for operating index {pidx}"
+            assert bsp.balance_check_keur is not None, (
+                f"{ptype} period {pidx}: balance_check_keur is None "
+                f"(BS not claimed complete for this period)"
+            )
+        # Coverage count must match.
+        op_checks = [bsp.balance_check_keur for bsp in fs.balance_sheet_periods
+                     if bsp.period_index in op_indices]
+        assert len(op_checks) == len(op_indices), (
+            f"{ptype}: {len(op_checks)} BS checks but {len(op_indices)} operating periods"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Z — Full BS identity for source-proven projects (I.11)
+# ---------------------------------------------------------------------------
+class TestZ_BSIdentity:
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_z_bs_balance_check_near_zero(self, ptype):
+        """balance_check_keur must be within 1e-4 kEUR for all operating periods."""
+        result, fs = _run(ptype)
+        fin = result.g2c_result.financing_result
+        model_periods = list(fin.project_model_result.periods)
+        op_indices = {int(mp.period_index) for mp in model_periods
+                      if not bool(getattr(mp, "is_construction", False))}
+        failures = []
+        for bsp in fs.balance_sheet_periods:
+            if bsp.period_index not in op_indices:
+                continue
+            if bsp.balance_check_keur is None:
+                failures.append(f"  period {bsp.period_index}: balance_check_keur is None")
+                continue
+            if abs(bsp.balance_check_keur) > 1e-4:
+                failures.append(
+                    f"  period {bsp.period_index}: |balance_check|={abs(bsp.balance_check_keur):.6f} > 1e-4 kEUR\n"
+                    f"    GFA={bsp.gross_fixed_assets_keur} AccumDep={bsp.accumulated_book_depreciation_keur} UC={bsp.unrestricted_cash_keur} "
+                    f"DSRA={bsp.dsra_balance_keur} DA={bsp.distribution_account_balance_keur}\n"
+                    f"    Senior={bsp.senior_debt_balance_keur} SHL={bsp.shl_balance_keur} "
+                    f"SC={bsp.share_capital_keur} SP={bsp.share_premium_keur} "
+                    f"LR={bsp.legal_reserve_keur} RE={bsp.retained_earnings_keur} "
+                    f"CIT={bsp.net_cit_payable_keur}"
+                )
+        assert not failures, f"{ptype} BS identity failures:\n" + "\n".join(failures)
