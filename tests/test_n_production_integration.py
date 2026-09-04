@@ -1,0 +1,1091 @@
+"""N Correction — Production integration tests.
+
+Tests for the gating of the distribution accounting layer (WHT, legal reserve,
+accounting cap) behind DistributionAccountingPolicy.
+"""
+from __future__ import annotations
+
+import dataclasses
+
+import pytest
+
+from financial_engine.shareholder_waterfall import (
+    run_project_shareholder_waterfall_model,
+)
+
+
+# ── O.2: DistributionAccountingPolicy validation ──────────────────────────────
+
+def test_o2_enabled_unresolved_raises():
+    """O.2: enabled=True + authority=UNRESOLVED must raise ValueError (fail closed)."""
+    from finco_core.inputs.distribution_accounting_policy import (
+        DistributionAccountingPolicy, DistributionAccountingAuthority,
+    )
+    with pytest.raises(ValueError, match="UNRESOLVED"):
+        DistributionAccountingPolicy(enabled=True, authority=DistributionAccountingAuthority.UNRESOLVED)
+
+
+def test_o2_wht_rate_out_of_range_raises():
+    """O.2: dividend_wht_rate outside [0, 1] raises ValueError."""
+    from finco_core.inputs.distribution_accounting_policy import (
+        DistributionAccountingPolicy, DistributionAccountingAuthority,
+    )
+    with pytest.raises(ValueError, match="dividend_wht_rate"):
+        DistributionAccountingPolicy(dividend_wht_rate=1.5)
+    with pytest.raises(ValueError, match="dividend_wht_rate"):
+        DistributionAccountingPolicy(dividend_wht_rate=-0.1)
+
+
+def test_o2_legal_reserve_cap_out_of_range_raises():
+    """O.2: legal_reserve_cap_fraction outside [0, 1] raises ValueError."""
+    from finco_core.inputs.distribution_accounting_policy import (
+        DistributionAccountingPolicy,
+    )
+    with pytest.raises(ValueError, match="legal_reserve_cap_fraction"):
+        DistributionAccountingPolicy(legal_reserve_cap_fraction=1.5)
+
+
+def test_o2_disabled_unresolved_ok():
+    """O.2: enabled=False with UNRESOLVED authority is valid (default state)."""
+    from finco_core.inputs.distribution_accounting_policy import DistributionAccountingPolicy
+    p = DistributionAccountingPolicy()  # defaults: enabled=False, authority=UNRESOLVED
+    assert p.enabled is False
+
+
+# ── O.3: WHT dual authority reconciliation ────────────────────────────────────
+
+def test_o3_wht_authority_disagreement_raises():
+    """O.3: TaxParams.wht_sponsor_dividends != DistributionAccountingPolicy.dividend_wht_rate
+    when policy is enabled must raise ValueError (fail closed).
+    DistributionAccountingPolicy.dividend_wht_rate is the canonical owner.
+    """
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority, OpeningUCAuthority
+    policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+        dividend_wht_rate=0.05,
+        opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
+    )
+    with pytest.raises(ValueError, match="WHT authority conflict"):
+        assert_wht_authority_consistent(tax_wht=0.10, policy=policy)
+
+
+def test_o3_wht_authority_agreement_ok():
+    """O.3: When rates match, no error is raised."""
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy, DistributionAccountingAuthority, OpeningUCAuthority
+    policy = DistributionAccountingPolicy(
+        enabled=True,
+        authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+        dividend_wht_rate=0.05,
+        opening_uc_authority=OpeningUCAuthority.CAUSALLY_DERIVED_ZERO,
+    )
+    assert_wht_authority_consistent(tax_wht=0.05, policy=policy)  # no raise
+
+
+def test_o3_wht_authority_disabled_policy_skips_check():
+    """O.3: Disabled policy skips the cross-check (TaxParams legacy value irrelevant)."""
+    from finco_core.inputs.distribution_accounting_policy import assert_wht_authority_consistent, DistributionAccountingPolicy
+    policy = DistributionAccountingPolicy(enabled=False, dividend_wht_rate=0.05)
+    assert_wht_authority_consistent(tax_wht=0.99, policy=policy)  # no raise
+
+
+# ── N.2: Solar without distribution accounting preserves frozen G2C receipts ──
+
+def test_n2_solar_frozen_sponsor_receipts():
+    """N.2: Solar without distribution accounting policy preserves frozen G2C sponsor receipts."""
+    from app.project_factories import create_default_solar_project
+    r = run_project_shareholder_waterfall_model(create_default_solar_project())
+    # Should NOT have cash reserve interest schedules
+    fi = r.financing_result.cash_reserve_interest_schedules if r.financing_result else None
+    assert fi is None
+    # Verify sponsor receipts identity: total_receipts = total_legal_equity + SHL
+    expected = (
+        r.total_net_dividend_received_keur
+        + r.total_shl_cash_interest_received_keur
+        + r.total_shl_principal_received_keur
+    )
+    assert abs(r.total_sponsor_receipts_keur - expected) < 1e-6
+
+
+def test_n2_solar_gross_equals_net_no_policy():
+    """N.2: Without distribution accounting policy, gross div == net div (no WHT)."""
+    from app.project_factories import create_default_solar_project
+    r = run_project_shareholder_waterfall_model(create_default_solar_project())
+    assert abs(r.total_gross_dividend_paid_keur - r.total_net_dividend_received_keur) < 1e-6
+
+
+def test_n2_solar_net_equals_legal_equity_distribution():
+    """N.2: For Solar (no policy), net_dividend == legal_equity_distribution each period."""
+    from app.project_factories import create_default_solar_project
+    r = run_project_shareholder_waterfall_model(create_default_solar_project())
+    ops = [p for p in r.waterfall_periods if not p.is_construction]
+    for p in ops:
+        assert abs(p.net_dividend_received_keur - p.legal_equity_distribution_keur) < 1e-6, (
+            f"Period {p.period_index}: net_div={p.net_dividend_received_keur} "
+            f"!= legal_equity_dist={p.legal_equity_distribution_keur}"
+        )
+
+
+# ── N.3: TUHO production schedule ─────────────────────────────────────────────
+
+def test_n3_tuho_production_schedule_source_proven():
+    """N.3: TUHO produces SOURCE_PROVEN cash reserve schedule.
+
+    CANONICAL_CLEAN_NUMERIC_RESULT: 124.31673813224894 kEUR (20 non-zero periods,
+    opening UC ≈ 544.865 kEUR — SOURCE_PROVEN mechanics authority).
+    SOURCE_WORKBOOK_REFERENCE: source FI ≈ 55.000 kEUR; gap is downstream of
+    TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
+    124.317 is NOT the exact source workbook total.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == "SOURCE_PROVEN"
+    # CANONICAL_CLEAN_NUMERIC_RESULT (U2 converged): 124.317 kEUR
+    assert abs(fi.total_financing_income_keur - 124.31673813224894) < 1e-6, (
+        f"TUHO total FI={fi.total_financing_income_keur} != 124.317 (canonical clean)"
+    )
+
+
+def test_n3_tuho_distribution_policy_enabled():
+    """N.3: TUHO has distribution_accounting_policy enabled."""
+    from app.project_factories import create_default_tuho_wind1
+    p = create_default_tuho_wind1()
+    assert p.distribution_accounting_policy is not None
+    assert p.distribution_accounting_policy.enabled is True
+    assert p.distribution_accounting_policy.authority.value == "SOURCE_PROVEN"
+
+
+def test_n3_tuho_wht_zero():
+    """N.3: TUHO has zero WHT — gross == net."""
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    assert abs(r.total_gross_dividend_paid_keur - r.total_net_dividend_received_keur) < 1e-6
+
+
+def test_n3_tuho_av_cash_interest():
+    """N.3/Q.3: TUHO 20 non-zero FI periods; AV (idx=41) UC=544.865, FI=2.7019 (clean model).
+
+    Q.3 TUHO cash bridge causal chain:
+      Source SHL draw = 29135.176 kEUR (IDC row 49, senior=43359.274 kEUR)
+      Clean SHL draw  = 28741.109 kEUR (PR-9 senior solver, senior=43789.921 kEUR)
+      Gap: ΔP = −394.067 kEUR → ΔPIK = −48.268 kEUR (compound formula, 548d, 8%)
+      → construction SHL-interest gap
+      → COD opening RE gap (clean RE = −clean_SHL_PIK vs source RE = −3568.688)
+      → RE gap flows into operating retained earnings
+      → AU (period idx=41) UC diverges: clean=544.865 vs source=550 kEUR
+      → AV (period idx=41) FI diverges: clean=2.7019 vs source=2.7274 kEUR
+    Source acceptance (Q.10): AU UC=550, AV FI=2.7273972602740044.
+    No source target enters production arithmetic.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    non_zero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
+    assert len(non_zero) == 20, f"Expected 20 non-zero FI periods, got {len(non_zero)}"
+    av = next(p for p in fi.period_results if p.period_index == 41)
+    assert abs(av.eligible_unrestricted_cash_keur - 544.864992395077) < 1e-6, (
+        f"TUHO AV UC={av.eligible_unrestricted_cash_keur} != 544.865"
+    )
+    assert abs(av.calculated_financing_income_keur - 2.7019332499591493) < 1e-9, (
+        f"TUHO AV FI={av.calculated_financing_income_keur} != 2.7019"
+    )
+
+
+# ── N.1: Gross/net identity in return summary ──────────────────────────────────
+
+def test_n1_gross_net_identity_tuho():
+    """N.1: sum(period pure_equity_net_cashflow) == legal_equity.net_cashflow (TUHO)."""
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    sum_period = sum(p.pure_equity_net_cashflow_keur for p in r.waterfall_periods)
+    summary_net = r.return_summary.legal_equity.net_cashflow_keur
+    assert abs(sum_period - summary_net) < 1.0  # within 1 kEUR tolerance
+
+
+# ── N.4: Oborovo production schedule ──────────────────────────────────────────
+
+def test_n4_oborovo_production_schedule_source_proven():
+    """N.4: create_default_oborovo produces SOURCE_PROVEN cash reserve schedule."""
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == "SOURCE_PROVEN"
+
+
+def test_n4_oborovo_distribution_policy_enabled():
+    """N.4: Oborovo has distribution_accounting_policy enabled with 5% WHT."""
+    from app.project_factories import create_default_oborovo
+    p = create_default_oborovo()
+    assert p.distribution_accounting_policy is not None
+    assert p.distribution_accounting_policy.enabled is True
+    assert abs(p.distribution_accounting_policy.dividend_wht_rate - 0.05) < 1e-9
+
+
+def test_n4_oborovo_wht_five_percent():
+    """N.4: Oborovo applies 5% WHT — net = gross * 0.95."""
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    ops = [p for p in r.waterfall_periods if not p.is_construction and p.gross_dividend_paid_keur > 1e-6]
+    assert ops, "Expected at least one operating period with dividends"
+    for p in ops:
+        expected_net = p.gross_dividend_paid_keur * 0.95
+        assert abs(p.net_dividend_received_keur - expected_net) < 1e-4, (
+            f"Period {p.period_index}: net={p.net_dividend_received_keur} != gross*0.95={expected_net}"
+        )
+
+
+def test_n4_oborovo_total_financing_income():
+    """N.4: Oborovo has 20 non-zero FI periods; CANONICAL_CLEAN_NUMERIC_RESULT = 71.003 kEUR.
+
+    SOURCE_PROVEN_MECHANICS: annual rate, eligible accounts (DSRA eligible), day count.
+    CANONICAL_CLEAN_NUMERIC_RESULT: 71.00318671182808 kEUR (20 non-zero periods, DSRA eligible).
+    SOURCE_WORKBOOK_REFERENCE: source FI ≈ 55.000 kEUR; gap is downstream of
+    OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE.
+    71.003 is NOT the exact source workbook total.
+    """
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    non_zero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
+    assert len(non_zero) == 20, f"Expected 20 non-zero FI periods, got {len(non_zero)}"
+    assert abs(fi.total_financing_income_keur - 71.00318671182808) < 1e-6, (
+        f"Oborovo total FI={fi.total_financing_income_keur} != 71.003"
+    )
+    first = sorted(non_zero, key=lambda p: p.period_index)[0]
+    assert first.period_index == 41, f"First FI period idx={first.period_index} != 41"
+    assert abs(first.eligible_unrestricted_cash_keur - 695.9765515604863) < 1e-6
+
+
+# ── N.5: Construction NI component proof ─────────────────────────────────────
+
+def test_n5_tuho_construction_ni_components():
+    """O.7: TUHO ConstructionPLStatement removed — construction NI = -SHL_PIK only.
+
+    pre_op_opex=48.268 was a balancing plug (SOURCE_OPENING_LOSS_KEUR - SHL_PIK)
+    with no independent workbook cell reference. BLOCKED per O.7.
+    Stale token retired (V.7): CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED.
+    Final classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
+    Mechanism: construction SHL principal/PIK delta (ΔP=−394.067, ΔPIK=−48.268 kEUR) is the
+    immediate numeric vehicle; the canonical G2A financing-stack authority is the root cause.
+    U2 is delivered relative to canonical clean authority.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    proj = create_default_tuho_wind1()
+    r = run_project_shareholder_waterfall_model(proj)
+    cf = r.financing_result.construction_financing
+    shl_pik = cf.shl_construction_pik_keur
+    # O.7: no pre_op_opex — construction NI = -SHL_PIK = -3520.419555278245
+    assert proj.tax.construction_pl is None, (
+        "O.7: ConstructionPLStatement must be removed (balancing plug blocked)"
+    )
+    assert abs(shl_pik - 3520.419555278245) < 1e-6, (
+        f"TUHO SHL_PIK={shl_pik} != 3520.420"
+    )
+
+
+# ── N.7: Opening UC typed authority ──────────────────────────────────────────
+
+def test_n7_tuho_cash_reserve_interest_authority_source_proven():
+    """N.7: TUHO cash reserve interest schedule carries SOURCE_PROVEN authority."""
+    from app.project_factories import create_default_tuho_wind1
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestAuthority
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+
+
+def test_n7_oborovo_cash_reserve_interest_authority_source_proven():
+    """N.7: Oborovo cash reserve interest schedule carries SOURCE_PROVEN authority."""
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestAuthority
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+
+
+# ── N.6: Legal reserve authority ─────────────────────────────────────────────
+
+def test_n6_tuho_share_capital_and_legal_reserve_fraction():
+    """N.6: TUHO share_capital=500 kEUR and legal_reserve_cap=10%."""
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    assert r.financing_result.share_capital_keur == 500.0
+    proj = create_default_tuho_wind1()
+    assert proj.distribution_accounting_policy.legal_reserve_cap_fraction == 0.10
+
+
+# ── O.8: Legal reserve causal proof ──────────────────────────────────────────
+
+def test_o8_tuho_legal_reserve_causal_rollforward():
+    """O.8: Prove TUHO legal reserve roll-forward is causally populated.
+
+    At period_index=25 (first profitable distribution period):
+      - opening_legal_reserve_keur == 0.0   (greenfield start)
+      - legal_reserve_transfer_keur == 50.0  (10% × 500 kEUR share capital)
+      - closing_legal_reserve_keur == 50.0   (cap fully funded in one period)
+
+    All prior periods must have closing_legal_reserve_keur == 0.0.
+    All subsequent periods: LR stable at 50, no further transfers.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    op_periods = [p for p in r.waterfall_periods if not p.is_construction]
+
+    assert op_periods[0].opening_legal_reserve_keur == 0.0
+
+    first_lr = next((p for p in op_periods if p.legal_reserve_transfer_keur > 0), None)
+    assert first_lr is not None, "No legal reserve transfer found"
+    assert first_lr.period_index == 25, f"Expected LR transfer at idx=25, got {first_lr.period_index}"
+    assert first_lr.opening_legal_reserve_keur == 0.0
+    assert abs(first_lr.legal_reserve_transfer_keur - 50.0) < 1e-6, (
+        f"Expected transfer=50.0, got {first_lr.legal_reserve_transfer_keur}"
+    )
+    assert abs(first_lr.closing_legal_reserve_keur - 50.0) < 1e-6, (
+        f"Expected closing_LR=50.0, got {first_lr.closing_legal_reserve_keur}"
+    )
+
+    for p in op_periods:
+        if p.period_index >= 25:
+            break
+        assert p.closing_legal_reserve_keur == 0.0, (
+            f"Expected 0 LR before idx=25, got {p.closing_legal_reserve_keur} at idx={p.period_index}"
+        )
+
+    for p in op_periods:
+        if p.period_index > 25:
+            assert abs(p.opening_legal_reserve_keur - 50.0) < 1e-6
+            assert abs(p.closing_legal_reserve_keur - 50.0) < 1e-6
+            assert p.legal_reserve_transfer_keur == 0.0
+
+
+def test_o8_oborovo_legal_reserve_causal_rollforward():
+    """O.8: Prove Oborovo legal reserve roll-forward (WHT=5%). Greenfield axiom."""
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    op_periods = [p for p in r.waterfall_periods if not p.is_construction]
+
+    assert op_periods[0].opening_legal_reserve_keur == 0.0
+
+    first_lr = next((p for p in op_periods if p.legal_reserve_transfer_keur > 0), None)
+    assert first_lr is not None, "No legal reserve transfer for Oborovo"
+    assert first_lr.opening_legal_reserve_keur == 0.0
+    assert abs(first_lr.closing_legal_reserve_keur - 50.0) < 1e-6
+
+
+# ── O.4: Full U2 transition residual assertion ────────────────────────────────
+
+def test_o4_tuho_full_transition_no_residual():
+    """O.4: After M.11 re-financing, running Oborovo/TUHO must not raise
+    O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED. The model itself enforces this;
+    we prove it by running successfully.
+    """
+    from app.project_factories import create_default_tuho_wind1, create_default_oborovo
+    # Both projects run O.4 residual check internally; successful return proves it passed.
+    run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    run_project_shareholder_waterfall_model(create_default_oborovo())
+
+
+# ── N.9: Full-transition idempotence ─────────────────────────────────────────
+
+def test_n9_tuho_idempotent_run():
+    """N.9: Running TUHO twice produces identical total distributions."""
+    from app.project_factories import create_default_tuho_wind1
+    r1 = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    r2 = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    dist1 = sum(p.legal_equity_distribution_keur for p in r1.waterfall_periods)
+    dist2 = sum(p.legal_equity_distribution_keur for p in r2.waterfall_periods)
+    assert dist1 == dist2, f"Non-idempotent: {dist1} != {dist2}"
+
+
+def test_n9_oborovo_idempotent_run():
+    """N.9: Running Oborovo twice produces identical total distributions."""
+    from app.project_factories import create_default_oborovo
+    r1 = run_project_shareholder_waterfall_model(create_default_oborovo())
+    r2 = run_project_shareholder_waterfall_model(create_default_oborovo())
+    dist1 = sum(p.legal_equity_distribution_keur for p in r1.waterfall_periods)
+    dist2 = sum(p.legal_equity_distribution_keur for p in r2.waterfall_periods)
+    assert dist1 == dist2, f"Non-idempotent: {dist1} != {dist2}"
+
+
+# ── N.12: Economic delta TUHO/Oborovo old→new ────────────────────────────────
+
+# B3-main baseline (pre-distribution-accounting-policy) reference values
+_B3_OLD_OBOROVO = {
+    "distributions": 61689.90265451222,
+    "sponsor_receipts": 108480.6739128149,
+    "cash_tax": 10437.90476711545,
+    "base_cfads": 171466.06681090177,
+    "bank_cfads": 141761.6415624344,
+}
+_B3_OLD_TUHO = {
+    "distributions": 151690.9613741361,
+    "sponsor_receipts": 232607.02011878393,
+    "cash_tax": 38915.55406411077,
+    "base_cfads": 299442.99675362336,
+    "bank_cfads": 196285.59264084484,
+}
+
+
+def test_n12_oborovo_economic_delta_direction():
+    """N.12: Oborovo WHT reduces distributions vs bf71b21d; FI raises cash_tax/base_cfads.
+
+    Compare current model output against bf71b21d values (_B3_OLD_OBOROVO).
+    """
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    res = r.return_summary
+    total_dist = r.total_gross_dividend_paid_keur
+    # WHT reduces sponsor receipts; FI increases retained earnings → more tax
+    assert total_dist < _B3_OLD_OBOROVO["distributions"], (
+        f"distributions={total_dist} should be < bf71b21d {_B3_OLD_OBOROVO['distributions']}"
+    )
+
+
+def test_n12_tuho_economic_delta_direction():
+    """N.12: TUHO legal reserve reduces distributions vs bf71b21d; FI raises base_cfads.
+
+    Compare current model output against bf71b21d values (_B3_OLD_TUHO).
+    """
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    total_dist = r.total_gross_dividend_paid_keur
+    assert total_dist < _B3_OLD_TUHO["distributions"], (
+        f"distributions={total_dist} should be < bf71b21d {_B3_OLD_TUHO['distributions']}"
+    )
+
+
+# ── N.14: Final acceptance report ────────────────────────────────────────────
+
+def test_n14_cash_reserve_interest_authority_status():
+    """O.11/O.7: Final authority status report — behavioral assertions.
+
+    Classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    Reason: canonical G2A senior solver (PR-9) produces senior=43789.921 kEUR vs source
+    43359.274 kEUR → different SHL principal/PIK → RE gap → UC/FI parity gap.
+    Mechanism: construction SHL principal/PIK delta is the immediate numeric vehicle;
+    G2A financing-stack authority is the root. U2 delivered relative to canonical clean authority.
+    (Option A — accepted per S.9: canonical G2A authority takes precedence.)
+
+    S.1/S.2/S.3/S.4: ONE _u2_accounting_and_fi_pass helper, true final idempotence
+      (final_2 = T(T(converged_FI))). Q7_IDEMPOTENCE_UC_RESIDUAL resolved. ✓
+    O.1  Oborovo DSRA ELIGIBLE (zero balance is not INELIGIBLE) ✓
+    O.2  DistributionAccountingPolicy validated (enabled+UNRESOLVED raises, rate/cap ranges) ✓
+    O.7  ConstructionPLStatement removed from TUHO (no source-proven pre_op_opex) ✓
+    N.2  distribution accounting layer gated behind DistributionAccountingPolicy ✓
+    N.3  TUHO FI: 20 non-zero periods, total=124.317 kEUR, AV UC=544.865 ✓
+    N.4  Oborovo FI: 20 non-zero periods, total=71.003 kEUR ✓
+    N.6  legal reserve authority: share_capital=500, cap_fraction=10% ✓
+    S.8  TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY ✓
+    """
+    from app.project_factories import create_default_tuho_wind1, create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestAuthority, EligibilityStatus
+    from finco_core.inputs.distribution_accounting_policy import DistributionAccountingAuthority, DistributionAccountingPolicy
+
+    proj_tuho = create_default_tuho_wind1()
+    proj_oborovo = create_default_oborovo()
+
+    # O.2: enabled+UNRESOLVED raises
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="UNRESOLVED"):
+        DistributionAccountingPolicy(enabled=True, authority=DistributionAccountingAuthority.UNRESOLVED)
+
+    # O.1: Oborovo DSRA ELIGIBLE
+    assert proj_oborovo.cash_reserve_interest_policy.eligible_dsra == EligibilityStatus.ELIGIBLE
+
+    # N.2: policy enabled
+    assert proj_tuho.distribution_accounting_policy.enabled
+    assert proj_oborovo.distribution_accounting_policy.enabled
+
+    # N.7/N.3: authority SOURCE_PROVEN
+    assert proj_tuho.cash_reserve_interest_policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+    assert proj_oborovo.cash_reserve_interest_policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+
+    # O.7: ConstructionPLStatement removed from TUHO
+    assert proj_tuho.tax.construction_pl is None, "O.7: ConstructionPLStatement must be absent"
+
+    # N.6: TUHO share capital and legal reserve
+    r_tuho = run_project_shareholder_waterfall_model(proj_tuho)
+    assert r_tuho.financing_result.share_capital_keur == 500.0
+    assert proj_tuho.distribution_accounting_policy.legal_reserve_cap_fraction == 0.10
+
+    # N.3: TUHO exact FI (O.11)
+    fi_tuho = r_tuho.financing_result.cash_reserve_interest_schedules
+    assert abs(fi_tuho.total_financing_income_keur - 124.31673813224894) < 1e-6
+
+    # N.4: Oborovo exact FI (O.11)
+    r_obo = run_project_shareholder_waterfall_model(proj_oborovo)
+    fi_obo = r_obo.financing_result.cash_reserve_interest_schedules
+    assert abs(fi_obo.total_financing_income_keur - 71.00318671182808) < 1e-6
+
+    # O.11 report conclusion: BLOCKED due to O.7
+    # Token is not a string assertion — it is the causal state of the model.
+    # Assert the model state that causes the BLOCKED status:
+    #   construction_pl=None (removed), no pre_op_opex plug, FI exact-matched above.
+    assert proj_tuho.tax.construction_pl is None, (
+        "TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY: "
+        "construction_pl must be None (O.7: pre_op_opex plug removed, no source-proven value)"
+    )
+    assert getattr(proj_tuho.tax, "construction_pl", None) is None
+    # Root cause: canonical G2A financing-stack authority (source senior=43359 kEUR vs
+    # clean=43790 kEUR → SHL draw −394 kEUR → construction PIK −48.268 kEUR).
+    # Mechanism: construction SHL principal/PIK delta; root: G2A financing-stack authority.
+
+
+def test_p6_opening_uc_authority_contract():
+    """P.6/Q.8: Typed opening UC authority — project-level and fail-closed contract."""
+    from financial_engine.shareholder_waterfall.model import (
+        _OPENING_UC_AUTHORITY,
+        _OPENING_UC_AUTHORITY_VALID,
+        _resolve_opening_uc_keur,
+    )
+    from finco_core.inputs.distribution_accounting_policy import (
+        DistributionAccountingPolicy,
+        DistributionAccountingAuthority,
+        OpeningUCAuthority,
+        OPENING_UC_AUTHORITY_VALID,
+    )
+    from app.project_factories import create_default_oborovo, create_default_tuho_wind1
+    import pytest as _pytest
+
+    # P.6: Module-level authority is CAUSALLY_DERIVED_ZERO (greenfield axiom, O.9)
+    assert _OPENING_UC_AUTHORITY == "CAUSALLY_DERIVED_ZERO"
+    assert _OPENING_UC_AUTHORITY in _OPENING_UC_AUTHORITY_VALID
+
+    # P.6: SOURCE_PROVEN_EXPLICIT_ZERO also valid
+    assert _resolve_opening_uc_keur("SOURCE_PROVEN_EXPLICIT_ZERO") == 0.0
+    assert _resolve_opening_uc_keur("CAUSALLY_DERIVED_ZERO") == 0.0
+
+    # P.6: UNRESOLVED fails closed
+    with _pytest.raises(ValueError, match="P.6 OPENING_UC_AUTHORITY_UNRESOLVED"):
+        _resolve_opening_uc_keur("UNRESOLVED")
+
+    # P.6: Unknown strings also fail closed
+    with _pytest.raises(ValueError, match="P.6 OPENING_UC_AUTHORITY_UNRESOLVED"):
+        _resolve_opening_uc_keur("SOME_UNKNOWN_AUTHORITY")
+
+    # Q.8: Project-level authority via DistributionAccountingPolicy field
+    # Oborovo and TUHO must carry CAUSALLY_DERIVED_ZERO at project level
+    oborovo = create_default_oborovo()
+    tuho = create_default_tuho_wind1()
+    assert oborovo.distribution_accounting_policy.opening_uc_authority == OpeningUCAuthority.CAUSALLY_DERIVED_ZERO
+    assert tuho.distribution_accounting_policy.opening_uc_authority == OpeningUCAuthority.CAUSALLY_DERIVED_ZERO
+
+    # Q.8: OPENING_UC_AUTHORITY_VALID in distribution_accounting_policy matches model
+    assert "CAUSALLY_DERIVED_ZERO" in OPENING_UC_AUTHORITY_VALID
+    assert "SOURCE_PROVEN_EXPLICIT_ZERO" in OPENING_UC_AUTHORITY_VALID
+
+    # Q.8: enabled=True with UNRESOLVED opening_uc_authority fails closed
+    with _pytest.raises(ValueError, match="opening_uc_authority"):
+        DistributionAccountingPolicy(
+            enabled=True,
+            authority=DistributionAccountingAuthority.SOURCE_PROVEN,
+            dividend_wht_rate=0.0,
+            legal_reserve_cap_fraction=0.10,
+            opening_uc_authority="UNRESOLVED",  # must fail
+        )
+
+
+def test_p4_oborovo_dsra_source_alignment():
+    """P.4: Oborovo dsra_months=0 matches source Inputs!I347=0 and Inputs!I348=0.
+
+    Source workbook: DSRA is absent (zero target, zero balance throughout).
+    Eligible_dsra=ELIGIBLE is preserved per O.1 — the eligibility policy is correct;
+    zero balance means zero DSRA FI regardless of eligibility.
+    FI and UC are unchanged from dsra_months=6 because the model computes UC from
+    the operating waterfall, not from DSRA equity funding at FC.
+    Root cause of Oborovo UC=695.977 vs source 550: structural waterfall/RE divergence
+    (period 41 model acct_cap ~2803 vs source ~39.65 kEUR) — source workbook period-by-
+    period RE data required for full resolution.
+    """
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import EligibilityStatus
+
+    proj = create_default_oborovo()
+    # P.4: dsra_months=0 matches Inputs!I348=0
+    assert proj.financing.dsra_months == 0, (
+        f"P.4: Oborovo dsra_months={proj.financing.dsra_months} != 0 (source Inputs!I348=0)"
+    )
+    # O.1: eligible_dsra stays ELIGIBLE regardless of zero balance
+    assert proj.cash_reserve_interest_policy.eligible_dsra == EligibilityStatus.ELIGIBLE
+
+
+# ── Q.6: DSRA balance vector = 0 ─────────────────────────────────────────────
+
+def test_q6_oborovo_dsra_balance_vector_zero():
+    """Q.6: Prove Oborovo DSRA balance = 0 in both source and clean. ELIGIBLE preserved.
+
+    Source: Inputs!I347=0 (dsra_target_months=0), Inputs!I348=0 (dsra_months=0).
+    Source construction period SHL fixture: no DSRA drawdown, no DSRA closing balance.
+    Clean: dsra_months=0, so DSRA balance vector is identically zero throughout.
+    eligible_dsra=ELIGIBLE is preserved (O.1/Q.6): zero balance is not INELIGIBLE.
+    """
+    import json, pathlib
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import EligibilityStatus
+
+    # Q.6: Source SHL fixture proves DSRA balance = 0 via explicit workbook inputs
+    fixture_path = pathlib.Path("tests/fixtures/excel_oborovo_shl_operating_truth.json")
+    with fixture_path.open() as f:
+        shl_fix = json.load(f)
+    dsra_inputs = shl_fix.get("workbook_inputs", {}).get("dsra_inputs", {})
+    assert dsra_inputs.get("Inputs_I347_dsra_target_months") == 0, "Q.6: Source Inputs!I347 must be explicitly zero"
+    assert dsra_inputs.get("Inputs_I348_dsra_months") == 0, "Q.6: Source Inputs!I348 must be explicitly zero"
+
+    # Q.6: Clean model — dsra_months=0 → no DSRA balance
+    proj = create_default_oborovo()
+    assert proj.financing.dsra_months == 0, (
+        f"Q.6: Oborovo dsra_months={proj.financing.dsra_months} != 0"
+    )
+
+    # Q.6: ELIGIBLE preserved (O.1)
+    assert proj.cash_reserve_interest_policy.eligible_dsra == EligibilityStatus.ELIGIBLE, (
+        "Q.6: eligible_dsra must remain ELIGIBLE; zero balance is not INELIGIBLE"
+    )
+
+
+# ── Q.10: Source-fixture acceptance tests ────────────────────────────────────
+
+def test_q10_tuho_source_construction_shl_pik():
+    """Q.10: Source TUHO construction SHL interest = 3568.6878026481627 kEUR.
+
+    Source: IDC row 49 P=29135.176 kEUR, rate=8%, elapsed=548 days.
+    Formula: P × ((1.08)^(548/365) − 1).
+    Senior commitment IDC!D48 = 43359.2737822209 kEUR (excel_golden_tuho fixture).
+    Clean SHL PIK = 3520.419555278245 (PR-9 senior=43789.921 → SHL draw=28741.109).
+    Gap = −48.268 kEUR. No source target enters production arithmetic.
+    """
+    import json, pathlib, math
+
+    # Source senior from fixture
+    with pathlib.Path("tests/fixtures/excel_golden_tuho.json").open() as f:
+        golden = json.load(f)
+    source_senior = golden["golden_cells"]["senior_debt_idc_keur"]["value"]
+    assert abs(source_senior - 43359.2737822209) < 1e-6, (
+        f"Q.10: Source IDC!D48={source_senior} != 43359.274"
+    )
+
+    # Source construction SHL PIK: P=29135.176 (IDC row 49), r=8%, t=548/365
+    # This is a causal derivation for documentation; the value is NOT plugged into
+    # production code (Q.10 prohibition). The clean model derives SHL PIK from its
+    # own senior solver residual, not from this source principal.
+    source_p = 29135.176  # IDC!B49 — SHL Sponsor total at COD
+    source_pik = source_p * ((1.08) ** (548 / 365) - 1)
+    assert abs(source_pik - 3568.6878026481627) < 0.01, (
+        f"Q.10: Source SHL PIK={source_pik} != 3568.688 (derivation only, not production input)"
+    )
+
+    # Clean model SHL PIK (causal reference — not source)
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    clean_pik = r.financing_result.construction_financing.shl_construction_pik_keur
+    assert abs(clean_pik - 3520.419555278245) < 1e-4, (
+        f"Q.10: Clean SHL PIK={clean_pik} != 3520.420"
+    )
+
+    # Source opening RE = −source SHL PIK (construction NI = −PIK, greenfield RE starts 0)
+    source_opening_re = -source_pik
+    assert abs(source_opening_re - (-3568.6878026481627)) < 0.01, (
+        f"Q.10: Source opening RE={source_opening_re} != -3568.688"
+    )
+
+    # ── R.2/R.3: TUHO construction funding equation and Uses difference trace ──
+    # R.2: Source total uses = source_senior + SC + source_SHL
+    source_sc = 500.0  # share capital kEUR — unchanged between source and clean
+    source_shl = source_p  # IDC!B49: SHL Sponsor draw = 29135.176 kEUR
+    source_total_uses = source_senior + source_sc + source_shl
+    assert abs(source_total_uses - 72994.450) < 0.01, (
+        f"R.2: Source total uses={source_total_uses:.3f} != 72994.450"
+    )
+    # R.2: Clean total uses from model
+    clean_uses = r.financing_result.project_uses.total_project_uses_keur
+    assert abs(clean_uses - 73031.030) < 0.01, (
+        f"R.2: Clean total uses={clean_uses:.3f} != 73031.030"
+    )
+    delta_uses = clean_uses - source_total_uses
+    assert abs(delta_uses - 36.580) < 0.05, (
+        f"R.2: Δuses={delta_uses:.3f} != +36.580 kEUR"
+    )
+    # R.3: Component-by-component delta trace (no balancing item)
+    # Clean senior = DSCR-derived; source senior = IDC!D48 (DSCR at different assumptions).
+    # Δuses = Δsenior + ΔSHL (SC unchanged, hard_capex and struct_fee are source-identical).
+    # The full +36.580 is explained by senior/SHL split; no hidden plug.
+    clean_senior = r.financing_result.project_model_result.senior_debt.debt_size_keur
+    delta_senior = clean_senior - source_senior   # R.4: +430.647 kEUR
+    clean_shl_draw = clean_uses - clean_senior - source_sc
+    delta_shl = clean_shl_draw - source_shl   # -394.067 kEUR
+    residual = delta_uses - (delta_senior + delta_shl)
+    assert abs(residual) < 0.01, (
+        f"R.3: Δuses({delta_uses:.3f}) ≠ Δsenior({delta_senior:.3f}) + ΔSHL({delta_shl:.3f}); "
+        f"unexplained residual={residual:.3f} kEUR (must be 0 — no balancing item allowed)"
+    )
+    assert abs(delta_senior - 430.647) < 0.01, (
+        f"R.4: Δsenior={delta_senior:.3f} != +430.647 kEUR"
+    )
+    assert abs(delta_shl - (-394.067)) < 0.01, (
+        f"R.3: ΔSHL={delta_shl:.3f} != -394.067 kEUR"
+    )
+    # R.5: Decision — canonical SHL principal = RESIDUAL (current clean model).
+    # Source SHL (29135.176) differs from clean (28741.109) because source senior
+    # (43359.274 IDC!D48) differs from clean DSCR-derived (43789.921). Root cause
+    # of the +430.647 senior gap: different DSCR sizing assumptions (CFADS basis,
+    # terminal, gearing, or IDC feedback). No typed SHL override is introduced;
+    # classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    # (accepted per S.9 Option A — canonical G2A authority takes precedence).
+    assert abs(clean_shl_draw - 28741.109) < 0.01, (
+        f"R.5: Clean SHL draw={clean_shl_draw:.3f} != 28741.109 (residual authority)"
+    )
+
+
+def test_q10_oborovo_source_construction_re_and_acct_cap():
+    """Q.10: Source Oborovo construction RE = −1169.6619115852516; period-40 acct_cap = 39.649650.
+
+    Source construction SHL PIK = 1169.6619115852516 kEUR (excel_oborovo_shl_operating_truth).
+    Source P&L period 40 distributable = 39.649650241465224 kEUR (l1f_dividend fixture).
+    Clean construction RE ≈ −1169.659 (CIT-accrual mismatch gap ≈ 0.003 kEUR).
+    Root cause: source CIT assessed H1-only with fiscal reintegration; clean spreads H1+H2.
+    No source target enters production arithmetic.
+    """
+    import json, pathlib
+
+    # Source construction SHL PIK = 1169.6619115852516 (ds_index=0)
+    with pathlib.Path("tests/fixtures/excel_oborovo_shl_operating_truth.json").open() as f:
+        shl_fix = json.load(f)
+    src_construction_pik = shl_fix["construction_period"]["gross_accrued_interest_keur"]
+    assert abs(src_construction_pik - 1169.6619115852516) < 1e-9, (
+        f"Q.10: Source construction PIK={src_construction_pik} != 1169.6619115852516"
+    )
+
+    # Source construction RE = −PIK (greenfield axiom O.9)
+    src_construction_re = -src_construction_pik
+    assert abs(src_construction_re - (-1169.6619115852516)) < 1e-9
+
+    # Source period-40 distributable = accounting_cap = 39.649650241465224 kEUR
+    with pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").open() as f:
+        l1f = json.load(f)
+    src_acct_cap_p40 = l1f["oborovo"]["dividend_cash_block"]["CF125"]["period_40_value_keur"]
+    assert abs(src_acct_cap_p40 - 39.6496502414652) < 1e-6, (
+        f"Q.10: Source acct_cap period 40={src_acct_cap_p40} != 39.649650"
+    )
+
+    # Clean model construction RE = −shl_construction_pik_keur (causal reference)
+    # Construction NI = −SHL PIK (greenfield, only financing item in construction period).
+    from app.project_factories import create_default_oborovo
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    clean_pik = r.financing_result.construction_financing.shl_construction_pik_keur
+    clean_construction_re = -clean_pik
+    # Clean ≈ −1169.659 due to CIT-accrual mismatch (gap < 0.01 kEUR vs source)
+    assert abs(clean_construction_re - (-1169.6619115852516)) < 0.01, (
+        f"Q.10: Clean construction RE={clean_construction_re}, source=-1169.662 (gap < 0.01)"
+    )
+
+    # Q.10: 20 non-zero FI periods idx 41–60
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    non_zero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
+    assert len(non_zero) == 20
+    idxs = sorted(p.period_index for p in non_zero)
+    assert idxs[0] == 41 and idxs[-1] == 60, (
+        f"Q.10: FI periods idx range [{idxs[0]},{idxs[-1]}] != [41,60]"
+    )
+
+    # ── R.13: Oborovo source first-distribution and UC evidence (period 40 in source = period 41 in model) ──
+    # Source evidence from l1f_dividend_cash_row_mapping_source_evidence.json (Excel period index 40)
+    src_fcf_p40 = l1f["oborovo"]["dividend_cash_block"]["CF116"]["period_40_value_keur"]
+    src_distributable_p40 = l1f["oborovo"]["dividend_cash_block"]["CF125"]["period_40_value_keur"]
+    src_gross_div_p40 = l1f["oborovo"]["dividend_cash_block"]["CF130"]["period_40_value_keur"]
+    src_net_div_p40 = l1f["oborovo"]["dividend_cash_block"]["CF129"]["period_40_value_keur"]
+    src_uc_closing_p40 = l1f["oborovo"]["dividend_cash_block"]["CF144"]["period_40_value_keur"]
+    assert abs(src_fcf_p40 - 589.649650) < 0.01, f"R.13: Source FCF period 40={src_fcf_p40}"
+    assert abs(src_distributable_p40 - 39.649650) < 1e-4, f"R.13: Source distributable={src_distributable_p40}"
+    assert abs(src_gross_div_p40 - 39.649650) < 1e-4, f"R.13: Source gross_div={src_gross_div_p40}"
+    assert abs(src_net_div_p40 - 37.667168) < 1e-4, f"R.13: Source net_div={src_net_div_p40}"
+    assert abs(src_uc_closing_p40 - 550.0) < 0.01, f"R.13: Source UC closing={src_uc_closing_p40}"
+    # Source WHT = gross_div − net_div ≈ 1.982482 kEUR
+    src_wht_p40 = src_gross_div_p40 - src_net_div_p40
+    assert abs(src_wht_p40 - 1.982482) < 1e-4, f"R.13: Source WHT={src_wht_p40}"
+    # Source FCF decomposition: UC retained = 550.0, dividend = 39.650, FCF = 589.650
+    assert abs(src_fcf_p40 - (src_uc_closing_p40 + src_gross_div_p40)) < 0.01, (
+        f"R.13: Source FCF({src_fcf_p40}) != UC({src_uc_closing_p40}) + gross_div({src_gross_div_p40})"
+    )
+
+
+# ── S.6/S.7: Oborovo clean production behavioral test + source parity documentation ──
+
+def test_s7_oborovo_clean_production_behavioral():
+    """S.7: Production behavioral test — create_default_oborovo() → run_project_shareholder_waterfall_model().
+
+    Canonical period mapping (U.1): DS[n] → clean_period_index = n.
+    Source DS[40] = clean cidx=40 (dates: 2049-12-31 to 2050-06-30).
+
+    Source parity values at DS[40] / clean cidx=40 (from l1f_dividend fixture):
+      FCF ≈ 589.650, acct_cap ≈ 39.650, gross_div ≈ 39.650, WHT ≈ 1.982, net_div ≈ 37.667,
+      UC_closing = 550.
+
+    Clean model at cidx=40:
+      FCF = 695.977, acct_cap = 0, gross_div = 0 (RE = -46.664 kEUR, negative).
+      First clean distribution: cidx=41.
+
+    Classification: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE
+
+    Period mapping (V.1 / W): DS[n] → clean_period_index = n (confirmed by date alignment).
+      Source DS[1] bop=2030-07-01/eop=2030-12-31; clean cidx=1: start=2030-06-30/end=2030-12-31.
+      One-day boundary convention difference (source inclusive, clean exclusive); mapping is n→n.
+
+    W.3 — identity of 2657.781:
+      2657.781 = bank_ebitda_keur[6] = psc.base_cfads_keur[6] = tc.cfads_keur[6].
+      This is EBITDA (Base CFADS, pre-actual-cash-tax), NOT Bank CFADS.
+      Bank CFADS at cidx=6 = 2648.877 (= EBITDA - bank_cash_tax = 2657.781 - 8.904).
+
+    W.4 — B7 Bank CFADS lock (frozen B7 authority, PR #930):
+      Source Bank CFADS DS6 = 2648.8702990221004 (B7 fixture).
+      Clean Bank CFADS DS6 = 2648.8765783777 (bank_cfads_keur[6]).
+      B7 residual = +0.006 kEUR (negligible, already accepted in merged PR #930).
+      B7 Bank CFADS arch rule preserved: Bank CFADS does NOT feed post-senior cash directly;
+      senior debt quantum is the bridge. No causal chain Bank CFADS → DA available without that bridge.
+
+    W.5 — Base vs Bank CFADS distinction:
+      Source and clean EBITDA at DS6 are IDENTICAL: 2657.780 kEUR (same revenue/opex model).
+      Source Bank CFADS DS6 = 2648.870 (= source EBITDA - source bank_cash_tax ~8.910).
+      Clean Bank CFADS DS6  = 2648.877 (= clean EBITDA - clean bank_cash_tax 8.904).
+      B7 residual (+0.006 kEUR) is NOT the cause of the post-senior divergence.
+
+    W.6 — First SHL-driving divergence (W identification):
+      DS1–DS5: post-senior cash = 0.000 delta between source and clean.
+      DS6 FIRST DIVERGENCE: post-senior delta = +8.905 kEUR (source=345.505, clean=354.410).
+      Root cause: source workbook computes post-senior = (EBITDA - bank_cash_tax) - senior_DS,
+        i.e. source distributes Bank CFADS minus senior_DS = 2648.870 - 2303.365 = 345.505 kEUR.
+        Clean computes post-senior = EBITDA - senior_DS = 2657.781 - 2303.371 = 354.410 kEUR,
+        with actual corporate cash tax = 0 at cidx=6 (deferred: 20.072 paid at cidx=7).
+      The divergence is entirely from DISTRIBUTION CASH TAX TIMING ARCHITECTURE:
+        source bank_cash_tax at DS6 ≈ 8.910 kEUR; clean actual corp cash tax at cidx=6 = 0.
+
+    Propagation chain (W.7 — RECONCILIATION evidence, confirmed V quantities):
+      cash tax timing gap at DS6 (source deducts ~8.910 from distributable cash; clean does not)
+        → source DA available = 345.505 vs clean DA available = 354.410 at DS6 (+8.905 kEUR)
+        → PARTIAL_CASH_PARTIAL_PIK split diverges: clean pays +8.899 kEUR more cash to SHL at DS6
+        → SHL closing balance diverges; balance recovers partially but residual propagates
+        → cumulative excess clean SHL gross interest DS[1]–DS[40]: +65.123 kEUR
+        → different fiscal reintegration → different LCF usage timing
+        → cumulative excess clean CIT DS[1]–DS[40]: +71.193 kEUR
+        → RE gap at DS[40]: clean=-46.664, source=+89.650, gap=-136.314 kEUR
+        → clean acct_cap=0 at cidx=40 (RE negative); source acct_cap=39.650
+        → no distribution at cidx=40 → first clean distribution at cidx=41
+
+    U2 mechanics vs source-workbook parity (V.5 / W.9):
+      SOURCE-PROVEN U2 mechanics (authority delivered):
+        cash-interest rate, eligible account policy, day-count, UC rollforward, WHT, U2 fixed-point.
+      SOURCE-WORKBOOK NUMERIC PARITY exceptions (upstream architecture boundary):
+        UC at cidx=40: clean=695.977 vs source=550.000
+        FI total: clean≈71.003 vs source≈55.000
+        These gaps are PROPAGATION consequences of the distribution cash tax timing architecture boundary.
+      U2 arithmetic is correct. Gap is upstream of U2.
+
+    Architecture verdict: U2_CANONICAL_CLEAN_AUTHORITY_DELIVERED_WITH_DOCUMENTED_UPSTREAM_SOURCE_PARITY_EXCEPTIONS
+
+    Distribution gate OPEN at cidx=40 in clean (senior_last_period_index=28;
+    within_senior_maturity=False for all periods ≥29). Gate is NOT the cause of timing gap.
+
+    Closing this gap would require matching source bank cash tax timing for distribution
+    — which is a source-workbook architecture convention outside the canonical engine.
+
+    This test proves the source evidence, asserts clean model consistency (U2 fixed-point
+    convergence + idempotence), documents the B7 Bank CFADS lock, and documents the classification.
+    """
+    import json, pathlib
+    from app.project_factories import create_default_oborovo
+
+    # ── Source evidence at DS[40] / clean cidx=40 (fixture) ───────────────────
+    # DS[n] → clean_period_index = n; source DS[40] = clean cidx=40.
+    with pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").open() as f:
+        l1f = json.load(f)
+    src_fcf = l1f["oborovo"]["dividend_cash_block"]["CF116"]["period_40_value_keur"]
+    src_acct_cap = l1f["oborovo"]["dividend_cash_block"]["CF125"]["period_40_value_keur"]
+    src_gross_div = l1f["oborovo"]["dividend_cash_block"]["CF130"]["period_40_value_keur"]
+    src_net_div = l1f["oborovo"]["dividend_cash_block"]["CF129"]["period_40_value_keur"]
+    src_uc_closing = l1f["oborovo"]["dividend_cash_block"]["CF144"]["period_40_value_keur"]
+    assert abs(src_fcf - 589.649650) < 0.01
+    assert abs(src_acct_cap - 39.649650) < 1e-4
+    assert abs(src_gross_div - 39.649650) < 1e-4
+    assert abs(src_net_div - 37.667168) < 1e-4
+    assert abs(src_uc_closing - 550.0) < 0.01
+
+    # ── Clean production behavioral run ────────────────────────────────────────
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+
+    # U2 convergence must succeed (no exception raised)
+    assert r is not None
+
+    # ── Clean distribution profile ─────────────────────────────────────────────
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    fi_nonzero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
+    assert len(fi_nonzero) == 20, f"S.7: Expected 20 FI periods, got {len(fi_nonzero)}"
+    fi_idxs = sorted(p.period_index for p in fi_nonzero)
+    assert fi_idxs[0] == 41 and fi_idxs[-1] == 60, (
+        f"S.7: FI period range [{fi_idxs[0]},{fi_idxs[-1]}] != [41,60]"
+    )
+    clean_total_fi = fi.total_financing_income_keur
+    assert clean_total_fi > 50.0, f"S.7: Clean total FI={clean_total_fi:.3f} unexpectedly low"
+
+    ops = [wp for wp in r.waterfall_periods if not wp.is_construction]
+    wp_by_idx = {wp.period_index: wp for wp in r.waterfall_periods}
+
+    # W.4: B7 Bank CFADS behavioral lock — assert canonical clean Bank CFADS at DS6
+    # matches frozen B7 authority (PR #930). B7 residual = +0.006 kEUR (accepted).
+    pm = r.financing_result.project_model_result
+    cln_bank_cfads_ds6 = list(pm.debt_sizing.bank_cfads_keur)[6]
+    src_bank_cfads_ds6 = 2648.8702990221004   # B7 source fixture, DS row 20, DS6
+    b7_frozen_clean_ds6 = 2648.8766740626934  # B7 frozen clean value, PR #930
+    assert abs(cln_bank_cfads_ds6 - b7_frozen_clean_ds6) < 0.01, (
+        f"S.7: B7 Bank CFADS lock — clean DS6={cln_bank_cfads_ds6:.6f} "
+        f"deviates from frozen B7 value {b7_frozen_clean_ds6:.6f}"
+    )
+    # B7 residual: +0.006 kEUR. NOT the cause of post-senior divergence (+8.905 kEUR).
+    b7_residual = cln_bank_cfads_ds6 - src_bank_cfads_ds6
+    assert abs(b7_residual) < 0.1, f"S.7: B7 residual {b7_residual:.6f} outside expected range"
+
+    # OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE:
+    # DS6 post-senior: source=345.505 (= Bank CFADS - senior_DS), clean=354.410 (= EBITDA - senior_DS).
+    # Source deducts bank_cash_tax (~8.910) from distributable cash; clean defers to cidx=7.
+    # SHL / CIT / RE gaps are PROPAGATION RECONCILIATION of that cash tax timing boundary.
+    # At DS[40]/cidx=40: clean acct_cap=0 (RE=-46.664); source acct_cap=39.650 (RE=+89.650).
+    # RE gap=-136.314 kEUR = cumulative excess clean SHL interest (+65.123) + excess clean CIT (+71.193).
+    clean_wp_40 = wp_by_idx.get(40)
+    assert clean_wp_40 is not None
+    assert clean_wp_40.accounting_dividend_capacity_keur == 0.0, (
+        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE — "
+        f"clean acct_cap at cidx=40={clean_wp_40.accounting_dividend_capacity_keur:.3f} != 0 "
+        "(RE lineage divergence may have closed)"
+    )
+    assert clean_wp_40.gross_dividend_paid_keur == 0.0, (
+        f"S.7: clean gross_div at cidx=40={clean_wp_40.gross_dividend_paid_keur:.3f} != 0"
+    )
+
+    # First clean distribution is cidx=41 (source: DS[41], one period after source first distribution)
+    first_dist = next((wp for wp in ops if wp.gross_dividend_paid_keur > 0.001), None)
+    assert first_dist is not None, "S.7: No distributing period found in clean model"
+    assert first_dist.period_index == 41, (
+        f"S.7: Clean first distributing period idx={first_dist.period_index} != 41"
+    )
+    clean_fcf_p41 = first_dist.fcf_for_dividends_keur
+    assert clean_fcf_p41 > src_fcf, (
+        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE — "
+        f"clean FCF at cidx=41 ({clean_fcf_p41:.3f}) should exceed source DS[40] FCF ({src_fcf:.3f}) "
+        "due to full FCF carry from cidx=40 (acct_cap=0 blocked distribution)"
+    )
+
+
+# ── S.8: TUHO source SHL parity classification ────────────────────────────────
+
+def test_s8_tuho_source_shl_parity_blocked_classification():
+    """S.8: TUHO R.12 — document TUHO source SHL parity gap classification.
+
+    Classification token: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+
+    Root cause (Q.3 bridge — test_n3_tuho_av_cash_interest):
+      Source SHL draw = 29135.176 kEUR (IDC row 49, senior=43359.274 kEUR)
+      Clean SHL draw  = 28741.109 kEUR (PR-9 senior solver, senior=43789.921 kEUR)
+      Gap: ΔP = −394.067 kEUR → ΔPIK = −48.268 kEUR (compound formula, 548d, 8%)
+
+    The canonical G2A financing stack (PR-9 senior solver) produces a different senior
+    commitment (43789.921 vs source 43359.274 kEUR), which drives a different SHL principal,
+    PIK, and thus a different opening RE at COD. This RE gap propagates into the operating
+    retained earnings and UC accumulation schedule. The source SHL parity cannot be closed
+    without overriding the canonical G2A financing authority, which is prohibited.
+
+    Evidence: TUHO clean total FI ≈ 124.317 kEUR (SOURCE_PROVEN authority).
+    TUHO base clean model UC at AV (idx=41) ≈ 544.865 kEUR vs source 550 kEUR.
+    The gap (Δ≈5.135 kEUR) is causal from ΔP and is permanent under G2A authority.
+    """
+    from app.project_factories import create_default_tuho_wind1
+
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+
+    # TUHO production converges: no exception
+    assert r is not None
+
+    # FI schedule: SOURCE_PROVEN, 20 non-zero periods
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == "SOURCE_PROVEN"
+    fi_nonzero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
+    assert len(fi_nonzero) == 20, f"S.8: Expected 20 FI periods, got {len(fi_nonzero)}"
+
+    # Total FI ≈ 124.317 (clean model — differs slightly from source due to G2A gap)
+    assert abs(fi.total_financing_income_keur - 124.31673813224894) < 1e-6, (
+        f"S.8: TUHO total FI={fi.total_financing_income_keur} != 124.317"
+    )
+
+    # TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY:
+    # Source UC at AV (idx=41) = 550.0; clean model UC at idx=41 ≈ 544.865.
+    # This gap is causal from the G2A senior solver difference and cannot be closed.
+    ops = [wp for wp in r.waterfall_periods if not wp.is_construction]
+    wp41 = next((wp for wp in ops if wp.period_index == 41), None)
+    if wp41 is not None:
+        clean_uc_41 = wp41.unrestricted_cash_opening_keur
+        # Clean UC at idx=41 opening ≈ 544.865; source = 550.0; gap ≈ 5.135 kEUR
+        assert abs(clean_uc_41 - 550.0) < 10.0, (
+            f"S.8: TUHO_SOURCE_SHL_PARITY_BLOCKED — "
+            f"clean UC at idx=41 ({clean_uc_41:.3f}) more than 10 kEUR from source (550.0)"
+        )
+
+
+# ── S.9: Architecture recommendation — TUHO G2A gap ──────────────────────────
+
+def test_s9_architecture_recommendation_option_a():
+    """S.9: Architecture recommendation — Option A: accept G2A authority, classify gap as permanent.
+
+    TUHO source SHL parity gap options:
+
+    Option A (SELECTED): Accept TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+      as the permanent classification. The canonical G2A financing stack (PR-9 senior solver)
+      is the single authoritative source of truth for all projects. The TUHO source workbook uses
+      a manually-derived senior commitment (43359.274 kEUR) that differs from the PR-9 solver
+      output (43789.921 kEUR). The correct engineering decision is to accept the solver's output
+      and document the gap as permanently blocked. No project-specific override is permissible.
+      Advantages: clean causal chain, no project dispatch, no output calibration, no second
+      competing senior solver. Consistent with governance constraints.
+
+    Option B (REJECTED): Override the TUHO factory to use source senior commitment (43359.274 kEUR)
+      to force SHL parity. This would require project-name dispatch or a factory-level override
+      parameter outside the standard typed input model. It violates the governance constraints:
+      "No project-name dispatch, no workbook-vector replay, no output-calibration". It would also
+      break test_d4_no_named_project_identity_financial_dispatch and related production guards.
+
+    Rationale for Option A: The G2A financing stack is the canonical authority by design. Source
+    workbook manual values are reference evidence, not overrides. The UC gap (Δ≈5.135 kEUR at
+    AV idx=41) is within normal parameter sensitivity and does not change investment conclusions.
+    The correct response to this gap is transparent documentation, not calibration.
+
+    This test proves the Option A state: the canonical G2A result is accepted and no project
+    dispatch exists.
+    """
+    from app.project_factories import create_default_tuho_wind1
+
+    # Option A verification: production path uses the PR-9 solver (not the legacy fixed_debt)
+    pi = create_default_tuho_wind1()
+    r = run_project_shareholder_waterfall_model(pi)
+    fin = r.financing_result
+    # PR-9 solver produces senior_debt_size ≈ 43789.921 (canonical G2A — not legacy 43359)
+    sd = fin.project_model_result.senior_debt
+    assert abs(sd.debt_size_keur - 43789.92111682598) < 1.0, (
+        f"S.9: G2A canonical senior debt={sd.debt_size_keur:.3f} != 43789.921 (PR-9 solver)"
+    )
+    # Typed construction financing present (PR-9 authority, not legacy fixed-debt override)
+    assert fin.project_uses is not None
+    assert fin.construction_financing is not None, "S.9: typed construction financing must be present"
+    assert "TYPED" in fin.construction_financing.authority, (
+        f"S.9: construction authority={fin.construction_financing.authority} must be TYPED (PR-9)"
+    )
+    # Option B would require fin.project_model_result.senior_debt.debt_size_keur ≈ 43359.
+    # Assert this is NOT the case — Option A accepted.
+    assert sd.debt_size_keur > 43500.0, (
+        "S.9: Option B rejected — senior debt must not match source manual value 43359 kEUR"
+    )

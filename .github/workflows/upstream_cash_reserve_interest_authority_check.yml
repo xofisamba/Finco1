@@ -1,0 +1,259 @@
+name: U2 — Upstream Cash Reserve Interest Authority Check
+
+on:
+  push:
+    branches:
+      - upstream-cash-reserve-interest-authority
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  u2-exact-head-check:
+    name: U2 Exact-Head CI — Cash Reserve Interest Upstream Authority
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert exact branch ancestry
+        run: |
+          HEAD=$(git rev-parse HEAD)
+          echo "HEAD SHA: $HEAD"
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          if ! git merge-base --is-ancestor "$MAIN_BASE" HEAD; then
+            echo "ERROR: HEAD does not descend from canonical main base $MAIN_BASE"
+            exit 1
+          fi
+          echo "Ancestry check passed."
+
+      - name: Whitespace / diff check
+        run: |
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          git diff --check "$MAIN_BASE"...HEAD || {
+            echo "ERROR: Whitespace issues detected in diff"
+            exit 1
+          }
+
+      - name: Governance scan — no project-name dispatch
+        run: |
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          CHANGED_FILES=$(git diff --name-only "$MAIN_BASE"...HEAD -- '*.py')
+          echo "Changed Python files:"
+          echo "$CHANGED_FILES"
+          FORBIDDEN='["'"'"'](TUHO|OBOROVO|SOLAR|WIND)['"'"'"].*interest'
+          for f in $CHANGED_FILES; do
+            if [ -f "$f" ]; then
+              if grep -nE "$FORBIDDEN" "$f"; then
+                echo "ERROR: Forbidden project-code dispatch found in $f"
+                exit 1
+              fi
+            fi
+          done
+          echo "Governance scan passed."
+
+      - name: Governance scan — EBITDA invariant (no EBITDA augmentation)
+        run: |
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          CHANGED_FILES=$(git diff --name-only "$MAIN_BASE"...HEAD -- '*.py')
+          for f in $CHANGED_FILES; do
+            if [ -f "$f" ]; then
+              # ebitda = ebitda + ... or ebitda += ... in executable context
+              if grep -nE '^\s*ebitda\s*[+]?=\s*ebitda\s*[+]' "$f"; then
+                echo "ERROR: Forbidden EBITDA augmentation found in $f"
+                exit 1
+              fi
+            fi
+          done
+          echo "EBITDA invariant scan passed."
+
+      - name: Governance scan — waterfall_core reverted
+        run: |
+          # app/waterfall_core.py must not contain any U2 annotations or financing income wiring
+          if grep -n "U2-BRIDGE\|cash_reserve_interest\|financing_income" app/waterfall_core.py 2>/dev/null; then
+            echo "ERROR: app/waterfall_core.py contains U2 wiring that should not be present"
+            exit 1
+          fi
+          echo "waterfall_core revert check passed."
+
+      - name: Governance scan — waterfall_engine reverted
+        run: |
+          # finco_core/waterfall/waterfall_engine.py must not contain U2 wiring
+          if grep -n "cash_reserve_interest_policy\|financing_income\|UNRESOLVED_POLICY" finco_core/waterfall/waterfall_engine.py 2>/dev/null; then
+            echo "ERROR: finco_core/waterfall/waterfall_engine.py contains U2 wiring — must be reverted"
+            exit 1
+          fi
+          echo "waterfall_engine revert check passed."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: U2 policy unit tests (full dedicated suite)
+        run: |
+          python -m pytest tests/test_upstream_cash_reserve_interest_policy.py -v --tb=short
+
+      - name: U1 upstream basis tests (regression guard)
+        run: |
+          python -m pytest tests/test_upstream_book_depreciable_asset_basis.py -v --tb=short
+
+      - name: Waterfall tax integration (regression guard)
+        run: |
+          python -m pytest tests/test_waterfall_tax_integration.py -v --tb=short
+
+      - name: Waterfall golden validation (regression guard)
+        run: |
+          python -m pytest tests/test_waterfall_golden_validation.py -q --tb=short
+
+      - name: C2 canonical tax consistency (regression guard)
+        run: |
+          python -m pytest tests/test_c2_tax_canonical_consistency.py -v --tb=short
+
+      - name: Structural — UNRESOLVED policy fails closed
+        run: |
+          python - <<'EOF'
+          from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY, CashReserveInterestAuthority
+          result = UNRESOLVED_POLICY.compute_period_income_keur(
+              unrestricted_cash_balance_keur=999_999.0,
+              dsra_balance_keur=999_999.0,
+              day_fraction=0.5,
+          )
+          assert result == 0.0, f"UNRESOLVED_POLICY must fail closed, got {result}"
+          assert UNRESOLVED_POLICY.authority == CashReserveInterestAuthority.UNRESOLVED
+          print("STRUCTURAL_FAIL_CLOSED_VERIFIED: UNRESOLVED_POLICY yields 0.0")
+          EOF
+
+      - name: Structural — financing_income in TaxCalculationInput contract
+        run: |
+          python - <<'EOF'
+          from financial_engine.inputs import TaxCalculationInput, PeriodFinancingIncomeInput
+          import dataclasses
+          fields = {f.name for f in dataclasses.fields(TaxCalculationInput)}
+          assert "period_financing_income" in fields, (
+              "TaxCalculationInput.period_financing_income field missing"
+          )
+          fields_fi = {f.name for f in dataclasses.fields(PeriodFinancingIncomeInput)}
+          assert "financing_income_keur" in fields_fi
+          assert "authority" in fields_fi
+          print("CONTRACT_VERIFIED: period_financing_income on TaxCalculationInput")
+          EOF
+
+      - name: Structural — financing_income in TaxAnnualResult and PeriodCashTaxResult
+        run: |
+          python - <<'EOF'
+          from financial_engine.tax.models import TaxAnnualResult, PeriodCashTaxResult, TaxYearCalculationBasis
+          import dataclasses
+          for cls in [TaxAnnualResult, PeriodCashTaxResult, TaxYearCalculationBasis]:
+              fields = {f.name for f in dataclasses.fields(cls)}
+              assert "financing_income_keur" in fields, f"{cls.__name__} missing financing_income_keur"
+          print("MODEL_FIELDS_VERIFIED: financing_income_keur on all tax models")
+          EOF
+
+      - name: Structural — CFADS formula includes financing_income
+        run: |
+          python - <<'EOF'
+          from financial_engine.cfads import PeriodCfadsResult
+          import dataclasses
+          fields = {f.name for f in dataclasses.fields(PeriodCfadsResult)}
+          assert "financing_income_keur" in fields, "PeriodCfadsResult missing financing_income_keur"
+          print("CFADS_CONTRACT_VERIFIED: financing_income_keur on PeriodCfadsResult")
+          EOF
+
+      - name: Canonical causal chain — EBITDA unchanged, TI/CIT/CFADS increase with financing_income
+        run: |
+          python - <<'EOF'
+          from financial_engine.inputs import TaxCalculationInput, PeriodFinancingIncomeInput
+          from financial_engine.policies.tax import TaxPolicy, CashTaxTiming, TaxBasisPeriodisation, TaxLossUtilisationGate
+          from financial_engine.tax.engine import calculate_tax
+          from financial_engine.cfads import calculate_canonical_cfads
+          import datetime
+          from dataclasses import dataclass
+
+          @dataclass
+          class P:
+              period_index: int
+              is_operation: bool = True
+              is_construction: bool = False
+              ebitda_keur: float = 2000.0
+              tax_depreciation_keur: float = 0.0
+              period_start: datetime.date = datetime.date(2030, 1, 1)
+              period_end: datetime.date = datetime.date(2030, 7, 1)
+              day_fraction: float = 0.5
+
+          periods = (P(0), P(1, period_start=datetime.date(2030, 7, 1), period_end=datetime.date(2031, 1, 1)))
+          policy = TaxPolicy(
+              policy_id="ci-check",
+              policy_version="1.0.0",
+              corporate_rate=0.25,
+              loss_carryforward_years=5,
+              periods_per_tax_year=2,
+              cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+              tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
+              loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+              atad_enabled=False,
+              atad_ebitda_limit=0.30,
+              atad_de_minimis_threshold_keur_annual=3000.0,
+          )
+          base_input = TaxCalculationInput(policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=())
+          fi_input = TaxCalculationInput(
+              policy=policy,
+              opening_loss_vintages=(),
+              period_interest=(),
+              period_adjustments=(),
+              period_financing_income=(
+                  PeriodFinancingIncomeInput(period_index=0, financing_income_keur=500.0, authority="SOURCE_PROVEN"),
+                  PeriodFinancingIncomeInput(period_index=1, financing_income_keur=500.0, authority="SOURCE_PROVEN"),
+              ),
+          )
+          base_tax = calculate_tax(periods, base_input)
+          fi_tax = calculate_tax(periods, fi_input)
+          base_cfads = calculate_canonical_cfads(periods, base_tax.period_results)
+          fi_cfads = calculate_canonical_cfads(periods, fi_tax.period_results)
+
+          # A: EBITDA invariant
+          for pr in fi_tax.period_results:
+              assert abs(pr.ebitda_keur - 2000.0) < 1e-9, f"EBITDA mutated: {pr.ebitda_keur}"
+
+          # B: TI increases
+          ti_base = sum(r.taxable_income_before_lcf_keur for r in base_tax.annual_results)
+          ti_fi = sum(r.taxable_income_before_lcf_keur for r in fi_tax.annual_results)
+          assert ti_fi > ti_base, f"TI must increase: base={ti_base} fi={ti_fi}"
+
+          # C: CIT increases
+          cit_base = sum(r.current_tax_liability_keur for r in base_tax.annual_results)
+          cit_fi = sum(r.current_tax_liability_keur for r in fi_tax.annual_results)
+          assert cit_fi > cit_base, f"CIT must increase: base={cit_base} fi={cit_fi}"
+
+          # D: CFADS formula
+          for pr, cfr in zip(fi_tax.period_results, fi_cfads):
+              expected = pr.ebitda_keur + pr.financing_income_keur - pr.cash_tax_keur
+              assert abs(cfr.cfads_keur - expected) < 1e-9, f"CFADS formula wrong: {cfr.cfads_keur} != {expected}"
+
+          print("CAUSAL_CHAIN_VERIFIED: EBITDA unchanged, TI/CIT/CFADS increase with financing_income")
+          EOF
+
+      - name: PR-5 canonical clean production path — EBITDA authority not augmented
+        run: |
+          python - <<'EOF'
+          import ast, pathlib
+          src = pathlib.Path("financial_engine/orchestrator.py").read_text()
+          # calculate_ebitda_keur must not add financing income to EBITDA
+          # The function must only take revenue, opex arguments
+          tree = ast.parse(src)
+          for node in ast.walk(tree):
+              if isinstance(node, ast.FunctionDef) and node.name == "calculate_ebitda_keur":
+                  args = [a.arg for a in node.args.args]
+                  assert "financing_income" not in str(args), (
+                      f"calculate_ebitda_keur must not accept financing_income: {args}"
+                  )
+          print("PR5_EBITDA_AUTHORITY_VERIFIED: calculate_ebitda_keur does not accept financing_income")
+          EOF

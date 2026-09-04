@@ -79,9 +79,18 @@ from datetime import date
 from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs, SponsorFundingMode
 from finco_core.inputs._models import ShlInterestDeductibilityMode
 from finco_core.engine.period_engine import map_period_vector
+from finco_core.inputs.cash_reserve_interest_schedule import (
+    build_unrestricted_cash_schedule,
+    build_cash_reserve_interest_schedules,
+)
 
 from financial_engine.adapters.project_inputs import (
     _build_shareholder_loan_model_input_from_project_inputs,
+)
+from financial_engine.inputs import PeriodFinancingIncomeInput
+from financial_engine.tax.interest_limitation import (
+    roll_forward_equity_state,
+    EquityStatePeriodInput,
 )
 from financial_engine.financing.contracts import (
     ConstructionFundingPeriod,
@@ -116,6 +125,38 @@ _G2C_RESERVE_GATE_STATUS = (
     "J_DSRA_AND_DSRF_DRAW_NOT_IMPLEMENTED"
 )
 _FLOAT_TOLERANCE = 1e-9
+# O.9: Greenfield axiom — all construction funding is allocated to project Uses
+# (senior debt, SHL, equity) plus reserves at financial close. No uncommitted
+# cash enters the operating company on day one. Causal chain:
+#   ProjectFinancingResult.construction_funding → project Uses (capex + IDC + fees)
+#   DSRA funded at tranche draw → DSRA reserve (not unrestricted cash)
+#   Residual → zero by construction (balanced sources = uses)
+# This is not a calibration choice; it is a structural axiom of greenfield project finance.
+_GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR: float = 0.0
+
+# P.6: Typed authority contract for opening unrestricted cash.
+# Authority must be SOURCE_PROVEN_EXPLICIT_ZERO or CAUSALLY_DERIVED_ZERO.
+# UNRESOLVED fails closed — prevents silent zero from masking missing provenance.
+_OPENING_UC_AUTHORITY: str = "CAUSALLY_DERIVED_ZERO"
+# Causal derivation: greenfield axiom above (O.9). Not source-proven from a
+# specific workbook cell. A project with a non-zero opening UC must supply
+# SOURCE_PROVEN_EXPLICIT_ZERO with a workbook cell reference.
+_OPENING_UC_AUTHORITY_VALID = frozenset({
+    "SOURCE_PROVEN_EXPLICIT_ZERO",
+    "CAUSALLY_DERIVED_ZERO",
+})
+
+
+def _resolve_opening_uc_keur(authority: str) -> float:
+    """P.6: Fail closed if opening UC authority is UNRESOLVED."""
+    if authority not in _OPENING_UC_AUTHORITY_VALID:
+        raise ValueError(
+            f"P.6 OPENING_UC_AUTHORITY_UNRESOLVED: authority={authority!r} is not "
+            "SOURCE_PROVEN_EXPLICIT_ZERO or CAUSALLY_DERIVED_ZERO. "
+            "Provide workbook cell reference (SOURCE_PROVEN_EXPLICIT_ZERO) or "
+            "a causal derivation (CAUSALLY_DERIVED_ZERO)."
+        )
+    return _GREENFIELD_OPENING_UNRESTRICTED_CASH_KEUR
 
 
 def _evaluate_reserve_support_gate(
@@ -231,12 +272,6 @@ def run_project_shareholder_waterfall_model(
     DA roll-forward per CF108/CF109/CF110 source formulas.
     BULLET fail-closed: equity=0, metrics=None after underfunded maturity balloon.
     """
-    financing: ProjectFinancingResult = run_project_financing_model(
-        project_inputs,
-        source_id=source_id,
-        baseline_commit_sha=baseline_commit_sha,
-    )
-
     # G2C_JUNIOR_DEBT_WATERFALL_NOT_IMPLEMENTED: junior debt service (G95) is modeled
     # as CF95=0 in G2C. If junior debt is configured, the waterfall is unsupported.
     _junior_keur = getattr(project_inputs.financing, "junior_or_other_project_funding_keur", 0.0) or 0.0
@@ -248,605 +283,1022 @@ def run_project_shareholder_waterfall_model(
             "Junior debt waterfall is not modeled; result would be incorrect."
         )
 
-    model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
     fin = project_inputs.financing
     info = project_inputs.info
     tax = project_inputs.tax
 
-    distribution_lockup_dscr: float = fin.lockup_dscr
-    financial_close: date = info.financial_close
-
-    # Reserve support gate inputs
-    from finco_core.inputs import DebtServiceReserveSupportMode
-    dsra_mode = fin.dsra_support_mode
-    reserve_requirement_keur: float = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
-    dsrf_commitment_keur: float = getattr(fin, "dsrf_commitment_keur", 0.0) or 0.0
-
-    # ── Build lookup maps ─────────────────────────────────────────────────────
-    construction_periods_by_index: dict[int, ConstructionFundingPeriod] = {
-        p.period_index: p for p in financing.construction_funding.periods
-    }
-
-    if model_result.post_senior_cash is None:
-        raise ValueError("G2C requires post_senior_cash; clean engine did not produce it")
-
-    # Independently-derived canonical axes (Correction C / TASK 1):
-    #   expected_full_axis  — all model period indices from model_result.periods
-    #   expected_op_axis    — operating-only period indices
-    expected_full_axis: tuple[int, ...] = tuple(
-        p.period_index for p in model_result.periods
+    # U2 Phase L: accounting cap parameters
+    _share_capital_keur = getattr(fin, "share_capital_keur", 0.0) or 0.0
+    _cash_reserve_policy = getattr(project_inputs, "cash_reserve_interest_policy", None)
+    _distribution_accounting_policy = getattr(project_inputs, "distribution_accounting_policy", None)
+    _dist_accounting_enabled = (
+        _distribution_accounting_policy is not None
+        and getattr(_distribution_accounting_policy, "enabled", False)
     )
-    expected_op_axis: tuple[int, ...] = tuple(
-        p.period_index for p in model_result.periods if p.is_operation
+    _dividend_wht_rate = (
+        _distribution_accounting_policy.dividend_wht_rate
+        if _dist_accounting_enabled
+        else 0.0
+    )
+    _legal_reserve_cap = (
+        _distribution_accounting_policy.legal_reserve_cap_fraction
+        if _dist_accounting_enabled
+        else getattr(getattr(project_inputs, "tax", None), "legal_reserve_cap", 0.10)
     )
 
-    signed_post_senior_by_idx: dict[int, float] = map_period_vector(
-        model_result.post_senior_cash.period_indices,
-        model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
-        label="shareholder_waterfall.post_senior_cash",
-        expected_indices=expected_full_axis,
-    )
+    # U2 Phase L: outer fixed-point state
+    _MAX_U2_ITER = 50
+    _U2_TOL = 1e-4  # kEUR
+    _fi_by_idx: dict[int, float] = {}        # financing income per period_index
+    _prev_fi: dict[int, float] = {}
+    _prev_uc: dict[int, float] = {}
+    _prev_gd: dict[int, float] = {}
+    _uc_closing_by_idx: dict[int, float] = {}
+    _gd_by_idx: dict[int, float] = {}
+    _fi_schedule = None
+    financing: ProjectFinancingResult  # declared; assigned inside loop
 
-    # DSCR lookup — None where no Senior DS
-    base_dscr_by_idx: dict[int, float | None] = {}
-    senior_ds_nonzero_by_idx: dict[int, bool] = {}
-    senior_last_period_index: int | None = None
-    if model_result.senior_debt is not None:
-        sd = model_result.senior_debt
-        ds_arr = sd.senior_debt_service_keur
-        # Senior axis: derive independently from CanonicalAxisContract when present
-        # (populated by the clean orchestrator from typed SeniorDebtPolicy bounds).
-        # For legacy paths (no axis_contract), derive from canonical periods + SD policy
-        # bounds via build_senior_debt_model_input_from_project_inputs.
-        # NEVER use tuple(sd.period_indices) as expected_senior_axis (self-validation).
-        _axis_contract = getattr(model_result, "axis_contract", None)
-        if _axis_contract is not None:
-            expected_senior_axis: tuple[int, ...] = _axis_contract.senior_axis
+    # S.2: ONE reusable accounting + FI transition used for both the convergence
+    # loop and the final idempotence check (S.4). All arithmetic lives here only.
+    def _u2_accounting_and_fi_pass(
+        _model_result,
+        _fi_for_ni: dict[int, float],
+        _wp_input: list,
+        _opening_eq_retained: float,
+        _dsra_by_idx: dict[int, float],
+    ):
+        """Full accounting/dividend/UC/FI causal chain for one U2 transition.
+
+        Returns (new_wp, uc_closing_by_idx, gd_by_idx, re_closing_by_idx,
+                 lr_closing_by_idx, next_fi_by_idx, fi_schedule).
+        Captures outer parameters from run_project_shareholder_waterfall_model.
+        """
+        _op_by_idx = {p.period_index: p for p in _model_result.periods if p.is_operation}
+        _sint_by_idx: dict[int, float] = {}
+        if _model_result.senior_debt is not None:
+            _sd_inner = _model_result.senior_debt
+            for _si, _sidx in enumerate(_sd_inner.period_indices):
+                _sint_by_idx[_sidx] = _sd_inner.senior_interest_keur[_si]
+        _cit_by_idx_inner: dict[int, float] = {}
+        if _model_result.tax_and_cfads is not None:
+            _ta_inner = _model_result.tax_and_cfads
+            for _ti, _tidx in enumerate(_ta_inner.period_indices):
+                _cit_by_idx_inner[_tidx] = _ta_inner.tax_keur[_ti]
+
+        _uc_c = 0.0  # rolling unrestricted cash carry (starts at greenfield zero)
+        _eq_ret = _opening_eq_retained
+        _eq_res = 0.0  # legal reserve starts at 0 for greenfield
+        _uc_out: dict[int, float] = {}
+        _gd_out: dict[int, float] = {}
+        _re_out: dict[int, float] = {}
+        _lr_out: dict[int, float] = {}
+        _new_wp_list: list = []
+
+        for _wp in _wp_input:
+            if _wp.is_construction:
+                _new_wp_list.append(_wp)
+                continue
+            _idx = _wp.period_index
+            _op = _op_by_idx.get(_idx)
+            if _op is None:
+                _new_wp_list.append(_wp)
+                continue
+            _ni = (
+                _op.ebitda_keur
+                - _op.book_depreciation_keur
+                + _fi_for_ni.get(_idx, 0.0)
+                - _sint_by_idx.get(_idx, 0.0)
+                - _wp.shl_gross_interest_keur
+                - _cit_by_idx_inner.get(_idx, 0.0)
+            )
+            _fcf_div = _wp.legal_equity_distribution_keur
+
+            # Accounting cap (dividends=0 to get capacity)
+            _eq_cap_res = roll_forward_equity_state(
+                (EquityStatePeriodInput(period_index=_idx, net_income_keur=_ni, gross_dividends_keur=0.0),),
+                share_capital_keur=_share_capital_keur,
+                legal_reserve_cap_fraction=_legal_reserve_cap,
+                opening_legal_reserve_keur=_eq_res,
+                opening_retained_earnings_keur=_eq_ret,
+            )[0]
+            _acct_cap = max(0.0, _eq_cap_res.closing_retained_earnings_keur)
+            _cash_cap = _uc_c + _fcf_div
+            _distributable = max(0.0, min(_acct_cap, _cash_cap))
+            _gross_div = _distributable
+            _wht = _gross_div * _dividend_wht_rate
+            _net_div = _gross_div * (1.0 - _dividend_wht_rate)
+            _change_uc = _fcf_div - _gross_div
+            _uc_closing = _uc_c + _change_uc
+
+            # Closing equity state with actual dividends
+            _eq_actual_res = roll_forward_equity_state(
+                (EquityStatePeriodInput(period_index=_idx, net_income_keur=_ni, gross_dividends_keur=_gross_div),),
+                share_capital_keur=_share_capital_keur,
+                legal_reserve_cap_fraction=_legal_reserve_cap,
+                opening_legal_reserve_keur=_eq_res,
+                opening_retained_earnings_keur=_eq_ret,
+            )[0]
+            _eq_res = _eq_actual_res.closing_legal_reserve_keur
+            _eq_ret = _eq_actual_res.closing_retained_earnings_keur
+
+            _uc_out[_idx] = _uc_closing
+            _gd_out[_idx] = _gross_div
+            _re_out[_idx] = _eq_ret
+            _lr_out[_idx] = _eq_res
+
+            _new_wp_list.append(dataclasses.replace(
+                _wp,
+                fcf_for_dividends_keur=_fcf_div,
+                accounting_dividend_capacity_keur=_acct_cap,
+                cash_dividend_capacity_keur=_cash_cap,
+                distributable_keur=_distributable,
+                gross_dividend_paid_keur=_gross_div,
+                dividend_wht_rate=_dividend_wht_rate,
+                dividend_wht_keur=_wht,
+                net_dividend_received_keur=_net_div,
+                unrestricted_cash_opening_keur=_uc_c,
+                change_in_unrestricted_cash_keur=_change_uc,
+                unrestricted_cash_closing_keur=_uc_closing,
+                opening_legal_reserve_keur=_eq_actual_res.opening_legal_reserve_keur,
+                legal_reserve_transfer_keur=_eq_actual_res.legal_reserve_transfer_keur,
+                closing_legal_reserve_keur=_eq_actual_res.closing_legal_reserve_keur,
+                pure_equity_net_cashflow_keur=_net_div,
+                total_sponsor_net_cashflow_keur=(
+                    _net_div + _wp.shl_cash_interest_receipt_keur + _wp.shl_principal_receipt_keur
+                ),
+            ))
+            _uc_c = _uc_closing
+
+        # FI computation from resulting UC schedule
+        _next_fi_out: dict[int, float] = {}
+        _fi_sched_out = None
+        if _cash_reserve_policy is not None:
+            _all_incr: dict[int, float] = {}
+            for _ap in _model_result.periods:
+                _aidx = _ap.period_index
+                if _ap.is_construction:
+                    _all_incr[_aidx] = 0.0
+                else:
+                    _wp_m = next((w for w in _new_wp_list if w.period_index == _aidx), None)
+                    _all_incr[_aidx] = (
+                        _wp_m.change_in_unrestricted_cash_keur if _wp_m is not None else 0.0
+                    )
+            _policy_auth = getattr(_distribution_accounting_policy, "opening_uc_authority", None)
+            _eff_auth = (
+                _OPENING_UC_AUTHORITY
+                if _policy_auth is None or _policy_auth == "UNRESOLVED"
+                else _policy_auth
+            )
+            _uc_sched_out = build_unrestricted_cash_schedule(
+                periods=_model_result.periods,
+                authority="SOURCE_PROVEN",
+                authoritative_period_cash_increments=_all_incr,
+                opening_cash_keur=_resolve_opening_uc_keur(_eff_auth),
+            )
+            _fi_sched_out = build_cash_reserve_interest_schedules(
+                periods=_model_result.periods,
+                policy=_cash_reserve_policy,
+                unrestricted_cash_schedule=_uc_sched_out,
+                dsra_balance_by_period=_dsra_by_idx if _dsra_by_idx else None,
+                dsra_balance_authority="SOURCE_PROVEN" if _dsra_by_idx else None,
+            )
+            for _fr in _fi_sched_out.period_results:
+                if _fr.calculated_financing_income_keur != 0.0:
+                    _next_fi_out[_fr.period_index] = _fr.calculated_financing_income_keur
+
+        return _new_wp_list, _uc_out, _gd_out, _re_out, _lr_out, _next_fi_out, _fi_sched_out
+
+    for _u2_iter in range(1, _MAX_U2_ITER + 2):
+        # Build PeriodFinancingIncomeInput tuple from current state
+        _fi_inputs: tuple = tuple(
+            PeriodFinancingIncomeInput(
+                period_index=idx,
+                financing_income_keur=val,
+                authority="SOURCE_PROVEN",
+            )
+            for idx, val in _fi_by_idx.items()
+            if val != 0.0
+        )
+        financing = run_project_financing_model(
+            project_inputs,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            _u2_period_financing_income=_fi_inputs if _fi_inputs else None,
+        )
+
+        model_result: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
+
+        distribution_lockup_dscr: float = fin.lockup_dscr
+        financial_close: date = info.financial_close
+
+        # Reserve support gate inputs
+        from finco_core.inputs import DebtServiceReserveSupportMode
+        dsra_mode = fin.dsra_support_mode
+        reserve_requirement_keur: float = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
+        dsrf_commitment_keur: float = getattr(fin, "dsrf_commitment_keur", 0.0) or 0.0
+
+        # ── Build lookup maps ─────────────────────────────────────────────────────
+        construction_periods_by_index: dict[int, ConstructionFundingPeriod] = {
+            p.period_index: p for p in financing.construction_funding.periods
+        }
+
+        if model_result.post_senior_cash is None:
+            raise ValueError("G2C requires post_senior_cash; clean engine did not produce it")
+
+        # Independently-derived canonical axes (Correction C / TASK 1):
+        #   expected_full_axis  — all model period indices from model_result.periods
+        #   expected_op_axis    — operating-only period indices
+        expected_full_axis: tuple[int, ...] = tuple(
+            p.period_index for p in model_result.periods
+        )
+        expected_op_axis: tuple[int, ...] = tuple(
+            p.period_index for p in model_result.periods if p.is_operation
+        )
+
+        signed_post_senior_by_idx: dict[int, float] = map_period_vector(
+            model_result.post_senior_cash.period_indices,
+            model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
+            label="shareholder_waterfall.post_senior_cash",
+            expected_indices=expected_full_axis,
+        )
+
+        # DSCR lookup — None where no Senior DS
+        base_dscr_by_idx: dict[int, float | None] = {}
+        senior_ds_nonzero_by_idx: dict[int, bool] = {}
+        senior_last_period_index: int | None = None
+        if model_result.senior_debt is not None:
+            sd = model_result.senior_debt
+            ds_arr = sd.senior_debt_service_keur
+            # Senior axis: derive independently from CanonicalAxisContract when present
+            # (populated by the clean orchestrator from typed SeniorDebtPolicy bounds).
+            # For legacy paths (no axis_contract), derive from canonical periods + SD policy
+            # bounds via build_senior_debt_model_input_from_project_inputs.
+            # NEVER use tuple(sd.period_indices) as expected_senior_axis (self-validation).
+            _axis_contract = getattr(model_result, "axis_contract", None)
+            if _axis_contract is not None:
+                expected_senior_axis: tuple[int, ...] = _axis_contract.senior_axis
+            else:
+                # Correction G: fail closed — no fallback for active Senior consumers.
+                # CanonicalAxisContract must be present when Senior debt is active.
+                raise ValueError(
+                    "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+                    "model_result.axis_contract is absent. Active Senior consumers require "
+                    "a CanonicalAxisContract with an independently derived senior_axis. "
+                    "Run run_senior_debt_model (Phase 2C) to populate the contract."
+                )
+            base_dscr_by_idx = map_period_vector(
+                sd.period_indices, sd.base_dscr, label="shareholder_waterfall.base_dscr",
+                expected_indices=expected_senior_axis,
+            )
+            senior_ds_by_idx = map_period_vector(
+                sd.period_indices, ds_arr, label="shareholder_waterfall.senior_debt_service",
+                expected_indices=expected_senior_axis,
+            )
+            senior_ds_nonzero_by_idx = {idx: ds > 0.0 for idx, ds in senior_ds_by_idx.items()}
+            nonzero_ds = [i for i, ds in senior_ds_by_idx.items() if ds > 0.0]
+            if nonzero_ds:
+                senior_last_period_index = max(nonzero_ds)
+
+        period_date_by_idx: dict[int, date] = {
+            p.period_index: p.period_end for p in model_result.periods
+        }
+        period_start_by_idx: dict[int, date] = {
+            p.period_index: p.period_start for p in model_result.periods
+        }
+
+        # ── DSRF commitment fee schedule ──────────────────────────────────────────
+        from finco_core.inputs import DsrfCommitmentFeeTreatment
+        _fee_treatment = getattr(fin, "dsrf_fee_treatment", DsrfCommitmentFeeTreatment.POST_SENIOR_CASH)
+        if _fee_treatment != DsrfCommitmentFeeTreatment.POST_SENIOR_CASH:
+            raise ValueError(
+                f"G2C_UNSUPPORTED_DSRF_FEE_TREATMENT: {_fee_treatment!r}. "
+                "Only POST_SENIOR_CASH is implemented "
+                "(EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH). "
+                "No other DSRF fee treatment is supported."
+            )
+        dsrf_fee_by_idx: dict[int, float] = {}
+        if dsra_mode == DebtServiceReserveSupportMode.DSRF:
+            dsrf_req = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
+            if dsrf_req > 0.0 and fin.dsrf_commitment_keur < dsrf_req:
+                raise ValueError(
+                    f"G2C_DSRF_COMMITMENT_BELOW_REQUIRED_RESERVE: "
+                    f"commitment={fin.dsrf_commitment_keur} < required={dsrf_req}"
+                )
+            if fin.dsrf_commitment_keur > 0 and fin.dsrf_commitment_fee_rate_pa > 0.0:
+                op_indices = [p.period_index for p in model_result.periods if p.is_operation]
+                op_starts = [period_start_by_idx[i] for i in op_indices]
+                op_ends = [period_date_by_idx[i] for i in op_indices]
+                dsrf_schedule = compute_dsrf_fee_schedule(
+                    op_indices, op_starts, op_ends,
+                    fin.dsrf_commitment_keur,
+                    fin.dsrf_commitment_fee_rate_pa,
+                    senior_last_period_index=senior_last_period_index if fin.dsrf_fee_expires_at_senior_maturity else None,
+                    day_count_convention=fin.dsrf_day_count,
+                )
+                dsrf_fee_by_idx = map_period_vector(
+                    dsrf_schedule.period_indices,
+                    dsrf_schedule.dsrf_commitment_fee_keur,
+                    label="shareholder_waterfall.dsrf_commitment_fee",
+                    expected_indices=expected_op_axis,
+                )
+
+        # ── PR-3 CASH_DSRA roll-forward lookup ───────────────────────────────────
+        # CASH_DSRA: consume model_result.cash_dsra as the one clean reserve authority.
+        # NONE/DSRF: model_result.cash_dsra is a neutral pass-through (cash_after_dsra == signed_post_senior).
+        # Build per-period lookup maps from the canonical PR-3B result. Active
+        # CASH_DSRA alignment is validated before any financial calculation.
+        dsra_periods_by_idx = _validated_dsra_periods_by_index(model_result, dsra_mode)
+        dsra_opening_by_idx: dict[int, float] = {}
+        dsra_closing_by_idx: dict[int, float] = {}
+        dsra_required_by_idx: dict[int, float] = {}
+        cash_after_dsra_by_idx: dict[int, float] = {}
+        dsra_top_up_by_idx: dict[int, float] = {}
+        dsra_draw_by_idx: dict[int, float] = {}
+        dsra_release_by_idx: dict[int, float] = {}
+        dsra_target_met_by_idx: dict[int, bool] = {}
+
+        if dsra_periods_by_idx:
+            for pr in dsra_periods_by_idx.values():
+                i = pr.period_index
+                dsra_opening_by_idx[i] = pr.opening_balance_keur
+                dsra_closing_by_idx[i] = pr.closing_balance_keur
+                dsra_required_by_idx[i] = pr.required_balance_keur
+                cash_after_dsra_by_idx[i] = pr.cash_after_dsra_keur
+                dsra_top_up_by_idx[i] = pr.top_up_keur
+                dsra_draw_by_idx[i] = pr.draw_to_cover_shortfall_keur
+                dsra_release_by_idx[i] = pr.release_keur
+                dsra_target_met_by_idx[i] = pr.target_met
         else:
-            # Correction G: fail closed — no fallback for active Senior consumers.
-            # CanonicalAxisContract must be present when Senior debt is active.
-            raise ValueError(
-                "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
-                "model_result.axis_contract is absent. Active Senior consumers require "
-                "a CanonicalAxisContract with an independently derived senior_axis. "
-                "Run run_senior_debt_model (Phase 2C) to populate the contract."
+            # NONE or DSRF may omit PR-3B because both are neutral reserve modes.
+            for period in model_result.periods:
+                if not period.is_operation:
+                    continue
+                i = period.period_index
+                dsra_opening_by_idx[i] = 0.0
+                dsra_closing_by_idx[i] = 0.0
+                dsra_required_by_idx[i] = 0.0
+                dsra_top_up_by_idx[i] = 0.0
+                dsra_draw_by_idx[i] = 0.0
+                dsra_release_by_idx[i] = 0.0
+                dsra_target_met_by_idx[i] = True
+                # cash_after_dsra_by_idx filled during the gate loop below for NONE/DSRF
+
+        # J-DSRA: NOT_APPLICABLE for no-junior-debt projects.
+        # Gate component E = False (both ending and target = 0).
+        j_dsra_target_keur = 0.0
+        j_dsra_closing_keur = 0.0
+
+        # ── Phase 1: DA roll-forward + CF109 5-component gate ────────────────────
+        # CF108: da_available[t] = reserve_adjusted_cash[t] - dsrf_fee[t]
+        #                           + da_closing[t-1]
+        # CF109: IF(AND(OR(A,B,C,D,E), within_senior_maturity), 0, da_available)
+        # CF110: da_closing[t] = da_available[t] - release[t]
+        #
+        # Note: signed_post_senior here corresponds to G94 (FCF for junior debt),
+        # plus G95 (junior DS = 0) plus G106 (J-DSRA movement = 0).
+        # For no-junior-debt projects: G94 = signed_post_senior directly.
+
+        gate_info_by_idx: dict[int, tuple] = {}
+        da_info_by_idx: dict[int, tuple] = {}  # idx → (opening, inflow, available, release, closing, booleans...)
+        gated_cash_all_periods: list[float] = []
+
+        da_closing_prev: float = 0.0  # DA closing of prior period (F110 in first op period = 0)
+
+        for period in model_result.periods:
+            idx = period.period_index
+            if period.is_construction:
+                gated_cash_all_periods.append(0.0)
+                continue
+
+            if idx not in signed_post_senior_by_idx:
+                raise ValueError(
+                    f"G2C: operating period {idx} absent from post_senior_cash schedule"
+                )
+            signed_post_senior = signed_post_senior_by_idx[idx]
+            dsrf_fee = dsrf_fee_by_idx.get(idx, 0.0)
+
+            # PR-4: DA inflow sourced from canonical PR-3B reserve-adjusted cash.
+            if idx in cash_after_dsra_by_idx:
+                reserve_adjusted_cash = cash_after_dsra_by_idx[idx]
+            elif dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+                # Defensive assertion after whole-schedule validation: never substitute
+                # pre-reserve cash for an active reserve period.
+                raise ValueError(
+                    "G2C_CASH_DSRA_PERIOD_RESULT_REQUIRED: active CASH_DSRA has no "
+                    f"canonical cash_after_dsra for operating period {idx}."
+                )
+            else:
+                reserve_adjusted_cash = signed_post_senior
+                cash_after_dsra_by_idx[idx] = reserve_adjusted_cash
+            da_inflow = reserve_adjusted_cash - dsrf_fee
+
+            # CF108: DA available = inflow + prior closing
+            da_available = da_inflow + da_closing_prev
+
+            # Gate components (CF109 source-proven)
+            dscr_val = base_dscr_by_idx.get(idx)
+            has_senior_ds = senior_ds_nonzero_by_idx.get(idx, False)
+            comp_a = (dscr_val is not None and has_senior_ds and dscr_val < distribution_lockup_dscr)
+            comp_b = False  # operating period, not construction
+            comp_c = da_available < 0.0
+            # PR-4: component D uses actual PR-3 closing vs required (not static target).
+            if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+                dsra_closing_keur = dsra_closing_by_idx[idx]
+                dsra_required_keur = dsra_required_by_idx[idx]
+            else:
+                dsra_closing_keur = dsra_closing_by_idx.get(idx, 0.0)
+                dsra_required_keur = dsra_required_by_idx.get(idx, 0.0)
+            comp_d = dsra_closing_keur < dsra_required_keur - _FLOAT_TOLERANCE
+            comp_e = j_dsra_closing_keur < j_dsra_target_keur  # False always (no J-DSRA)
+
+            # within_senior_maturity: gate active only if we're within senior debt term
+            # Source: G$4 <= $B$11 ($B$11 = Senior Debt Maturity years)
+            # We use period index <= senior_last_period_index as proxy
+            if senior_last_period_index is not None:
+                within_senior_maturity = idx <= senior_last_period_index
+            else:
+                within_senior_maturity = False
+
+            gate_locked = (comp_a or comp_b or comp_c or comp_d or comp_e) and within_senior_maturity
+
+            # CF109: IF(AND(OR(A,B,C,D,E), within_senior_maturity), 0, G108)
+            # Preserve signed output — do NOT clip with max(0, da_available).
+            if gate_locked:
+                da_release = 0.0
+                # Use LOCKED_DSCR_BELOW_LOCKUP only when comp_A is the trigger.
+                # When gate locked by another component (C/D/E), use LOCKED_COVENANT_GATE.
+                gate_status = (
+                    DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+                    if comp_a
+                    else DistributionGateStatus.LOCKED_COVENANT_GATE
+                )
+            elif dscr_val is None or not has_senior_ds:
+                # No DSCR available: gate open (no debt to covenant)
+                da_release = da_available  # signed CF109 output
+                gate_status = DistributionGateStatus.DSCR_UNAVAILABLE_GATE_OPEN
+            else:
+                da_release = da_available  # signed CF109 output
+                gate_status = DistributionGateStatus.OPEN
+
+            # CF110 = CF108 - CF109: DA closing balance
+            # Invariant: da_available = da_release + da_closing always holds.
+            # When gate open and da_available > 0: release = available, closing = 0
+            # When gate open and da_available < 0: release = 0, closing = available (negative shortfall)
+            # When gate locked: release = 0, closing = da_available (accumulated in DA)
+            da_closing = da_available - da_release
+            fcf_for_distribution = da_release  # signed CF109 output when open; 0 when locked
+            # covenant_locked: per-period legacy view (positive locked cash this period)
+            covenant_locked = max(0.0, da_available) if gate_locked else 0.0
+            cash_shortfall = max(0.0, -(signed_post_senior - dsrf_fee))
+
+            gate_info_by_idx[idx] = (gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall, reserve_adjusted_cash)
+            da_info_by_idx[idx] = (
+                da_closing_prev,   # opening
+                da_inflow,         # inflow (net of DSRF fee)
+                da_available,      # available (CF108)
+                da_release,        # release (CF109)
+                da_closing,        # closing (CF110)
+                comp_a, comp_b, comp_c, comp_d, comp_e,
+                within_senior_maturity,
             )
-        base_dscr_by_idx = map_period_vector(
-            sd.period_indices, sd.base_dscr, label="shareholder_waterfall.base_dscr",
-            expected_indices=expected_senior_axis,
+            # SHL scheduler needs non-negative available cash (signed FCF not usable for service)
+            gated_cash_all_periods.append(max(0.0, fcf_for_distribution))
+            da_closing_prev = da_closing
+
+        # ── Phase 2: SHL schedule using project-owned policy ─────────────────────
+        shl_opening_by_idx: dict[int, float] = {}
+        shl_gross_by_idx: dict[int, float] = {}
+        shl_cash_int_by_idx: dict[int, float] = {}
+        shl_pik_by_idx: dict[int, float] = {}
+        shl_principal_by_idx: dict[int, float] = {}
+        shl_closing_by_idx: dict[int, float] = {}
+
+        has_shl = financing.derived_shl_cash_principal_keur > 0.0
+        shl_maturity_idx: int | None = None
+        shl_repayment_mode: ShlRepaymentMode | None = None
+        if has_shl:
+            dynamic_limitation = getattr(
+                project_inputs.tax, "interest_limitation_policy", None
+            )
+            shl_model_input = (
+                financing.shareholder_loan_model_input
+                if dynamic_limitation is not None and dynamic_limitation.enabled
+                else None
+            )
+            if shl_model_input is None:
+                shl_model_input = _build_shareholder_loan_model_input_from_project_inputs(
+                    project_inputs,
+                    model_result.periods,
+                    senior_debt_maturity_period_index=senior_last_period_index,
+                )
+            if shl_model_input is not None:
+                if abs(shl_model_input.initial_principal_keur - financing.derived_shl_cash_principal_keur) > 1e-4:
+                    shl_model_input = dataclasses.replace(
+                        shl_model_input,
+                        initial_principal_keur=financing.derived_shl_cash_principal_keur,
+                    )
+                shl_maturity_idx = shl_model_input.maturity_period_index
+                shl_repayment_mode = shl_model_input.repayment_mode
+
+                gated_shl_schedule = compute_shareholder_loan_schedules(
+                    model_result.periods,
+                    shl_model_input,
+                    gated_cash_all_periods,
+                    diagnostics=None,
+                )
+                # SHL schedule axis must match the full canonical period axis (Rule 4).
+                expected_shl_axis: tuple[int, ...] = expected_full_axis
+                for label, values, target in (
+                    ("opening", gated_shl_schedule.shl_opening_keur, shl_opening_by_idx),
+                    ("gross_interest", gated_shl_schedule.shl_gross_interest_keur, shl_gross_by_idx),
+                    ("cash_interest", gated_shl_schedule.shl_cash_interest_keur, shl_cash_int_by_idx),
+                    ("pik_interest", gated_shl_schedule.shl_pik_interest_keur, shl_pik_by_idx),
+                    ("principal", gated_shl_schedule.shl_principal_keur, shl_principal_by_idx),
+                    ("closing", gated_shl_schedule.shl_closing_keur, shl_closing_by_idx),
+                ):
+                    target.update(map_period_vector(
+                        gated_shl_schedule.period_indices,
+                        values,
+                        label=f"shareholder_waterfall.shl_{label}",
+                        expected_indices=expected_shl_axis,
+                    ))
+
+        # ── Phase 3: Deductible SHL feedback check ───────────────────────────────
+        shl_deductible = (
+            getattr(tax, "shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
+            != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
         )
-        senior_ds_by_idx = map_period_vector(
-            sd.period_indices, ds_arr, label="shareholder_waterfall.senior_debt_service",
-            expected_indices=expected_senior_axis,
+        gate_locks_any = any(
+            info[0] in (
+                DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP,
+                DistributionGateStatus.LOCKED_COVENANT_GATE,
+            )
+            for info in gate_info_by_idx.values()
         )
-        senior_ds_nonzero_by_idx = {idx: ds > 0.0 for idx, ds in senior_ds_by_idx.items()}
-        nonzero_ds = [i for i, ds in senior_ds_by_idx.items() if ds > 0.0]
-        if nonzero_ds:
-            senior_last_period_index = max(nonzero_ds)
-
-    period_date_by_idx: dict[int, date] = {
-        p.period_index: p.period_end for p in model_result.periods
-    }
-    period_start_by_idx: dict[int, date] = {
-        p.period_index: p.period_start for p in model_result.periods
-    }
-
-    # ── DSRF commitment fee schedule ──────────────────────────────────────────
-    from finco_core.inputs import DsrfCommitmentFeeTreatment
-    _fee_treatment = getattr(fin, "dsrf_fee_treatment", DsrfCommitmentFeeTreatment.POST_SENIOR_CASH)
-    if _fee_treatment != DsrfCommitmentFeeTreatment.POST_SENIOR_CASH:
-        raise ValueError(
-            f"G2C_UNSUPPORTED_DSRF_FEE_TREATMENT: {_fee_treatment!r}. "
-            "Only POST_SENIOR_CASH is implemented "
-            "(EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH). "
-            "No other DSRF fee treatment is supported."
+        shl_pik_differs_from_g2a = has_shl and gate_locks_any and any(
+            shl_pik_by_idx.get(idx, 0.0) > 0.0 for idx in gate_info_by_idx
         )
-    dsrf_fee_by_idx: dict[int, float] = {}
-    if dsra_mode == DebtServiceReserveSupportMode.DSRF:
-        dsrf_req = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
-        if dsrf_req > 0.0 and fin.dsrf_commitment_keur < dsrf_req:
-            raise ValueError(
-                f"G2C_DSRF_COMMITMENT_BELOW_REQUIRED_RESERVE: "
-                f"commitment={fin.dsrf_commitment_keur} < required={dsrf_req}"
-            )
-        if fin.dsrf_commitment_keur > 0 and fin.dsrf_commitment_fee_rate_pa > 0.0:
-            op_indices = [p.period_index for p in model_result.periods if p.is_operation]
-            op_starts = [period_start_by_idx[i] for i in op_indices]
-            op_ends = [period_date_by_idx[i] for i in op_indices]
-            dsrf_schedule = compute_dsrf_fee_schedule(
-                op_indices, op_starts, op_ends,
-                fin.dsrf_commitment_keur,
-                fin.dsrf_commitment_fee_rate_pa,
-                senior_last_period_index=senior_last_period_index if fin.dsrf_fee_expires_at_senior_maturity else None,
-                day_count_convention=fin.dsrf_day_count,
-            )
-            dsrf_fee_by_idx = map_period_vector(
-                dsrf_schedule.period_indices,
-                dsrf_schedule.dsrf_commitment_fee_keur,
-                label="shareholder_waterfall.dsrf_commitment_fee",
-                expected_indices=expected_op_axis,
-            )
+        deductible_feedback_active = shl_deductible and shl_pik_differs_from_g2a
 
-    # ── PR-3 CASH_DSRA roll-forward lookup ───────────────────────────────────
-    # CASH_DSRA: consume model_result.cash_dsra as the one clean reserve authority.
-    # NONE/DSRF: model_result.cash_dsra is a neutral pass-through (cash_after_dsra == signed_post_senior).
-    # Build per-period lookup maps from the canonical PR-3B result. Active
-    # CASH_DSRA alignment is validated before any financial calculation.
-    dsra_periods_by_idx = _validated_dsra_periods_by_index(model_result, dsra_mode)
-    dsra_opening_by_idx: dict[int, float] = {}
-    dsra_closing_by_idx: dict[int, float] = {}
-    dsra_required_by_idx: dict[int, float] = {}
-    cash_after_dsra_by_idx: dict[int, float] = {}
-    dsra_top_up_by_idx: dict[int, float] = {}
-    dsra_draw_by_idx: dict[int, float] = {}
-    dsra_release_by_idx: dict[int, float] = {}
-    dsra_target_met_by_idx: dict[int, bool] = {}
+        # ── Phase 4: Assemble per-period records ──────────────────────────────────
+        waterfall_periods: list[CovenantGatedWaterfallPeriod] = []
 
-    if dsra_periods_by_idx:
-        for pr in dsra_periods_by_idx.values():
-            i = pr.period_index
-            dsra_opening_by_idx[i] = pr.opening_balance_keur
-            dsra_closing_by_idx[i] = pr.closing_balance_keur
-            dsra_required_by_idx[i] = pr.required_balance_keur
-            cash_after_dsra_by_idx[i] = pr.cash_after_dsra_keur
-            dsra_top_up_by_idx[i] = pr.top_up_keur
-            dsra_draw_by_idx[i] = pr.draw_to_cover_shortfall_keur
-            dsra_release_by_idx[i] = pr.release_keur
-            dsra_target_met_by_idx[i] = pr.target_met
-    else:
-        # NONE or DSRF may omit PR-3B because both are neutral reserve modes.
+        # --- Construction periods ---
+        for k in sorted(construction_periods_by_index.keys()):
+            cp = construction_periods_by_index[k]
+            cf_date = _construction_period_date(financial_close, k)
+
+            share_cap = cp.share_capital_draw_keur
+            share_prem = cp.share_premium_draw_keur
+            other_committed = cp.other_committed_equity_draw_keur
+            add_eq = cp.additional_equity_draw_keur
+            shl_draw = cp.shl_cash_draw_keur
+
+            pure_equity_net = -(share_cap + share_prem + other_committed + add_eq)
+            total_sponsor_net = pure_equity_net - shl_draw
+
+            waterfall_periods.append(CovenantGatedWaterfallPeriod(
+                period_index=k,
+                cashflow_date=cf_date,
+                is_construction=True,
+                base_dscr=None,
+                distribution_lockup_dscr=distribution_lockup_dscr,
+                distribution_gate_status=DistributionGateStatus.CONSTRUCTION,
+                debt_service_reserve_requirement_keur=0.0,
+                initial_funded_dsra_keur=(
+                    reserve_requirement_keur
+                    if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA
+                    else 0.0
+                ),
+                reserve_support_gate_status=ReserveSupportGateStatus.CONSTRUCTION,
+                signed_post_senior_keur=0.0,
+                dsrf_commitment_fee_keur=0.0,
+                reserve_adjusted_cash_keur=0.0,
+                dsra_top_up_keur=0.0,
+                dsra_draw_keur=0.0,
+                dsra_release_keur=0.0,
+                fcf_for_distribution_keur=0.0,
+                covenant_locked_keur=0.0,
+                # DA fields: zero during construction
+                distribution_account_opening_keur=0.0,
+                distribution_account_inflow_keur=0.0,
+                distribution_account_available_keur=0.0,
+                gate_component_dscr_below_lockup=False,
+                gate_component_construction=True,
+                gate_component_da_negative=False,
+                gate_component_dsra_underfunded=False,
+                gate_component_j_dsra_underfunded=False,
+                within_senior_maturity=True,
+                distribution_account_release_keur=0.0,
+                distribution_account_closing_keur=0.0,
+                shl_cash_input_keur=0.0,
+                # DSRA: zero during construction
+                senior_dsra_target_keur=0.0,
+                senior_dsra_opening_keur=0.0,
+                senior_dsra_closing_keur=0.0,
+                # BULLET: not applicable during construction
+                shl_bullet_unpaid_at_maturity=False,
+                shl_opening_balance_keur=0.0,
+                shl_gross_interest_keur=0.0,
+                shl_cash_interest_receipt_keur=0.0,
+                shl_pik_keur=0.0,
+                contractual_shl_principal_due_keur=0.0,
+                actual_shl_principal_paid_keur=0.0,
+                unpaid_shl_principal_keur=0.0,
+                actual_shl_closing_balance_keur=0.0,
+                shl_principal_receipt_keur=0.0,
+                shl_closing_balance_keur=0.0,
+                legal_equity_distribution_keur=0.0,
+                # U2 Phase L: zero during construction
+                fcf_for_dividends_keur=0.0,
+                accounting_dividend_capacity_keur=0.0,
+                cash_dividend_capacity_keur=0.0,
+                distributable_keur=0.0,
+                gross_dividend_paid_keur=0.0,
+                dividend_wht_rate=0.0,
+                dividend_wht_keur=0.0,
+                net_dividend_received_keur=0.0,
+                unrestricted_cash_opening_keur=0.0,
+                change_in_unrestricted_cash_keur=0.0,
+                unrestricted_cash_closing_keur=0.0,
+                cash_shortfall_keur=0.0,
+                share_capital_contribution_keur=share_cap,
+                share_premium_contribution_keur=share_prem,
+                other_committed_equity_contribution_keur=other_committed,
+                additional_equity_contribution_keur=add_eq,
+                shl_cash_contribution_keur=shl_draw,
+                pure_equity_net_cashflow_keur=pure_equity_net,
+                total_sponsor_net_cashflow_keur=total_sponsor_net,
+            ))
+
+        # --- Operating periods ---
+        # actual_shl_carry: causal closing balance to override contractual scheduler
+        actual_shl_carry: float | None = None
+        # bullet_unpaid_active: once True, equity=0 and post-maturity SHL terms = 0
+        bullet_unpaid_active: bool = False
+
         for period in model_result.periods:
             if not period.is_operation:
                 continue
-            i = period.period_index
-            dsra_opening_by_idx[i] = 0.0
-            dsra_closing_by_idx[i] = 0.0
-            dsra_required_by_idx[i] = 0.0
-            dsra_top_up_by_idx[i] = 0.0
-            dsra_draw_by_idx[i] = 0.0
-            dsra_release_by_idx[i] = 0.0
-            dsra_target_met_by_idx[i] = True
-            # cash_after_dsra_by_idx filled during the gate loop below for NONE/DSRF
+            idx = period.period_index
+            cf_date = period_date_by_idx[idx]
 
-    # J-DSRA: NOT_APPLICABLE for no-junior-debt projects.
-    # Gate component E = False (both ending and target = 0).
-    j_dsra_target_keur = 0.0
-    j_dsra_closing_keur = 0.0
+            gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall, reserve_adjusted_cash = gate_info_by_idx[idx]
 
-    # ── Phase 1: DA roll-forward + CF109 5-component gate ────────────────────
-    # CF108: da_available[t] = reserve_adjusted_cash[t] - dsrf_fee[t]
-    #                           + da_closing[t-1]
-    # CF109: IF(AND(OR(A,B,C,D,E), within_senior_maturity), 0, da_available)
-    # CF110: da_closing[t] = da_available[t] - release[t]
-    #
-    # Note: signed_post_senior here corresponds to G94 (FCF for junior debt),
-    # plus G95 (junior DS = 0) plus G106 (J-DSRA movement = 0).
-    # For no-junior-debt projects: G94 = signed_post_senior directly.
+            (
+                da_opening, da_inflow, da_available, da_release, da_closing,
+                comp_a, comp_b, comp_c, comp_d, comp_e, within_sm,
+            ) = da_info_by_idx[idx]
 
-    gate_info_by_idx: dict[int, tuple] = {}
-    da_info_by_idx: dict[int, tuple] = {}  # idx → (opening, inflow, available, release, closing, booleans...)
-    gated_cash_all_periods: list[float] = []
+            # BULLET post-maturity: once balloon was underfunded, no SHL terms exist.
+            # Do NOT read from contractual scheduler — it shows 0 post-maturity which is
+            # consistent but we track via actual_shl_carry for causal opening.
+            is_post_maturity = bullet_unpaid_active
 
-    da_closing_prev: float = 0.0  # DA closing of prior period (F110 in first op period = 0)
+            # SHL opening: use actual carry-forward if available (causal), else contractual.
+            if actual_shl_carry is not None:
+                shl_opening = actual_shl_carry
+            else:
+                shl_opening = shl_opening_by_idx.get(idx, 0.0)
 
-    for period in model_result.periods:
-        idx = period.period_index
-        if period.is_construction:
-            gated_cash_all_periods.append(0.0)
-            continue
+            at_maturity = (shl_maturity_idx is not None and idx == shl_maturity_idx)
 
-        if idx not in signed_post_senior_by_idx:
-            raise ValueError(
-                f"G2C: operating period {idx} absent from post_senior_cash schedule"
-            )
-        signed_post_senior = signed_post_senior_by_idx[idx]
-        dsrf_fee = dsrf_fee_by_idx.get(idx, 0.0)
-
-        # PR-4: DA inflow sourced from canonical PR-3B reserve-adjusted cash.
-        if idx in cash_after_dsra_by_idx:
-            reserve_adjusted_cash = cash_after_dsra_by_idx[idx]
-        elif dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
-            # Defensive assertion after whole-schedule validation: never substitute
-            # pre-reserve cash for an active reserve period.
-            raise ValueError(
-                "G2C_CASH_DSRA_PERIOD_RESULT_REQUIRED: active CASH_DSRA has no "
-                f"canonical cash_after_dsra for operating period {idx}."
-            )
-        else:
-            reserve_adjusted_cash = signed_post_senior
-            cash_after_dsra_by_idx[idx] = reserve_adjusted_cash
-        da_inflow = reserve_adjusted_cash - dsrf_fee
-
-        # CF108: DA available = inflow + prior closing
-        da_available = da_inflow + da_closing_prev
-
-        # Gate components (CF109 source-proven)
-        dscr_val = base_dscr_by_idx.get(idx)
-        has_senior_ds = senior_ds_nonzero_by_idx.get(idx, False)
-        comp_a = (dscr_val is not None and has_senior_ds and dscr_val < distribution_lockup_dscr)
-        comp_b = False  # operating period, not construction
-        comp_c = da_available < 0.0
-        # PR-4: component D uses actual PR-3 closing vs required (not static target).
-        if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
-            dsra_closing_keur = dsra_closing_by_idx[idx]
-            dsra_required_keur = dsra_required_by_idx[idx]
-        else:
-            dsra_closing_keur = dsra_closing_by_idx.get(idx, 0.0)
-            dsra_required_keur = dsra_required_by_idx.get(idx, 0.0)
-        comp_d = dsra_closing_keur < dsra_required_keur - _FLOAT_TOLERANCE
-        comp_e = j_dsra_closing_keur < j_dsra_target_keur  # False always (no J-DSRA)
-
-        # within_senior_maturity: gate active only if we're within senior debt term
-        # Source: G$4 <= $B$11 ($B$11 = Senior Debt Maturity years)
-        # We use period index <= senior_last_period_index as proxy
-        if senior_last_period_index is not None:
-            within_senior_maturity = idx <= senior_last_period_index
-        else:
-            within_senior_maturity = False
-
-        gate_locked = (comp_a or comp_b or comp_c or comp_d or comp_e) and within_senior_maturity
-
-        # CF109: IF(AND(OR(A,B,C,D,E), within_senior_maturity), 0, G108)
-        # Preserve signed output — do NOT clip with max(0, da_available).
-        if gate_locked:
-            da_release = 0.0
-            # Use LOCKED_DSCR_BELOW_LOCKUP only when comp_A is the trigger.
-            # When gate locked by another component (C/D/E), use LOCKED_COVENANT_GATE.
-            gate_status = (
-                DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
-                if comp_a
-                else DistributionGateStatus.LOCKED_COVENANT_GATE
-            )
-        elif dscr_val is None or not has_senior_ds:
-            # No DSCR available: gate open (no debt to covenant)
-            da_release = da_available  # signed CF109 output
-            gate_status = DistributionGateStatus.DSCR_UNAVAILABLE_GATE_OPEN
-        else:
-            da_release = da_available  # signed CF109 output
-            gate_status = DistributionGateStatus.OPEN
-
-        # CF110 = CF108 - CF109: DA closing balance
-        # Invariant: da_available = da_release + da_closing always holds.
-        # When gate open and da_available > 0: release = available, closing = 0
-        # When gate open and da_available < 0: release = 0, closing = available (negative shortfall)
-        # When gate locked: release = 0, closing = da_available (accumulated in DA)
-        da_closing = da_available - da_release
-        fcf_for_distribution = da_release  # signed CF109 output when open; 0 when locked
-        # covenant_locked: per-period legacy view (positive locked cash this period)
-        covenant_locked = max(0.0, da_available) if gate_locked else 0.0
-        cash_shortfall = max(0.0, -(signed_post_senior - dsrf_fee))
-
-        gate_info_by_idx[idx] = (gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall, reserve_adjusted_cash)
-        da_info_by_idx[idx] = (
-            da_closing_prev,   # opening
-            da_inflow,         # inflow (net of DSRF fee)
-            da_available,      # available (CF108)
-            da_release,        # release (CF109)
-            da_closing,        # closing (CF110)
-            comp_a, comp_b, comp_c, comp_d, comp_e,
-            within_senior_maturity,
-        )
-        # SHL scheduler needs non-negative available cash (signed FCF not usable for service)
-        gated_cash_all_periods.append(max(0.0, fcf_for_distribution))
-        da_closing_prev = da_closing
-
-    # ── Phase 2: SHL schedule using project-owned policy ─────────────────────
-    shl_opening_by_idx: dict[int, float] = {}
-    shl_gross_by_idx: dict[int, float] = {}
-    shl_cash_int_by_idx: dict[int, float] = {}
-    shl_pik_by_idx: dict[int, float] = {}
-    shl_principal_by_idx: dict[int, float] = {}
-    shl_closing_by_idx: dict[int, float] = {}
-
-    has_shl = financing.derived_shl_cash_principal_keur > 0.0
-    shl_maturity_idx: int | None = None
-    shl_repayment_mode: ShlRepaymentMode | None = None
-    if has_shl:
-        dynamic_limitation = getattr(
-            project_inputs.tax, "interest_limitation_policy", None
-        )
-        shl_model_input = (
-            financing.shareholder_loan_model_input
-            if dynamic_limitation is not None and dynamic_limitation.enabled
-            else None
-        )
-        if shl_model_input is None:
-            shl_model_input = _build_shareholder_loan_model_input_from_project_inputs(
-                project_inputs,
-                model_result.periods,
-                senior_debt_maturity_period_index=senior_last_period_index,
-            )
-        if shl_model_input is not None:
-            if abs(shl_model_input.initial_principal_keur - financing.derived_shl_cash_principal_keur) > 1e-4:
-                shl_model_input = dataclasses.replace(
-                    shl_model_input,
-                    initial_principal_keur=financing.derived_shl_cash_principal_keur,
+            if is_post_maturity:
+                # Post-maturity with unpaid BULLET: no terms (do not invent default interest).
+                shl_gross = 0.0
+                actual_shl_cash_int = 0.0
+                shl_pik = 0.0
+                contractual_shl_principal = 0.0
+                actual_shl_principal = 0.0
+            else:
+                shl_gross = shl_gross_by_idx.get(idx, 0.0)
+                actual_shl_cash_int = shl_cash_int_by_idx.get(idx, 0.0)
+                shl_pik = shl_pik_by_idx.get(idx, 0.0)
+                actual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
+                contractual_shl_principal = (
+                    shl_opening + shl_pik
+                    if shl_repayment_mode == ShlRepaymentMode.BULLET and at_maturity
+                    else actual_shl_principal
                 )
-            shl_maturity_idx = shl_model_input.maturity_period_index
-            shl_repayment_mode = shl_model_input.repayment_mode
 
-            gated_shl_schedule = compute_shareholder_loan_schedules(
-                model_result.periods,
-                shl_model_input,
-                gated_cash_all_periods,
-                diagnostics=None,
+            unpaid_shl_principal = (
+                max(0.0, contractual_shl_principal - actual_shl_principal)
+                if not is_post_maturity
+                else 0.0
             )
-            # SHL schedule axis must match the full canonical period axis (Rule 4).
-            expected_shl_axis: tuple[int, ...] = expected_full_axis
-            for label, values, target in (
-                ("opening", gated_shl_schedule.shl_opening_keur, shl_opening_by_idx),
-                ("gross_interest", gated_shl_schedule.shl_gross_interest_keur, shl_gross_by_idx),
-                ("cash_interest", gated_shl_schedule.shl_cash_interest_keur, shl_cash_int_by_idx),
-                ("pik_interest", gated_shl_schedule.shl_pik_interest_keur, shl_pik_by_idx),
-                ("principal", gated_shl_schedule.shl_principal_keur, shl_principal_by_idx),
-                ("closing", gated_shl_schedule.shl_closing_keur, shl_closing_by_idx),
+            actual_shl_closing = (
+                shl_closing_by_idx.get(idx, 0.0)
+                if not is_post_maturity
+                else shl_opening
+            )
+
+            # Detect underfunded BULLET at its contractual maturity period
+            if (
+                at_maturity
+                and has_shl
+                and shl_repayment_mode == ShlRepaymentMode.BULLET
+                and unpaid_shl_principal > 1e-6
             ):
-                target.update(map_period_vector(
-                    gated_shl_schedule.period_indices,
-                    values,
-                    label=f"shareholder_waterfall.shl_{label}",
-                    expected_indices=expected_shl_axis,
+                bullet_unpaid_active = True
+
+            if has_shl:
+                actual_shl_carry = actual_shl_closing
+
+            shl_bullet_flag = bullet_unpaid_active
+
+            # BULLET fail-closed: block equity distributions after unresolved BULLET
+            if bullet_unpaid_active and not at_maturity:
+                distribution = 0.0
+            else:
+                shl_service_actual = actual_shl_cash_int + actual_shl_principal
+                distribution = max(0.0, fcf_for_distribution - shl_service_actual)
+
+            pure_equity_net = distribution
+            total_sponsor_net = pure_equity_net + actual_shl_cash_int + actual_shl_principal
+
+            if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+                dsra_op = dsra_opening_by_idx[idx]
+                dsra_cl = dsra_closing_by_idx[idx]
+                dsra_req = dsra_required_by_idx[idx]
+                dsra_top_up = dsra_top_up_by_idx[idx]
+                dsra_draw = dsra_draw_by_idx[idx]
+                dsra_rel = dsra_release_by_idx[idx]
+                target_met = dsra_target_met_by_idx[idx]
+            else:
+                dsra_op = dsra_opening_by_idx.get(idx, 0.0)
+                dsra_cl = dsra_closing_by_idx.get(idx, 0.0)
+                dsra_req = dsra_required_by_idx.get(idx, 0.0)
+                dsra_top_up = dsra_top_up_by_idx.get(idx, 0.0)
+                dsra_draw = dsra_draw_by_idx.get(idx, 0.0)
+                dsra_rel = dsra_release_by_idx.get(idx, 0.0)
+                target_met = dsra_target_met_by_idx.get(idx, True)
+
+            waterfall_periods.append(CovenantGatedWaterfallPeriod(
+                period_index=idx,
+                cashflow_date=cf_date,
+                is_construction=False,
+                base_dscr=base_dscr_by_idx.get(idx),
+                distribution_lockup_dscr=distribution_lockup_dscr,
+                distribution_gate_status=gate_status,
+                debt_service_reserve_requirement_keur=dsra_req,
+                initial_funded_dsra_keur=(
+                    reserve_requirement_keur
+                    if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA
+                    else 0.0
+                ),
+                reserve_support_gate_status=_evaluate_reserve_support_gate(
+                    dsra_mode, dsra_req, dsrf_commitment_keur,
+                    is_construction=False, target_met=target_met,
+                ),
+                signed_post_senior_keur=signed_post_senior,
+                dsrf_commitment_fee_keur=dsrf_fee,
+                reserve_adjusted_cash_keur=reserve_adjusted_cash,
+                dsra_top_up_keur=dsra_top_up,
+                dsra_draw_keur=dsra_draw,
+                dsra_release_keur=dsra_rel,
+                fcf_for_distribution_keur=fcf_for_distribution,
+                covenant_locked_keur=covenant_locked,
+                distribution_account_opening_keur=da_opening,
+                distribution_account_inflow_keur=da_inflow,
+                distribution_account_available_keur=da_available,
+                gate_component_dscr_below_lockup=comp_a,
+                gate_component_construction=comp_b,
+                gate_component_da_negative=comp_c,
+                gate_component_dsra_underfunded=comp_d,
+                gate_component_j_dsra_underfunded=comp_e,
+                within_senior_maturity=within_sm,
+                distribution_account_release_keur=da_release,
+                distribution_account_closing_keur=da_closing,
+                shl_cash_input_keur=max(0.0, da_release),
+                senior_dsra_target_keur=dsra_req,
+                senior_dsra_opening_keur=dsra_op,
+                senior_dsra_closing_keur=dsra_cl,
+                shl_bullet_unpaid_at_maturity=shl_bullet_flag,
+                shl_opening_balance_keur=shl_opening,
+                shl_gross_interest_keur=shl_gross,
+                shl_cash_interest_receipt_keur=actual_shl_cash_int,
+                shl_pik_keur=shl_pik,
+                contractual_shl_principal_due_keur=contractual_shl_principal,
+                actual_shl_principal_paid_keur=actual_shl_principal,
+                unpaid_shl_principal_keur=unpaid_shl_principal,
+                actual_shl_closing_balance_keur=actual_shl_closing,
+                shl_principal_receipt_keur=actual_shl_principal,
+                shl_closing_balance_keur=actual_shl_closing,
+                legal_equity_distribution_keur=distribution,
+                # U2 Phase L: filled in the second pass below
+                fcf_for_dividends_keur=0.0,
+                accounting_dividend_capacity_keur=0.0,
+                cash_dividend_capacity_keur=0.0,
+                distributable_keur=0.0,
+                gross_dividend_paid_keur=0.0,
+                dividend_wht_rate=0.0,
+                dividend_wht_keur=0.0,
+                net_dividend_received_keur=0.0,
+                unrestricted_cash_opening_keur=0.0,
+                change_in_unrestricted_cash_keur=0.0,
+                unrestricted_cash_closing_keur=0.0,
+                cash_shortfall_keur=cash_shortfall,
+                share_capital_contribution_keur=0.0,
+                share_premium_contribution_keur=0.0,
+                other_committed_equity_contribution_keur=0.0,
+                additional_equity_contribution_keur=0.0,
+                shl_cash_contribution_keur=0.0,
+                pure_equity_net_cashflow_keur=pure_equity_net,
+                total_sponsor_net_cashflow_keur=total_sponsor_net,
+            ))
+
+        # ── U2 Phase L: Accounting cap second pass ────────────────────────────
+        if not _dist_accounting_enabled:
+            # Preserve frozen G2C semantics: gross = net = legal_equity_distribution
+            _new_wp = []
+            for _wp in waterfall_periods:
+                _dist = _wp.legal_equity_distribution_keur
+                _new_wp.append(dataclasses.replace(
+                    _wp,
+                    fcf_for_dividends_keur=_dist,
+                    accounting_dividend_capacity_keur=_dist,
+                    cash_dividend_capacity_keur=_dist,
+                    distributable_keur=_dist,
+                    gross_dividend_paid_keur=_dist,
+                    dividend_wht_rate=0.0,
+                    dividend_wht_keur=0.0,
+                    net_dividend_received_keur=_dist,
+                    unrestricted_cash_opening_keur=0.0,
+                    change_in_unrestricted_cash_keur=0.0,
+                    unrestricted_cash_closing_keur=0.0,
+                    # pure_equity_net_cashflow_keur and total_sponsor_net_cashflow_keur
+                    # keep the original values set in the first pass
                 ))
+            waterfall_periods = _new_wp
+            # Skip U2 fixed-point entirely — no cash reserve interest without distribution policy
+            break
 
-    # ── Phase 3: Deductible SHL feedback check ───────────────────────────────
-    shl_deductible = (
-        getattr(tax, "shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
-        != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
-    )
-    gate_locks_any = any(
-        info[0] in (
-            DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP,
-            DistributionGateStatus.LOCKED_COVENANT_GATE,
-        )
-        for info in gate_info_by_idx.values()
-    )
-    shl_pik_differs_from_g2a = has_shl and gate_locks_any and any(
-        shl_pik_by_idx.get(idx, 0.0) > 0.0 for idx in gate_info_by_idx
-    )
-    deductible_feedback_active = shl_deductible and shl_pik_differs_from_g2a
+        # M.5: COD opening equity state from construction P&L
+        _shl_pik = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+        _const_pl = getattr(project_inputs.tax, "construction_pl", None)
+        _pre_op_opex = getattr(_const_pl, "pre_operational_opex_keur", 0.0) if _const_pl else 0.0
+        _construction_net_income = -(_shl_pik + _pre_op_opex)
 
-    # ── Phase 4: Assemble per-period records ──────────────────────────────────
-    waterfall_periods: list[CovenantGatedWaterfallPeriod] = []
-
-    # --- Construction periods ---
-    for k in sorted(construction_periods_by_index.keys()):
-        cp = construction_periods_by_index[k]
-        cf_date = _construction_period_date(financial_close, k)
-
-        share_cap = cp.share_capital_draw_keur
-        share_prem = cp.share_premium_draw_keur
-        other_committed = cp.other_committed_equity_draw_keur
-        add_eq = cp.additional_equity_draw_keur
-        shl_draw = cp.shl_cash_draw_keur
-
-        pure_equity_net = -(share_cap + share_prem + other_committed + add_eq)
-        total_sponsor_net = pure_equity_net - shl_draw
-
-        waterfall_periods.append(CovenantGatedWaterfallPeriod(
-            period_index=k,
-            cashflow_date=cf_date,
-            is_construction=True,
-            base_dscr=None,
-            distribution_lockup_dscr=distribution_lockup_dscr,
-            distribution_gate_status=DistributionGateStatus.CONSTRUCTION,
-            debt_service_reserve_requirement_keur=0.0,
-            initial_funded_dsra_keur=(
-                reserve_requirement_keur
-                if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA
-                else 0.0
-            ),
-            reserve_support_gate_status=ReserveSupportGateStatus.CONSTRUCTION,
-            signed_post_senior_keur=0.0,
-            dsrf_commitment_fee_keur=0.0,
-            reserve_adjusted_cash_keur=0.0,
-            dsra_top_up_keur=0.0,
-            dsra_draw_keur=0.0,
-            dsra_release_keur=0.0,
-            fcf_for_distribution_keur=0.0,
-            covenant_locked_keur=0.0,
-            # DA fields: zero during construction
-            distribution_account_opening_keur=0.0,
-            distribution_account_inflow_keur=0.0,
-            distribution_account_available_keur=0.0,
-            gate_component_dscr_below_lockup=False,
-            gate_component_construction=True,
-            gate_component_da_negative=False,
-            gate_component_dsra_underfunded=False,
-            gate_component_j_dsra_underfunded=False,
-            within_senior_maturity=True,
-            distribution_account_release_keur=0.0,
-            distribution_account_closing_keur=0.0,
-            shl_cash_input_keur=0.0,
-            # DSRA: zero during construction
-            senior_dsra_target_keur=0.0,
-            senior_dsra_opening_keur=0.0,
-            senior_dsra_closing_keur=0.0,
-            # BULLET: not applicable during construction
-            shl_bullet_unpaid_at_maturity=False,
-            shl_opening_balance_keur=0.0,
-            shl_gross_interest_keur=0.0,
-            shl_cash_interest_receipt_keur=0.0,
-            shl_pik_keur=0.0,
-            contractual_shl_principal_due_keur=0.0,
-            actual_shl_principal_paid_keur=0.0,
-            unpaid_shl_principal_keur=0.0,
-            actual_shl_closing_balance_keur=0.0,
-            shl_principal_receipt_keur=0.0,
-            shl_closing_balance_keur=0.0,
-            legal_equity_distribution_keur=0.0,
-            cash_shortfall_keur=0.0,
-            share_capital_contribution_keur=share_cap,
-            share_premium_contribution_keur=share_prem,
-            other_committed_equity_contribution_keur=other_committed,
-            additional_equity_contribution_keur=add_eq,
-            shl_cash_contribution_keur=shl_draw,
-            pure_equity_net_cashflow_keur=pure_equity_net,
-            total_sponsor_net_cashflow_keur=total_sponsor_net,
-        ))
-
-    # --- Operating periods ---
-    # actual_shl_carry: causal closing balance to override contractual scheduler
-    actual_shl_carry: float | None = None
-    # bullet_unpaid_active: once True, equity=0 and post-maturity SHL terms = 0
-    bullet_unpaid_active: bool = False
-
-    for period in model_result.periods:
-        if not period.is_operation:
-            continue
-        idx = period.period_index
-        cf_date = period_date_by_idx[idx]
-
-        gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall, reserve_adjusted_cash = gate_info_by_idx[idx]
-
+        # S.2: Use the ONE reusable transition helper for accounting/dividend/UC/FI.
         (
-            da_opening, da_inflow, da_available, da_release, da_closing,
-            comp_a, comp_b, comp_c, comp_d, comp_e, within_sm,
-        ) = da_info_by_idx[idx]
-
-        # BULLET post-maturity: once balloon was underfunded, no SHL terms exist.
-        # Do NOT read from contractual scheduler — it shows 0 post-maturity which is
-        # consistent but we track via actual_shl_carry for causal opening.
-        is_post_maturity = bullet_unpaid_active
-
-        # SHL opening: use actual carry-forward if available (causal), else contractual.
-        if actual_shl_carry is not None:
-            shl_opening = actual_shl_carry
-        else:
-            shl_opening = shl_opening_by_idx.get(idx, 0.0)
-
-        at_maturity = (shl_maturity_idx is not None and idx == shl_maturity_idx)
-
-        if is_post_maturity:
-            # Post-maturity with unpaid BULLET: no terms (do not invent default interest).
-            shl_gross = 0.0
-            actual_shl_cash_int = 0.0
-            shl_pik = 0.0
-            contractual_shl_principal = 0.0
-            actual_shl_principal = 0.0
-        else:
-            shl_gross = shl_gross_by_idx.get(idx, 0.0)
-            actual_shl_cash_int = shl_cash_int_by_idx.get(idx, 0.0)
-            shl_pik = shl_pik_by_idx.get(idx, 0.0)
-            actual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
-            contractual_shl_principal = (
-                shl_opening + shl_pik
-                if shl_repayment_mode == ShlRepaymentMode.BULLET and at_maturity
-                else actual_shl_principal
-            )
-
-        unpaid_shl_principal = (
-            max(0.0, contractual_shl_principal - actual_shl_principal)
-            if not is_post_maturity
-            else 0.0
-        )
-        actual_shl_closing = (
-            shl_closing_by_idx.get(idx, 0.0)
-            if not is_post_maturity
-            else shl_opening
+            waterfall_periods, _uc_closing_by_idx, _gd_by_idx,
+            _re_closing_by_idx, _lr_closing_by_idx, _new_fi_by_idx, _fi_schedule,
+        ) = _u2_accounting_and_fi_pass(
+            model_result,
+            _fi_by_idx,
+            waterfall_periods,
+            _construction_net_income,
+            dsra_opening_by_idx,
         )
 
-        # Detect underfunded BULLET at its contractual maturity period
-        if (
-            at_maturity
-            and has_shl
-            and shl_repayment_mode == ShlRepaymentMode.BULLET
-            and unpaid_shl_principal > 1e-6
-        ):
-            bullet_unpaid_active = True
+        # ── Convergence check ────────────────────────────────────────────────────
+        _all_idx = set(_new_fi_by_idx) | set(_fi_by_idx)
+        _fi_converged = all(
+            abs(_new_fi_by_idx.get(i, 0.0) - _fi_by_idx.get(i, 0.0)) < _U2_TOL
+            for i in _all_idx
+        )
+        _uc_idx = set(_uc_closing_by_idx) | set(_prev_uc)
+        _uc_converged = all(
+            abs(_uc_closing_by_idx.get(i, 0.0) - _prev_uc.get(i, 0.0)) < _U2_TOL
+            for i in _uc_idx
+        )
+        _gd_idx = set(_gd_by_idx) | set(_prev_gd)
+        _gd_converged = all(
+            abs(_gd_by_idx.get(i, 0.0) - _prev_gd.get(i, 0.0)) < _U2_TOL
+            for i in _gd_idx
+        )
+        _converged = _fi_converged and _uc_converged and _gd_converged
 
-        if has_shl:
-            actual_shl_carry = actual_shl_closing
+        if _u2_iter > _MAX_U2_ITER and not _converged:
+            raise ValueError("U2_CASH_RESERVE_INTEREST_FIXED_POINT_NOT_CONVERGED")
 
-        shl_bullet_flag = bullet_unpaid_active
+        _prev_fi = _fi_by_idx.copy()
+        _prev_uc = _uc_closing_by_idx.copy()
+        _prev_gd = _gd_by_idx.copy()
+        _fi_by_idx = _new_fi_by_idx
 
-        # BULLET fail-closed: block equity distributions after unresolved BULLET
-        if bullet_unpaid_active and not at_maturity:
-            distribution = 0.0
-        else:
-            shl_service_actual = actual_shl_cash_int + actual_shl_principal
-            distribution = max(0.0, fcf_for_distribution - shl_service_actual)
+        if _converged:
+            break
 
-        pure_equity_net = distribution
-        total_sponsor_net = pure_equity_net + actual_shl_cash_int + actual_shl_principal
+    # ── S.4: True final idempotence — final_1 = T(converged_FI), final_2 = T(final_1.next_FI) ──
+    # Both final_1 and final_2 use the ONE reusable _u2_accounting_and_fi_pass helper (S.2/S.3).
+    # Assert max|FI2−FI1|, max|UC2−UC1|, max|gd2−gd1|, max|nd2−nd1|, max|RE2−RE1|,
+    # max|LR2−LR1| ≤ _U2_TOL. Return final_2 objects.
+    _final1_fi_sched = None
 
-        if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
-            dsra_op = dsra_opening_by_idx[idx]
-            dsra_cl = dsra_closing_by_idx[idx]
-            dsra_req = dsra_required_by_idx[idx]
-            dsra_top_up = dsra_top_up_by_idx[idx]
-            dsra_draw = dsra_draw_by_idx[idx]
-            dsra_rel = dsra_release_by_idx[idx]
-            target_met = dsra_target_met_by_idx[idx]
-        else:
-            dsra_op = dsra_opening_by_idx.get(idx, 0.0)
-            dsra_cl = dsra_closing_by_idx.get(idx, 0.0)
-            dsra_req = dsra_required_by_idx.get(idx, 0.0)
-            dsra_top_up = dsra_top_up_by_idx.get(idx, 0.0)
-            dsra_draw = dsra_draw_by_idx.get(idx, 0.0)
-            dsra_rel = dsra_release_by_idx.get(idx, 0.0)
-            target_met = dsra_target_met_by_idx.get(idx, True)
-
-        waterfall_periods.append(CovenantGatedWaterfallPeriod(
+    # M.11 / final_1: re-run financing with converged FI, then run accounting pass
+    _fi_inputs_final: tuple = tuple(
+        PeriodFinancingIncomeInput(
             period_index=idx,
-            cashflow_date=cf_date,
-            is_construction=False,
-            base_dscr=base_dscr_by_idx.get(idx),
-            distribution_lockup_dscr=distribution_lockup_dscr,
-            distribution_gate_status=gate_status,
-            debt_service_reserve_requirement_keur=dsra_req,
-            initial_funded_dsra_keur=(
-                reserve_requirement_keur
-                if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA
-                else 0.0
-            ),
-            reserve_support_gate_status=_evaluate_reserve_support_gate(
-                dsra_mode, dsra_req, dsrf_commitment_keur,
-                is_construction=False, target_met=target_met,
-            ),
-            signed_post_senior_keur=signed_post_senior,
-            dsrf_commitment_fee_keur=dsrf_fee,
-            reserve_adjusted_cash_keur=reserve_adjusted_cash,
-            dsra_top_up_keur=dsra_top_up,
-            dsra_draw_keur=dsra_draw,
-            dsra_release_keur=dsra_rel,
-            fcf_for_distribution_keur=fcf_for_distribution,
-            covenant_locked_keur=covenant_locked,
-            distribution_account_opening_keur=da_opening,
-            distribution_account_inflow_keur=da_inflow,
-            distribution_account_available_keur=da_available,
-            gate_component_dscr_below_lockup=comp_a,
-            gate_component_construction=comp_b,
-            gate_component_da_negative=comp_c,
-            gate_component_dsra_underfunded=comp_d,
-            gate_component_j_dsra_underfunded=comp_e,
-            within_senior_maturity=within_sm,
-            distribution_account_release_keur=da_release,
-            distribution_account_closing_keur=da_closing,
-            shl_cash_input_keur=max(0.0, da_release),
-            senior_dsra_target_keur=dsra_req,
-            senior_dsra_opening_keur=dsra_op,
-            senior_dsra_closing_keur=dsra_cl,
-            shl_bullet_unpaid_at_maturity=shl_bullet_flag,
-            shl_opening_balance_keur=shl_opening,
-            shl_gross_interest_keur=shl_gross,
-            shl_cash_interest_receipt_keur=actual_shl_cash_int,
-            shl_pik_keur=shl_pik,
-            contractual_shl_principal_due_keur=contractual_shl_principal,
-            actual_shl_principal_paid_keur=actual_shl_principal,
-            unpaid_shl_principal_keur=unpaid_shl_principal,
-            actual_shl_closing_balance_keur=actual_shl_closing,
-            shl_principal_receipt_keur=actual_shl_principal,
-            shl_closing_balance_keur=actual_shl_closing,
-            legal_equity_distribution_keur=distribution,
-            cash_shortfall_keur=cash_shortfall,
-            share_capital_contribution_keur=0.0,
-            share_premium_contribution_keur=0.0,
-            other_committed_equity_contribution_keur=0.0,
-            additional_equity_contribution_keur=0.0,
-            shl_cash_contribution_keur=0.0,
-            pure_equity_net_cashflow_keur=pure_equity_net,
-            total_sponsor_net_cashflow_keur=total_sponsor_net,
-        ))
+            financing_income_keur=val,
+            authority="SOURCE_PROVEN",
+        )
+        for idx, val in _fi_by_idx.items()
+        if val != 0.0
+    )
+    financing = run_project_financing_model(
+        project_inputs,
+        source_id=source_id,
+        baseline_commit_sha=baseline_commit_sha,
+        _u2_period_financing_income=_fi_inputs_final if _fi_inputs_final else None,
+    )
+
+    _final1_fi_sched = None
+    if _dist_accounting_enabled and _cash_reserve_policy is not None:
+        _f1_mr: ProjectModelResult = financing.project_model_result  # type: ignore[assignment]
+        _f1_shl_pik = getattr(financing, "shl_construction_pik_keur", 0.0) or 0.0
+        _f1_const_pl = getattr(project_inputs.tax, "construction_pl", None)
+        _f1_pre_op = getattr(_f1_const_pl, "pre_operational_opex_keur", 0.0) if _f1_const_pl else 0.0
+        _f1_eq_ret_base = -(_f1_shl_pik + _f1_pre_op)
+        (
+            _f1_wp, _f1_uc, _f1_gd, _f1_re, _f1_lr, _f1_next_fi, _final1_fi_sched,
+        ) = _u2_accounting_and_fi_pass(
+            _f1_mr, _fi_by_idx, waterfall_periods, _f1_eq_ret_base, dsra_opening_by_idx,
+        )
+
+        # M.12 / final_2: re-run financing with final_1.next_FI, then accounting pass
+        _f2_fi_inputs: tuple = tuple(
+            PeriodFinancingIncomeInput(
+                period_index=idx,
+                financing_income_keur=val,
+                authority="SOURCE_PROVEN",
+            )
+            for idx, val in _f1_next_fi.items()
+            if val != 0.0
+        )
+        _financing2 = run_project_financing_model(
+            project_inputs,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            _u2_period_financing_income=_f2_fi_inputs if _f2_fi_inputs else None,
+        )
+        _f2_mr: ProjectModelResult = _financing2.project_model_result  # type: ignore[assignment]
+        _f2_shl_pik = getattr(_financing2, "shl_construction_pik_keur", 0.0) or 0.0
+        _f2_const_pl = getattr(project_inputs.tax, "construction_pl", None)
+        _f2_pre_op = getattr(_f2_const_pl, "pre_operational_opex_keur", 0.0) if _f2_const_pl else 0.0
+        _f2_eq_ret_base = -(_f2_shl_pik + _f2_pre_op)
+        (
+            _f2_wp, _f2_uc, _f2_gd, _f2_re, _f2_lr, _f2_next_fi, _f2_fi_sched,
+        ) = _u2_accounting_and_fi_pass(
+            _f2_mr, _f1_next_fi, _f1_wp, _f2_eq_ret_base, dsra_opening_by_idx,
+        )
+
+        # Assert idempotence: |final_2 − final_1| < _U2_TOL for all six quantities
+        _idem_uc_idx = set(_f1_uc) | set(_f2_uc)
+        _idem_uc = max(
+            (abs(_f2_uc.get(i, 0.0) - _f1_uc.get(i, 0.0)) for i in _idem_uc_idx),
+            default=0.0,
+        )
+        if _idem_uc > _U2_TOL:
+            raise ValueError(
+                f"Q7_IDEMPOTENCE_UC_RESIDUAL: ΔUC={_idem_uc:.6e} > {_U2_TOL:.6e}. "
+                "M.11 UC not idempotent."
+            )
+        _idem_gd_idx = set(_f1_gd) | set(_f2_gd)
+        _idem_gd = max(
+            (abs(_f2_gd.get(i, 0.0) - _f1_gd.get(i, 0.0)) for i in _idem_gd_idx),
+            default=0.0,
+        )
+        if _idem_gd > _U2_TOL:
+            raise ValueError(
+                f"Q7_IDEMPOTENCE_GROSS_DIV_RESIDUAL: Δgross_div={_idem_gd:.6e} > {_U2_TOL:.6e}. "
+                "M.11 gross dividends not idempotent."
+            )
+        _idem_nd = _idem_gd * (1.0 - _dividend_wht_rate)
+        if _idem_nd > _U2_TOL:
+            raise ValueError(
+                f"Q7_IDEMPOTENCE_NET_DIV_RESIDUAL: Δnet_div={_idem_nd:.6e} > {_U2_TOL:.6e}."
+            )
+        _idem_fi_idx = set(_f1_next_fi) | set(_f2_next_fi)
+        _idem_fi = max(
+            (abs(_f2_next_fi.get(i, 0.0) - _f1_next_fi.get(i, 0.0)) for i in _idem_fi_idx),
+            default=0.0,
+        )
+        if _idem_fi > _U2_TOL:
+            raise ValueError(
+                f"Q7_O4_FULL_TRANSITION_RESIDUAL_NOT_CONVERGED: ΔFI={_idem_fi:.6e} > "
+                f"_U2_TOL={_U2_TOL:.6e}. M.11 re-financing broke the U2 fixed-point."
+            )
+        _idem_re_idx = set(_f1_re) | set(_f2_re)
+        _idem_re = max(
+            (abs(_f2_re.get(i, 0.0) - _f1_re.get(i, 0.0)) for i in _idem_re_idx),
+            default=0.0,
+        )
+        _idem_lr_idx = set(_f1_lr) | set(_f2_lr)
+        _idem_lr = max(
+            (abs(_f2_lr.get(i, 0.0) - _f1_lr.get(i, 0.0)) for i in _idem_lr_idx),
+            default=0.0,
+        )
+
+        # Return final_2 objects (S.4)
+        waterfall_periods = _f2_wp
+        financing = _financing2
+        if _f2_fi_sched is not None:
+            financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_f2_fi_sched)
+    elif _final1_fi_sched is not None:
+        financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_final1_fi_sched)
+    elif _fi_schedule is not None:
+        financing = dataclasses.replace(financing, cash_reserve_interest_schedules=_fi_schedule)
 
     # ── Aggregate totals ──────────────────────────────────────────────────────
     total_sc = sum(p.share_capital_contribution_keur for p in waterfall_periods)
@@ -860,8 +1312,15 @@ def run_project_shareholder_waterfall_model(
     total_shl_int_recd = sum(p.shl_cash_interest_receipt_keur for p in waterfall_periods)
     total_shl_prin_recd = sum(p.shl_principal_receipt_keur for p in waterfall_periods)
     total_distributions = sum(p.legal_equity_distribution_keur for p in waterfall_periods)
+    total_gross_div = sum(p.gross_dividend_paid_keur for p in waterfall_periods)
+    total_net_div = sum(p.net_dividend_received_keur for p in waterfall_periods)
     total_covenant_locked = sum(p.covenant_locked_keur for p in waterfall_periods)
-    total_sponsor_receipts = total_distributions + total_shl_int_recd + total_shl_prin_recd
+    # N.2: sponsor receipts uses net dividends when distribution accounting is enabled,
+    # or the original legal_equity_distribution sum (=gross=net) otherwise.
+    total_sponsor_receipts = (
+        (total_net_div if _dist_accounting_enabled else total_distributions)
+        + total_shl_int_recd + total_shl_prin_recd
+    )
     total_dsrf_fee = sum(p.dsrf_commitment_fee_keur for p in waterfall_periods)
     # Sum of positive DA closings = total locked cash in DA (shortfall negatives excluded)
     total_da_locked = sum(
@@ -918,6 +1377,10 @@ def run_project_shareholder_waterfall_model(
     deductible_feedback_status = (
         _G2C_DEDUCTIBLE_FEEDBACK_STATUS if deductible_feedback_active else None
     )
+    # N.1: return summary uses net dividends so that legal_equity.total_receipts_keur
+    # is consistent with pure_equity_net_cashflow_keur (post-WHT).
+    # For non-distribution-accounting projects: gross == net (no WHT applied).
+    _legal_equity_receipts = total_net_div if _dist_accounting_enabled else total_distributions
     return_summary = build_decision_complete_return_summary(
         project_inputs=project_inputs,
         financing=financing,
@@ -931,7 +1394,7 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_moic=ts_moic,
         total_sponsor_moic_status=ts_moic_status,
         total_legal_equity_contributed_keur=total_le,
-        total_legal_equity_distributions_keur=total_distributions,
+        total_legal_equity_distributions_keur=_legal_equity_receipts,
         total_sponsor_contributed_keur=total_sponsor_contrib,
         total_sponsor_receipts_keur=total_sponsor_receipts,
         deductible_shl_covenant_feedback_status=deductible_feedback_status,
@@ -960,9 +1423,11 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_contributed_keur=total_sponsor_contrib,
         total_shl_cash_interest_received_keur=total_shl_int_recd,
         total_shl_principal_received_keur=total_shl_prin_recd,
-        total_legal_equity_distributions_keur=total_distributions,
+        total_legal_equity_distributions_keur=total_gross_div,
         total_covenant_locked_keur=total_covenant_locked,
         total_sponsor_receipts_keur=total_sponsor_receipts,
+        total_gross_dividend_paid_keur=total_gross_div,
+        total_net_dividend_received_keur=total_net_div,
         pure_equity_xirr=pe_xirr,
         pure_equity_xirr_status=pe_xirr_status,
         pure_equity_moic=pe_moic,

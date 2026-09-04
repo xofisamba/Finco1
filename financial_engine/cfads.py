@@ -2,7 +2,7 @@
 
 Phase 2B definition::
 
-    CFADS = EBITDA - cash_tax_paid
+    CFADS = EBITDA + financing_income - cash_tax_paid
 
 This is the pre-debt-service, pre-DSRA CFADS.  Debt service, DSRA movements,
 and distributions are out of Phase 2B scope.
@@ -34,6 +34,7 @@ class PeriodCfadsResult:
     ebitda_keur: float
     cash_tax_keur: float
     cfads_keur: float
+    financing_income_keur: float = 0.0
 
 
 def calculate_canonical_cfads(
@@ -81,10 +82,12 @@ def calculate_canonical_cfads(
     for p, pr in zip(periods, period_results):
         ebitda: float = p.ebitda_keur    # type: ignore[attr-defined]
         cash_tax: float = pr.cash_tax_keur
+        fin_income: float = getattr(pr, "financing_income_keur", 0.0)
         results.append(PeriodCfadsResult(
             period_index=p.period_index,  # type: ignore[attr-defined]
             ebitda_keur=ebitda,
             cash_tax_keur=cash_tax,
-            cfads_keur=ebitda - cash_tax,
+            financing_income_keur=fin_income,
+            cfads_keur=ebitda + fin_income - cash_tax,
         ))
     return tuple(results)

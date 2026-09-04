@@ -10130,7 +10130,18 @@
           2.72739726027411,
           2.765027322404511,
           2.734972677595766
-        ]
+        ],
+        "B_col_formula_mode": "=Inputs!$D$455",
+        "B_col_cached": 0.01,
+        "cf144_identity": {
+          "label": "Cash end of the year",
+          "row": 144,
+          "colG_formula": "=F144+G132",
+          "balance_convention": "PRIOR_PERIOD_CLOSING",
+          "first_nonzero_col": "AU",
+          "first_nonzero_val_keur": 550.0000000000277,
+          "authority": "SOURCE_PROVEN_FORMULA"
+        }
       },
       "fin_rev_adjustment": {
         "label": "Financial revenue adjustment (==-SUM(G19:G20)*$B21*G$6)",
@@ -13540,6 +13551,49 @@
         "formula_new": "fin_earn + SHL + senior  (zero when simplified identity holds)"
       },
       "_content_sha256": "d87a9d45e2e0dbce2e3552ea4670afa3f7fce90f0223ac09cb0eb62bb874239f"
+    },
+    "pnl_header_rows": {
+      "G3_year": {
+        "label": "Year",
+        "colG_formula": "=Flags!G7",
+        "colG_cached": 0,
+        "colH_cached": 1,
+        "role": "year_index_post_construction_guard",
+        "authority": "SOURCE_PROVEN_FORMULA"
+      },
+      "G5_project_life": {
+        "label": "Project Life",
+        "colG_formula": "=Flags!G12",
+        "colG_cached": false,
+        "colH_cached": true,
+        "role": "boolean_in_life_flag_NOT_day_fraction",
+        "authority": "SOURCE_PROVEN_FORMULA"
+      },
+      "G6_day_fraction": {
+        "label": "Operation Period (incl. Leap)",
+        "colG_formula": "=Flags!G13",
+        "colG_cached": 0,
+        "colH_cached": 0.5041095890410959,
+        "role": "day_count_fraction",
+        "authority": "SOURCE_PROVEN_FORMULA"
+      }
+    },
+    "pnl_B19_rate": {
+      "cell": "P&L!B19",
+      "formula_mode_value": "=Inputs!$D$455",
+      "data_mode_cached": 0.01,
+      "conclusion": "FORMULA_CELL_linking_to_Inputs_D455_HARDCODE_0.01",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    },
+    "u2_correction_d_numerical_reconciliation": {
+      "cf_AU144_cash_balance_keur": 550.0000000000277,
+      "pnl_B19_annual_rate": 0.01,
+      "pnl_AV5_project_life_flag": true,
+      "pnl_AV6_day_fraction": 0.5041095890410959,
+      "expected_pnl_AV20_keur": 2.7726027397261674,
+      "actual_pnl_AV20_keur": 2.7726027397261674,
+      "residual_keur": 0.0,
+      "verdict": "MACHINE_PRECISION_MATCH"
     }
   },
   "debt_sizing_evidence": {
@@ -13700,5 +13754,135 @@
         "status": "OPEN"
       }
     ]
+  },
+  "correction_g_findings": {
+    "correction": "U2 Correction G",
+    "source_file": "20260414_BP_Oborovo.xlsm",
+    "minimum_cash_policy_input_search": {
+      "verdict": "NO_EXPLICIT_MINIMUM_CASH_INPUT_FOUND",
+      "search_scope": "All rows in Inputs sheet, all labels containing cash/retain/minimum/floor/reserve/liquidity",
+      "found_rows": [
+        {
+          "row": 455,
+          "label": "Cash Interest",
+          "value": 0.01,
+          "role": "interest_rate_only"
+        }
+      ],
+      "conclusion": "The 550 kEUR cash balance (CF!AU144) is a model OUTPUT, not a source policy input. No minimum retained cash / distribution floor / liquidity reserve input exists in the Inputs sheet.",
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    },
+    "pnl_B19_rate": {
+      "cell": "P&L!B19",
+      "formula": "=Inputs!$D$455",
+      "data_value": 0.01,
+      "conclusion": "Rate 0.01 sourced from Inputs!D455 (label: Cash Interest). NOTE: Correction F incorrectly referenced D438 (TUHO cell). Oborovo correct cell is D455.",
+      "authority": "SOURCE_PROVEN_FORMULA_LINK"
+    },
+    "cf_row132_decomposition": {
+      "label": "Change in cash",
+      "row": 132,
+      "colG_formula": "=G116-G130",
+      "components": {
+        "G116": {
+          "label": "Free Cash Flow for dividends",
+          "formula": "=G112+SUM(G113:G114)",
+          "sub_components": {
+            "G112": "FCF for Shareholder Loan (=G109)",
+            "G113": "Withholding Tax SHL (=-DS!G126*G6)",
+            "G114": "Net SHL (=-DS!G131)"
+          }
+        },
+        "G130": {
+          "label": "Gross Dividends",
+          "formula": "=G129+G128",
+          "sub_components": {
+            "G129": "Net Dividends (=G125-G128)",
+            "G128": "Withholding Tax on dividends (=G125*$B$128)"
+          }
+        }
+      },
+      "cash_roll_forward": {
+        "identity": "CF!G144 = CF!F144 + CF!G132",
+        "meaning": "closing_cash[p] = closing_cash[p-1] + change_in_cash[p]",
+        "change_in_cash_meaning": "FCF_after_SHL_service_and_WHT minus gross_dividends"
+      },
+      "bank_cfads_treatment": {
+        "cf_row76_formula": "=SUM('P&L'!G19:G21)-'P&L'!G28",
+        "cf_row79_formula": "=SUM(G23,G49,G73,G76,G77)+$B$80*(G$4=0)",
+        "verdict": "BANK_CFADS_INCLUDES_FINANCING_INCOME",
+        "conclusion": "CF row 79 (FCFB) explicitly includes G76 (reserve/cash interest). Bank CFADS includes both cash interest (P&L!G20) and reserve account interest (P&L!G19)."
+      },
+      "dsra_account_eligibility": {
+        "P&L_row19_formula": "=(G$3>0)*$B19*(CF!F105+CF!F91)*G$6",
+        "verdict": "ACCOUNTS_ELIGIBLE_BALANCE_CURRENTLY_ZERO",
+        "conclusion": "Senior DSRA (CF91) and J-DSRA (CF105) are ELIGIBLE accounts. Current balance zero all periods. INELIGIBLE classification was incorrect.",
+        "correct_classification": "DSRA accounts = ELIGIBLE; observed balance = 0.0 for all periods"
+      },
+      "cash_balance_observation": {
+        "CORRECTION_I_SUPERSEDES_THIS_FIELD": true,
+        "verdict": "PREVIOUS_CONCLUSION_WRONG",
+        "prior_false_claim": "Only col AU (last period, yr=20): 550.0 kEUR — INCORRECT",
+        "prior_false_claim_p&l_all_zero": "p&l_row20_all_periods_zero=true — INCORRECT",
+        "correction": "Oborovo tax.rows.fin_rev_cash.period_values shows 20 non-zero cash interest periods (indices 41-60, eop 2050-12-31 to 2060-06-30). Total source cash interest = 55.000 kEUR. Correction G zero-interest conclusion was incorrect.",
+        "authority": "DIRECT_WORKBOOK_EXTRACTION"
+      },
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    }
+  },
+  "correction_i_findings": {
+    "correction": "U2 Correction I",
+    "source_reconciliation": {
+      "verdict": "CORRECTION_G_ZERO_INTEREST_CONCLUSION_INCORRECT",
+      "evidence": "tax.rows.fin_rev_cash.period_values shows 20 non-zero periods.",
+      "total_periods": 61,
+      "nonzero_interest_periods": 20,
+      "first_nonzero_period_index": 41,
+      "first_nonzero_period_eop": "2050-12-31",
+      "first_nonzero_interest_keur": 2.7726027397261674,
+      "last_nonzero_period_index": 60,
+      "last_nonzero_period_eop": "2060-06-30",
+      "total_cash_interest_keur": 55.0,
+      "authority": "DIRECT_WORKBOOK_EXTRACTION",
+      "cash_interest_source_vector": {
+        "description": "P&L row 20 (Interests from Cash) by period index, kEUR",
+        "period_index_to_keur": {
+          "41": 2.7726027397261674,
+          "42": 2.72739726027411,
+          "43": 2.765027322404511,
+          "44": 2.734972677595766,
+          "45": 2.7726027397261674,
+          "46": 2.72739726027411,
+          "47": 2.7726027397261674,
+          "48": 2.72739726027411,
+          "49": 2.7726027397261674,
+          "50": 2.72739726027411,
+          "51": 2.765027322404511,
+          "52": 2.734972677595766,
+          "53": 2.7726027397261674,
+          "54": 2.72739726027411,
+          "55": 2.7726027397261674,
+          "56": 2.72739726027411,
+          "57": 2.7726027397261674,
+          "58": 2.72739726027411,
+          "59": 2.765027322404511,
+          "60": 2.734972677595766
+        },
+        "source": "tax.rows.fin_rev_cash.period_values (indices 41-60)"
+      }
+    },
+    "opening_cash_authority": {
+      "verdict": "ZERO_ASSUMED_OPENING",
+      "proof": "Oborovo CF!F144 at construction period = 0. Project starts with no retained cash.",
+      "authority": "DIRECT_WORKBOOK_EXTRACTION"
+    },
+    "cf144_cash_balance_observation": {
+      "verdict": "CF144_NONZERO_FROM_PERIOD_40_ONWARDS",
+      "first_nonzero_closing_period": 40,
+      "first_nonzero_closing_eop": "2050-06-30",
+      "confirmed_balance_keur": 550.0,
+      "cash_interest_starts_period": 41,
+      "note": "CF144 closing at period 40 = 550 kEUR. P&L period 41 uses CF period 40 closing as opening (prior-period convention)."
+    }
   }
 }

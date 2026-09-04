@@ -254,6 +254,19 @@ class PeriodTaxAdjustmentInput:
 
 
 @dataclass(frozen=True)
+class PeriodFinancingIncomeInput:
+    """U2: Cash/reserve interest income for one model period.
+
+    financing_income_keur: gross interest income on eligible cash/reserve accounts.
+    authority: provenance string from CashReserveInterestPolicy.authority.value.
+    Financing income is BELOW EBITDA. It enters taxable income directly.
+    """
+    period_index: int
+    financing_income_keur: float = 0.0
+    authority: str = "UNRESOLVED"
+
+
+@dataclass(frozen=True)
 class TaxCalculationInput:
     """All tax-specific inputs for a Phase 2B run.
 
@@ -263,11 +276,15 @@ class TaxCalculationInput:
         not listed default to zero interest
     period_adjustments : explicit case-invariant fiscal adjustments only; do not
         place Base-case-derived economics here when running a separate bank case
+    period_financing_income : U2 — per-period cash/reserve interest income.
+        Financing income is below EBITDA and enters taxable income directly.
+        Periods not listed default to zero income. UNRESOLVED authority yields 0.
     """
     policy: "TaxPolicy"
     opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...]
     period_interest: tuple[PeriodInterestInput, ...]
     period_adjustments: tuple[PeriodTaxAdjustmentInput, ...] = ()
+    period_financing_income: tuple[PeriodFinancingIncomeInput, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -375,6 +392,11 @@ class SeniorDebtModelInput:
     shareholder_loan: object | None = None
     dsra: object | None = None  # CashDsraInput | None (avoid circular imports)
     capitalisation_gate_equity: CapitalisationGateEquityInput | None = None
+    # U2 Correction F: typed cash/reserve interest policy for post-solver injection.
+    # None → no financing income computed (fail-closed to 0.0).
+    # Set by project_inputs adapter from ProjectInputs.cash_reserve_interest_policy.
+    # min_unrestricted_cash_floor_keur is carried inside the policy object.
+    cash_reserve_interest_policy: object | None = None  # CashReserveInterestPolicy | None
 
 
 @dataclass(frozen=True)
