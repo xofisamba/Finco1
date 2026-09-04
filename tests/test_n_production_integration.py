@@ -802,19 +802,35 @@ def test_q10_oborovo_source_construction_re_and_acct_cap():
 def test_s7_oborovo_clean_production_behavioral():
     """S.7: Production behavioral test — create_default_oborovo() → run_project_shareholder_waterfall_model().
 
-    Source parity values (from l1f_dividend fixture, source Excel period 40 = model period 41):
-      FCF ≈ 589.650, acct_cap ≈ 39.650, gross_div ≈ 39.650, WHT ≈ 1.982, net_div ≈ 37.667,
-      UC_closing = 550, total FI ≈ 55.000 (20 FI periods idx 41–60).
+    Canonical period mapping (U.1): DS[n] → clean_period_index = n.
+    Source DS[40] = clean cidx=40 (dates: 2049-12-31 to 2050-06-30).
 
-    Clean model divergence is classified as:
-      OBOROVO_SOURCE_DIST_ACCOUNTING_GATE_TIMING_PARITY_BLOCKED
-    Root cause: source workbook first distribution at Excel period 40 (model idx 41 if 0-indexed)
-    has acct_cap=39.650 kEUR (positive retained earnings), whereas the clean model has acct_cap=0
-    at period 40 (retained earnings depleted by accumulated SHL interest burden through periods 1-40).
-    The distribution gate is OPEN at period 40 in both source and clean (senior debt fully repaid at
-    period 28; within_senior_maturity=False for all periods 29+), so the timing divergence is driven
-    purely by the retained earnings trajectory, not the gate mechanism. Closing this gap would require
-    modifying SHL interest booking or equity mechanics, which violates governance constraints.
+    Source parity values at DS[40] / clean cidx=40 (from l1f_dividend fixture):
+      FCF ≈ 589.650, acct_cap ≈ 39.650, gross_div ≈ 39.650, WHT ≈ 1.982, net_div ≈ 37.667,
+      UC_closing = 550.
+
+    Clean model at cidx=40:
+      FCF = 695.977, acct_cap = 0, gross_div = 0 (RE = -46.664 kEUR, negative).
+      First clean distribution: cidx=41.
+
+    Classification: OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED
+
+    Root cause (U.3–U.5 SHL and RE bridge):
+      1. SHL opening balance at DS[1]/cidx=1: source=15790.436, clean=15790.399 (diff=-0.037 kEUR
+         from construction PIK rounding: source=1169.662, clean=1169.659).
+      2. PARTIAL_CASH_PARTIAL_PIK split diverges DS[1]–DS[24]: clean DA available differs from
+         source DA available (canonical DSCR-sculpted senior DS vs source Excel senior DS) →
+         different cash/PIK split each period → diverging SHL balance evolution.
+      3. Cumulative excess clean SHL gross interest DS[1]–DS[40]: +65.123 kEUR.
+      4. Different SHL gross interest → different fiscal reintegration → different LCF usage timing
+         → cumulative excess clean CIT DS[1]–DS[40]: +71.193 kEUR.
+      5. Net RE gap at DS[40]: clean RE = -46.664 vs source RE = +89.650 (gap = -136.314 kEUR).
+      6. Source acct_cap = 39.650 (RE - legal reserve); clean acct_cap = 0 (RE negative).
+      7. Distribution gate OPEN at cidx=40 in clean (senior fully repaid at cidx=28;
+         within_senior_maturity=False for all periods 29+). Gate is NOT the cause.
+
+    Closing this gap would require matching the exact source senior DS schedule (workbook replay)
+    or adjusting the SHL PARTIAL_CASH/PIK arithmetic — both violate governance constraints.
 
     This test proves the source evidence, asserts clean model consistency (U2 fixed-point
     convergence + idempotence), and documents the known classification.
@@ -822,7 +838,8 @@ def test_s7_oborovo_clean_production_behavioral():
     import json, pathlib
     from app.project_factories import create_default_oborovo
 
-    # ── Source evidence (from fixture) ─────────────────────────────────────────
+    # ── Source evidence at DS[40] / clean cidx=40 (fixture) ───────────────────
+    # DS[n] → clean_period_index = n; source DS[40] = clean cidx=40.
     with pathlib.Path("tests/fixtures/l1f_dividend_cash_row_mapping_source_evidence.json").open() as f:
         l1f = json.load(f)
     src_fcf = l1f["oborovo"]["dividend_cash_block"]["CF116"]["period_40_value_keur"]
@@ -842,7 +859,7 @@ def test_s7_oborovo_clean_production_behavioral():
     # U2 convergence must succeed (no exception raised)
     assert r is not None
 
-    # FI schedule: 20 non-zero periods, idx 41–60 (source parity timing)
+    # ── Clean distribution profile ─────────────────────────────────────────────
     fi = r.financing_result.cash_reserve_interest_schedules
     assert fi is not None
     fi_nonzero = [pr for pr in fi.period_results if pr.calculated_financing_income_keur > 0.001]
@@ -851,30 +868,40 @@ def test_s7_oborovo_clean_production_behavioral():
     assert fi_idxs[0] == 41 and fi_idxs[-1] == 60, (
         f"S.7: FI period range [{fi_idxs[0]},{fi_idxs[-1]}] != [41,60]"
     )
-
-    # Clean model total FI (differs from source 55.000 due to accounting cap gap at period 40)
-    # Clean acct_cap=0 at period 40 → no distribution → higher UC carry into period 41 → higher FI
     clean_total_fi = fi.total_financing_income_keur
     assert clean_total_fi > 50.0, f"S.7: Clean total FI={clean_total_fi:.3f} unexpectedly low"
 
-    # First distributing period in clean model: period 41 (post senior maturity)
     ops = [wp for wp in r.waterfall_periods if not wp.is_construction]
+    wp_by_idx = {wp.period_index: wp for wp in r.waterfall_periods}
+
+    # OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED:
+    # At DS[40] / clean cidx=40: source acct_cap=39.650 (RE=+89.650), clean acct_cap=0 (RE=-46.664).
+    # RE gap = -136.314 kEUR driven by cumulative excess clean SHL gross interest (+65.123 kEUR)
+    # + excess clean CIT (+71.193 kEUR) through DS[1]-DS[40], caused by divergent PARTIAL_CASH_PARTIAL_PIK
+    # split from DS[1] onward (canonical DSCR-sculpted senior DS differs from source senior DS →
+    # different DA available → different cash/PIK split → diverging SHL balance → different NI/LCF).
+    clean_wp_40 = wp_by_idx.get(40)
+    assert clean_wp_40 is not None
+    assert clean_wp_40.accounting_dividend_capacity_keur == 0.0, (
+        "S.7: OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED — "
+        f"clean acct_cap at cidx=40={clean_wp_40.accounting_dividend_capacity_keur:.3f} != 0 "
+        "(RE lineage divergence may have closed)"
+    )
+    assert clean_wp_40.gross_dividend_paid_keur == 0.0, (
+        f"S.7: clean gross_div at cidx=40={clean_wp_40.gross_dividend_paid_keur:.3f} != 0"
+    )
+
+    # First clean distribution is cidx=41 (source: DS[41], one period after source first distribution)
     first_dist = next((wp for wp in ops if wp.gross_dividend_paid_keur > 0.001), None)
     assert first_dist is not None, "S.7: No distributing period found in clean model"
     assert first_dist.period_index == 41, (
         f"S.7: Clean first distributing period idx={first_dist.period_index} != 41"
     )
-
-    # OBOROVO_SOURCE_DIST_ACCOUNTING_GATE_TIMING_PARITY_BLOCKED:
-    # Clean FCF at period 41 does not match source FCF at Excel period 40 (source: 589.650).
-    # Clean acct_cap=0 at period 40 (retained earnings negative) → no distribution → full FCF
-    # rolls into UC carry → inflated FCF and acct_cap at period 41 vs source period 40.
-    # Gate is OPEN at period 40 in clean (senior fully repaid at period 28).
     clean_fcf_p41 = first_dist.fcf_for_dividends_keur
     assert clean_fcf_p41 > src_fcf, (
-        "S.7: OBOROVO_SOURCE_DIST_ACCOUNTING_GATE_TIMING_PARITY_BLOCKED — "
-        f"clean FCF({clean_fcf_p41:.3f}) should exceed source FCF({src_fcf:.3f}) "
-        "due to acct_cap=0 at period 40 (retained earnings depleted by SHL interest burden)"
+        "S.7: OBOROVO_SOURCE_SHL_BALANCE_EVOLUTION_RE_LINEAGE_PARITY_BLOCKED — "
+        f"clean FCF at cidx=41 ({clean_fcf_p41:.3f}) should exceed source DS[40] FCF ({src_fcf:.3f}) "
+        "due to full FCF carry from cidx=40 (acct_cap=0 blocked distribution)"
     )
 
 
