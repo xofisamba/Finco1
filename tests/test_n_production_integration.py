@@ -809,10 +809,12 @@ def test_s7_oborovo_clean_production_behavioral():
     Clean model divergence is classified as:
       OBOROVO_SOURCE_DIST_ACCOUNTING_GATE_TIMING_PARITY_BLOCKED
     Root cause: source workbook first distribution at Excel period 40 (model idx 41 if 0-indexed)
-    uses a different gate-open timing than the clean model, which gate-locks through period 40
-    (within senior maturity) and first distributes in period 41 (post senior maturity). The
-    gate-locked accumulation inflates clean UC, FCF, and acct_cap relative to source parity.
-    This gap cannot be closed without modifying protected-scope waterfall files.
+    has acct_cap=39.650 kEUR (positive retained earnings), whereas the clean model has acct_cap=0
+    at period 40 (retained earnings depleted by accumulated SHL interest burden through periods 1-40).
+    The distribution gate is OPEN at period 40 in both source and clean (senior debt fully repaid at
+    period 28; within_senior_maturity=False for all periods 29+), so the timing divergence is driven
+    purely by the retained earnings trajectory, not the gate mechanism. Closing this gap would require
+    modifying SHL interest booking or equity mechanics, which violates governance constraints.
 
     This test proves the source evidence, asserts clean model consistency (U2 fixed-point
     convergence + idempotence), and documents the known classification.
@@ -850,8 +852,8 @@ def test_s7_oborovo_clean_production_behavioral():
         f"S.7: FI period range [{fi_idxs[0]},{fi_idxs[-1]}] != [41,60]"
     )
 
-    # Clean model total FI (differs from source 55.000 due to gate-timing gap)
-    # Clean model gate-locks through period 40 → higher UC balances → higher FI
+    # Clean model total FI (differs from source 55.000 due to accounting cap gap at period 40)
+    # Clean acct_cap=0 at period 40 → no distribution → higher UC carry into period 41 → higher FI
     clean_total_fi = fi.total_financing_income_keur
     assert clean_total_fi > 50.0, f"S.7: Clean total FI={clean_total_fi:.3f} unexpectedly low"
 
@@ -865,13 +867,14 @@ def test_s7_oborovo_clean_production_behavioral():
 
     # OBOROVO_SOURCE_DIST_ACCOUNTING_GATE_TIMING_PARITY_BLOCKED:
     # Clean FCF at period 41 does not match source FCF at Excel period 40 (source: 589.650).
-    # The gate timing difference (clean gate-locks period 40; source distributes at period 40)
-    # causes clean UC to accumulate from locked periods → inflated FCF and acct_cap at period 41.
+    # Clean acct_cap=0 at period 40 (retained earnings negative) → no distribution → full FCF
+    # rolls into UC carry → inflated FCF and acct_cap at period 41 vs source period 40.
+    # Gate is OPEN at period 40 in clean (senior fully repaid at period 28).
     clean_fcf_p41 = first_dist.fcf_for_dividends_keur
     assert clean_fcf_p41 > src_fcf, (
         "S.7: OBOROVO_SOURCE_DIST_ACCOUNTING_GATE_TIMING_PARITY_BLOCKED — "
         f"clean FCF({clean_fcf_p41:.3f}) should exceed source FCF({src_fcf:.3f}) "
-        "due to gate-locked UC accumulation in period 40"
+        "due to acct_cap=0 at period 40 (retained earnings depleted by SHL interest burden)"
     )
 
 
