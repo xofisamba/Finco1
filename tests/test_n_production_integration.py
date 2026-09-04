@@ -269,7 +269,10 @@ def test_n5_tuho_construction_ni_components():
     pre_op_opex=48.268 was a balancing plug (SOURCE_OPENING_LOSS_KEUR - SHL_PIK)
     with no independent workbook cell reference. BLOCKED per O.7.
     Stale token retired (V.7): CASH_RESERVE_INTEREST_CONSTRUCTION_PNL_COMPONENT_AUTHORITY_BLOCKED.
-    Active reclassification: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED.
+    Final classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
+    Mechanism: construction SHL principal/PIK delta (ΔP=−394.067, ΔPIK=−48.268 kEUR) is the
+    immediate numeric vehicle; the canonical G2A financing-stack authority is the root cause.
+    U2 is delivered relative to canonical clean authority.
     """
     from app.project_factories import create_default_tuho_wind1
     proj = create_default_tuho_wind1()
@@ -463,10 +466,11 @@ def test_n12_tuho_economic_delta_direction():
 def test_n14_cash_reserve_interest_authority_status():
     """O.11/O.7: Final authority status report — behavioral assertions.
 
-    Current blocker token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED
+    Classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
     Reason: canonical G2A senior solver (PR-9) produces senior=43789.921 kEUR vs source
     43359.274 kEUR → different SHL principal/PIK → RE gap → UC/FI parity gap.
-    Classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    Mechanism: construction SHL principal/PIK delta is the immediate numeric vehicle;
+    G2A financing-stack authority is the root. U2 delivered relative to canonical clean authority.
     (Option A — accepted per S.9: canonical G2A authority takes precedence.)
 
     S.1/S.2/S.3/S.4: ONE _u2_accounting_and_fi_pass helper, true final idempotence
@@ -525,13 +529,13 @@ def test_n14_cash_reserve_interest_authority_status():
     # Assert the model state that causes the BLOCKED status:
     #   construction_pl=None (removed), no pre_op_opex plug, FI exact-matched above.
     assert proj_tuho.tax.construction_pl is None, (
-        "CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED: "
+        "TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY: "
         "construction_pl must be None (O.7: pre_op_opex plug removed, no source-proven value)"
     )
     assert getattr(proj_tuho.tax, "construction_pl", None) is None
-    # Q.1: Reclassified token. Root cause is SHL construction interest mechanics gap
-    # (source senior=43359 kEUR vs clean=43790 kEUR → SHL draw −394 kEUR → PIK −48.268 kEUR).
-    # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED
+    # Root cause: canonical G2A financing-stack authority (source senior=43359 kEUR vs
+    # clean=43790 kEUR → SHL draw −394 kEUR → construction PIK −48.268 kEUR).
+    # Mechanism: construction SHL principal/PIK delta; root: G2A financing-stack authority.
 
 
 def test_p6_opening_uc_authority_contract():
@@ -732,8 +736,8 @@ def test_q10_tuho_source_construction_shl_pik():
     # (43359.274 IDC!D48) differs from clean DSCR-derived (43789.921). Root cause
     # of the +430.647 senior gap: different DSCR sizing assumptions (CFADS basis,
     # terminal, gearing, or IDC feedback). No typed SHL override is introduced;
-    # the blocker token CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED
-    # remains until the senior sizing root cause is resolved.
+    # classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY
+    # (accepted per S.9 Option A — canonical G2A authority takes precedence).
     assert abs(clean_shl_draw - 28741.109) < 0.01, (
         f"R.5: Clean SHL draw={clean_shl_draw:.3f} != 28741.109 (residual authority)"
     )

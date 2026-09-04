@@ -1300,7 +1300,9 @@ def create_default_tuho_wind1() -> ProjectInputs:
         # PIK gap of −48.268 kEUR. Root cause: PR-9 DSCR-sculpting gives senior=43789.921
         # vs source senior=43359.274 (IDC!D48); residual SHL is smaller; no workbook cell
         # authorises a ConstructionPLStatement to close the gap.
-        # Token: CASH_RESERVE_INTEREST_SHL_CONSTRUCTION_PRINCIPAL_AUTHORITY_BLOCKED.
+        # Classification: TUHO_SOURCE_SHL_PARITY_BLOCKED_BY_CANONICAL_G2A_FINANCING_STACK_AUTHORITY.
+        # Mechanism: construction SHL principal/PIK delta is the immediate numeric vehicle;
+        # the canonical G2A financing-stack authority is the root cause.
     )
     # U2 DELIVERED (TUHO wind1 U2): Rate=0.01 SOURCE_PROVEN via P&L!B19 =Inputs!$D$438.
     # DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19. Opening UC typed authority.
