@@ -632,10 +632,20 @@ class TestV_LRIdentity:
             wp = wp_by_date.get(getattr(mp, "period_end", None))
             if wp is None:
                 continue
-            lr_open = float(getattr(wp, "opening_legal_reserve_keur", 0.0) or 0.0)
-            lr_transfer = float(getattr(wp, "legal_reserve_transfer_keur", 0.0) or 0.0)
-            lr_close = float(getattr(wp, "closing_legal_reserve_keur", 0.0) or 0.0)
-            assert lr_open + lr_transfer == pytest.approx(lr_close, abs=1e-4), (
+            # L.2: direct field access — mandatory for SOURCE_PROVEN/DA-enabled projects.
+            lr_open = wp.opening_legal_reserve_keur
+            lr_transfer = wp.legal_reserve_transfer_keur
+            lr_close = wp.closing_legal_reserve_keur
+            assert lr_open is not None, (
+                f"{ptype} period {mp.period_index}: opening_legal_reserve_keur is None"
+            )
+            assert lr_transfer is not None, (
+                f"{ptype} period {mp.period_index}: legal_reserve_transfer_keur is None"
+            )
+            assert lr_close is not None, (
+                f"{ptype} period {mp.period_index}: closing_legal_reserve_keur is None"
+            )
+            assert float(lr_open) + float(lr_transfer) == pytest.approx(float(lr_close), abs=1e-4), (
                 f"{ptype} period {mp.period_index}: "
                 f"LR identity failed: {lr_open} + {lr_transfer} != {lr_close}"
             )
@@ -663,9 +673,16 @@ class TestW_LRContinuity:
         for i in range(len(op_wps) - 1):
             pidx, wp_t = op_wps[i]
             pidx2, wp_t1 = op_wps[i + 1]
-            lr_close_t = float(getattr(wp_t, "closing_legal_reserve_keur", 0.0) or 0.0)
-            lr_open_t1 = float(getattr(wp_t1, "opening_legal_reserve_keur", 0.0) or 0.0)
-            assert lr_close_t == pytest.approx(lr_open_t1, abs=1e-4), (
+            # L.2: direct field access — mandatory for DA-enabled projects.
+            lr_close_t = wp_t.closing_legal_reserve_keur
+            lr_open_t1 = wp_t1.opening_legal_reserve_keur
+            assert lr_close_t is not None, (
+                f"{ptype}: closing_legal_reserve_keur is None at period {pidx}"
+            )
+            assert lr_open_t1 is not None, (
+                f"{ptype}: opening_legal_reserve_keur is None at period {pidx2}"
+            )
+            assert float(lr_close_t) == pytest.approx(float(lr_open_t1), abs=1e-4), (
                 f"{ptype}: LR closing[{pidx}]={lr_close_t} != LR opening[{pidx2}]={lr_open_t1}"
             )
 
@@ -948,38 +965,76 @@ class TestAC_SCNODoubleCount:
         )
 
     @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
-    def test_ac_no_construction_contribution_in_operating_loop(self, ptype):
-        """K.4 proof C: Construction-period G2C wps must not exist or carry 0 SC/SP.
+    def test_ac_c3_excludes_construction_gw_contributions_from_loop(self, ptype):
+        """L.1 proof C: C3 does not double-count construction G2C SC/SP.
 
-        If any construction-period model period has a matching G2C wp AND that wp
-        carries non-zero SC, it would be double-counted (construction authority
-        already initializes it). Assert this does not happen.
+        G2C may carry non-zero SC/SP on construction-period waterfall records
+        (reflecting ConstructionFundingPeriod draws). C3 avoids double-counting by:
+        1. Initializing cumulative SC/SP from ConstructionFundingResult draws only.
+        2. Adding G2C SC/SP contributions ONLY for operating periods in the loop.
+
+        Proof: final SC == construction draws + NC_FC + ONLY operating G2C contributions.
+        Construction G2C SC/SP may be non-zero but is NOT added to the loop total.
         """
-        result, _ = _run(ptype)
+        result, fs = _run(ptype)
         fin = result.g2c_result.financing_result
+        cfr = getattr(fin, "construction_funding", None)
+        if cfr is None:
+            pytest.skip(f"{ptype}: no construction_funding")
+
+        # Construction authority (already in initialization)
+        constr_sc = sum(
+            float(getattr(cp, "share_capital_draw_keur", 0.0) or 0.0)
+            for cp in getattr(cfr, "periods", ()) or ()
+        )
+        constr_sp = sum(
+            float(getattr(cp, "share_premium_draw_keur", 0.0) or 0.0)
+            for cp in getattr(cfr, "periods", ()) or ()
+        )
+        ncu = getattr(cfr, "non_construction_fc_use", None)
+        nc_sc = float(getattr(ncu, "share_capital_draw_keur", 0.0) or 0.0) if ncu else 0.0
+        nc_sp = float(getattr(ncu, "share_premium_draw_keur", 0.0) or 0.0) if ncu else 0.0
+
+        # Operating G2C contributions only
         model_periods = list(fin.project_model_result.periods)
+        op_period_ends = {
+            getattr(mp, "period_end", None)
+            for mp in model_periods
+            if not bool(getattr(mp, "is_construction", False))
+        }
         wps_map = {
             getattr(wp, "cashflow_date", None): wp
             for wp in result.g2c_result.waterfall_periods
         }
-        for mp in model_periods:
-            if not bool(getattr(mp, "is_construction", False)):
-                continue
-            pe = getattr(mp, "period_end", None)
-            wp = wps_map.get(pe)
-            if wp is None:
-                continue
-            sc_contrib = float(getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
-            sp_contrib = float(getattr(wp, "share_premium_contribution_keur", 0.0) or 0.0)
-            assert abs(sc_contrib) < 1e-4, (
-                f"{ptype} construction period {mp.period_index}: "
-                f"G2C wp has SC contribution={sc_contrib} — would be double-counted "
-                f"with construction authority initialization"
-            )
-            assert abs(sp_contrib) < 1e-4, (
-                f"{ptype} construction period {mp.period_index}: "
-                f"G2C wp has SP contribution={sp_contrib} — would be double-counted"
-            )
+        op_sc = sum(
+            float(getattr(wps_map[pe], "share_capital_contribution_keur", 0.0) or 0.0)
+            for pe in op_period_ends if pe in wps_map
+        )
+        op_sp = sum(
+            float(getattr(wps_map[pe], "share_premium_contribution_keur", 0.0) or 0.0)
+            for pe in op_period_ends if pe in wps_map
+        )
+
+        expected_final_sc = constr_sc + nc_sc + op_sc
+        expected_final_sp = constr_sp + nc_sp + op_sp
+
+        bs_sorted = sorted(fs.balance_sheet_periods, key=lambda b: b.period_index)
+        if not bs_sorted or bs_sorted[-1].share_capital_keur is None:
+            pytest.skip(f"{ptype}: SC None in last BS period")
+
+        final_sc = bs_sorted[-1].share_capital_keur
+        final_sp = bs_sorted[-1].share_premium_keur or 0.0
+
+        # L.1 proof D/E: exact reconciliation holds; construction G2C SC/SP, even
+        # if non-zero, is NOT added to the C3 loop total (it's already in constr_sc).
+        assert final_sc == pytest.approx(expected_final_sc, abs=1e-4), (
+            f"{ptype}: final SC={final_sc} != construction({constr_sc}) + "
+            f"nc({nc_sc}) + operating_G2C({op_sc}) = {expected_final_sc}"
+        )
+        assert final_sp == pytest.approx(expected_final_sp, abs=1e-4), (
+            f"{ptype}: final SP={final_sp} != construction({constr_sp}) + "
+            f"nc({nc_sp}) + operating_G2C({op_sp}) = {expected_final_sp}"
+        )
 
 
 # ---------------------------------------------------------------------------

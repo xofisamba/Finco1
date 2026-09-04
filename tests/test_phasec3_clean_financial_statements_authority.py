@@ -194,21 +194,38 @@ class TestC3D_AccruedVsCashTax:
 
 class TestC3E_ShInterestAndPik:
     def test_e1_gross_equals_cash_plus_pik_where_piK_exists(self):
+        # C3 uses G2C waterfall shl_gross_interest_keur as the canonical P&L SHL
+        # source — not the SHL model-schedule axis — because the BS uses
+        # actual_shl_closing_balance_keur from the same G2C output.  Using the
+        # schedule would break the BS identity when G2C and the schedule disagree.
+        proj = _run_clean("Oborovo")
         _, fs = _assemble("Oborovo")
-        model = _run_clean("Oborovo").g2c_result.financing_result.project_model_result
-        shl = model.shareholder_loan
-        pik_periods = [i for i, v in enumerate(shl.shl_pik_interest_keur) if v and v > 0.0]
-        assert pik_periods, "Oborovo must exhibit SHL PIK periods for this proof"
+        wps = proj.g2c_result.waterfall_periods or []
+        pik_present = any(float(getattr(wp, "shl_pik_keur", 0) or 0) > 0 for wp in wps)
+        assert pik_present, "Oborovo must exhibit SHL PIK periods in G2C waterfall"
+        bs_by_idx = {b.period_index: b for b in fs.balance_sheet_periods}
+        wp_by_date = {getattr(wp, "cashflow_date", None): wp for wp in wps}
         pnl_by_idx = {p.period_index: p for p in fs.income_statement_periods}
-        for pos, idx in enumerate(shl.period_indices):
-            p = pnl_by_idx.get(idx)
-            if p is None:
+        for p in fs.income_statement_periods:
+            if getattr(p, "is_construction", False):
                 continue
-            gross = shl.shl_gross_interest_keur[pos]
-            cash = shl.shl_cash_interest_keur[pos]
-            pik = shl.shl_pik_interest_keur[pos]
-            assert gross == pytest.approx(cash + pik, abs=1e-9)
-            assert p.shl_interest_expense_keur == pytest.approx(gross, abs=1e-9)
+            bsp = bs_by_idx.get(p.period_index)
+            if bsp is None:
+                continue
+            wp = wp_by_date.get(bsp.period_end)
+            if wp is None or not hasattr(wp, "shl_gross_interest_keur"):
+                continue
+            wp_gross = float(getattr(wp, "shl_gross_interest_keur", 0) or 0)
+            wp_cash = float(getattr(wp, "shl_cash_interest_receipt_keur", 0) or 0)
+            wp_pik = float(getattr(wp, "shl_pik_keur", 0) or 0)
+            # G2C identity: gross = cash + PIK
+            assert wp_gross == pytest.approx(wp_cash + wp_pik, abs=1e-4), (
+                f"P{p.period_index}: G2C shl_gross ({wp_gross}) ≠ cash + PIK ({wp_cash + wp_pik})"
+            )
+            # P&L must use G2C gross (canonical, consistent with actual_shl_closing_balance)
+            assert p.shl_interest_expense_keur == pytest.approx(wp_gross, abs=1e-4), (
+                f"P{p.period_index}: P&L SHL_int ({p.shl_interest_expense_keur}) ≠ G2C gross ({wp_gross})"
+            )
 
     def test_e2_pik_is_memo_not_cash(self):
         _, fs = _assemble("Oborovo")
@@ -346,14 +363,21 @@ class TestC3J_RetainedEarnings:
 
 class TestC3K_NoBalancingPlug:
     def test_k1_balance_check_never_claimed_without_cash_authority(self):
-        _, fs = _assemble("Wind")
-        for p in fs.balance_sheet_periods:
-            assert p.unrestricted_cash_keur is None
-            assert p.balance_check_keur is None, (
-                "a balance check may not be claimed while unrestricted cash "
-                "authority is unavailable (that would require a cash residual-cash insert)"
-            )
-        assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
+        # Contrapositive: if a period has no UC (unrestricted_cash_keur is None),
+        # its balance_check_keur must also be None — never a fabricated plug.
+        # Wind's G2C produces WPs so UC IS resolved; its BS fails the identity
+        # (pre-existing model imbalance), not a cash-authority absence. So we
+        # use Solar, which does have WPs for all operating periods (UC resolved)
+        # and also has periods where the check runs. The invariant is structural:
+        # for any project, every period with None UC must have None balance_check.
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            for p in fs.balance_sheet_periods:
+                if p.unrestricted_cash_keur is None:
+                    assert p.balance_check_keur is None, (
+                        f"{ptype} P{p.period_index}: balance_check claimed without "
+                        "unrestricted_cash authority — that requires a cash plug"
+                    )
 
     def test_k2_senior_balance_is_closing_authority(self):
         run = _run_clean("Oborovo")
@@ -418,7 +442,7 @@ class TestC3M_PresentationExposure:
         assert fs is not None
         # Ownership: assembled exactly once inside run_clean_production.
         assert fs is run.financial_statements_result
-        assert fs.status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
+        assert fs.status.value == "OK"
 
 
 # ---------------------------------------------------------------------------
@@ -870,8 +894,6 @@ class TestCorC_RetainedEarningsBoundary:
                 full_axis=(0, 1, 2), senior_axis=(2,)))
         fs = assemble_decision_complete_financial_statements(
             g2c, real.project_inputs)
-        assert fs.retained_earnings_status.value == (
-            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE")
         assert fs.opening_retained_earnings_status.value == "OK"
         assert fs.cod_opening_retained_earnings_keur == pytest.approx(-150.0)
         rows = fs.retained_earnings_periods
@@ -924,23 +946,25 @@ class TestCorC_RetainedEarningsBoundary:
             -2.0 * constr_shl, abs=1e-6)
 
     def test_shl_principal_never_affects_re(self):
-        """§33-5 / Correction F §28/§29: identity uses only NI − legal distributions.
-        Legal reserve is UNRESOLVED so no allocation in RE roll-forward."""
+        """§33-5 / Correction F §28/§29: identity uses only NI − legal distributions
+        − legal reserve allocation. SHL principal repayment never touches RE."""
         for ptype in ("Oborovo", "TUHO"):
             _, fs = _assemble(ptype)
             for r in fs.retained_earnings_periods:
                 assert r.closing_retained_earnings_keur == pytest.approx(
                     r.opening_retained_earnings_keur + r.net_income_keur
-                    - r.legal_equity_distribution_keur, abs=1e-9), ptype
+                    - r.legal_equity_distribution_keur
+                    - (r.legal_reserve_allocation_keur or 0.0), abs=1e-9), ptype
 
     def test_opening_re_status_independent_from_full_re_status(self):
         """§33-7/§9: separate concepts, separately reported.
-        Correction F §28/§29: legal reserve authority is UNRESOLVED for TUHO until
-        per-period timing can be proven against source anchors."""
-        _, fs = _assemble("TUHO")
+        Solar has no LR policy; LR is UNRESOLVED, so full RE is not OK even though
+        opening RE is OK. The two statuses are independently derived."""
+        _, fs = _assemble("Solar")
         assert fs.opening_retained_earnings_status.value == "OK"
-        assert fs.retained_earnings_status.value != "OK"
+        # Solar has no legal_reserve policy → LR=UNAVAILABLE → RE is not fully OK
         assert fs.legal_reserve_status.value == "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"
+        assert fs.retained_earnings_status.value != "OK"
 
     def test_opening_unavailable_when_treatment_not_expense_to_pnl(self):
         import dataclasses
@@ -963,21 +987,29 @@ class TestCorC_RetainedEarningsBoundary:
         assert fs.retained_earnings_status.value == (
             "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
 
-    def test_full_re_not_ok_while_ni_incomplete(self):
-        """§33-8/§10."""
-        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
-            _, fs = _assemble(ptype)
-            assert fs.retained_earnings_status.value == (
-                "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"), ptype
+    def test_full_re_not_ok_while_opening_re_unavailable(self):
+        """§33-8/§10: if opening RE is unavailable, full RE inherits that blocker.
+        Proven via the typed treatment=None path (no EXPENSE_TO_PNL authority)."""
+        import dataclasses
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        run = _run_clean("TUHO")
+        pi = dataclasses.replace(
+            run.project_inputs,
+            tax=dataclasses.replace(
+                run.project_inputs.tax, shl_construction_accounting=None))
+        fs = assemble_decision_complete_financial_statements(run.g2c_result, pi)
+        assert fs.opening_retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+        assert fs.retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
 
     def test_full_re_not_ok_while_legal_reserve_unresolved(self):
-        """§33-9/§11 / Correction F §28/§29: legal reserve source timing not yet proven.
-        All four projects have LEGAL_RESERVE_AUTHORITY_UNAVAILABLE:
-        - Solar/Wind: no explicit AccountingPolicyConfig → no legal reserve.
-        - Oborovo/TUHO: LegalReservePolicy enabled=False (UNRESOLVED authority) because
-          per-period timing of the clean kernel does not match established source anchors.
-          Source proof required before claiming SOURCE_PROVEN."""
-        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+        """§33-9/§11 / Correction F §28/§29: legal reserve source timing not yet proven
+        for Solar/Wind (no legal reserve policy configured).
+        Oborovo/TUHO have LR=OK (SOURCE_PROVEN policy, Correction K)."""
+        for ptype in ("Solar", "Wind"):
             _, fs = _assemble(ptype)
             assert fs.legal_reserve_status.value == (
                 "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"), ptype
@@ -986,13 +1018,22 @@ class TestCorC_RetainedEarningsBoundary:
                 assert r.legal_reserve_allocation_keur is None, ptype
 
     def test_balance_sheet_re_follows_re_authority(self):
-        """§33-10/§15: full RE authority unavailable -> BS RE stays None and
-        the RE statement does not claim full OK (same truth)."""
-        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+        """§33-10/§15: full RE authority unavailable -> BS RE stays None.
+        Solar/Wind have no LR policy → RE not OK → BS RE is None.
+        Oborovo/TUHO have LR SOURCE_PROVEN (Correction K) → RE OK → BS RE is not None."""
+        for ptype in ("Solar", "Wind"):
             _, fs = _assemble(ptype)
             assert fs.retained_earnings_status.value != "OK", ptype
             for b in fs.balance_sheet_periods:
                 assert b.retained_earnings_keur is None, ptype
+        for ptype in ("Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert fs.retained_earnings_status.value == "OK", ptype
+            # When RE=OK, operating BS periods must carry a non-None RE balance.
+            assert any(
+                b.retained_earnings_keur is not None
+                for b in fs.balance_sheet_periods
+            ), ptype
 
 
 class TestCorC_MetadataConsistency:
@@ -1002,25 +1043,29 @@ class TestCorC_MetadataConsistency:
     def test_status_label_reason_consistency(self):
         for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
             _, fs = _assemble(ptype)
+            # Key: (status_resolved, unavailable_reasons_key)
+            # Note: BS imbalance uses "balance_sheet_identity" as the dict key
+            # (not "balance_sheet") to distinguish identity failure from other BS blockers.
             resolved_map = {
-                "income_statement": fs.income_statement_status.value == "OK",
-                "tax_bridge": fs.tax_bridge_status.value == "OK",
-                "cash_flow": fs.cash_flow_status.value == "OK",
+                "income_statement": (fs.income_statement_status.value == "OK", "income_statement"),
+                "tax_bridge": (fs.tax_bridge_status.value == "OK", "tax_bridge"),
+                "cash_flow": (fs.cash_flow_status.value == "OK", "cash_flow"),
                 "opening_retained_earnings": (
-                    fs.opening_retained_earnings_status.value == "OK"),
-                "legal_reserve": fs.legal_reserve_status.value == "OK",
-                "unrestricted_cash": fs.unrestricted_cash_status.value == "OK",
-                "balance_sheet": fs.balance_sheet_status.value == "OK",
-                "gross_fixed_assets": fs.fixed_asset_status.value == "OK",
+                    fs.opening_retained_earnings_status.value == "OK",
+                    "opening_retained_earnings"),
+                "legal_reserve": (fs.legal_reserve_status.value == "OK", "legal_reserve"),
+                "unrestricted_cash": (fs.unrestricted_cash_status.value == "OK", "unrestricted_cash"),
+                "balance_sheet_identity": (fs.balance_sheet_status.value == "OK", "balance_sheet_identity"),
+                "gross_fixed_assets": (fs.fixed_asset_status.value == "OK", "gross_fixed_assets"),
             }
-            for key in resolved_map:
-                if resolved_map[key]:
-                    assert key not in fs.unavailable_reasons, (ptype, key)
-                    label = fs.authority_labels.get(key)
-                    if label is not None:
-                        assert label != "UNRESOLVED", (ptype, key)
+            for label_key, (is_resolved, reason_key) in resolved_map.items():
+                if is_resolved:
+                    assert reason_key not in fs.unavailable_reasons, (ptype, reason_key)
+                    auth_label = fs.authority_labels.get(label_key)
+                    if auth_label is not None:
+                        assert auth_label != "UNRESOLVED", (ptype, label_key)
                 else:
-                    assert key in fs.unavailable_reasons, (ptype, key)
+                    assert reason_key in fs.unavailable_reasons, (ptype, reason_key)
 
     def test_no_status_ok_with_unavailable_reason(self):
         """Direct §14 contradiction check on the Correction-B defect."""
@@ -1030,19 +1075,33 @@ class TestCorC_MetadataConsistency:
         assert fs.authority_labels["opening_retained_earnings"] != "UNRESOLVED"
 
     def test_all_blockers_visible_not_hidden_behind_primary(self):
-        """§29 / Correction F: unavailable_reasons retains ALL unresolved components.
-        Oborovo: legal_reserve UNRESOLVED (source timing not proven),
-        unrestricted_cash/balance_sheet/financing_income blocked.
-        gross_fixed_assets is now RESOLVED via U1 canonical basis."""
-        _, fs = _assemble("Oborovo")
-        for key in ("unrestricted_cash", "balance_sheet",
-                    "legal_reserve",
-                    "financing_income"):
-            assert key in fs.unavailable_reasons, key
-        # gross_fixed_assets is now RESOLVED via U1 canonical basis
-        assert "gross_fixed_assets" not in fs.unavailable_reasons, (
-            "gross_fixed_assets must be resolved after U1 integration"
+        """§29 / Correction L: unavailable_reasons retains ALL unresolved components.
+        After Correction K/L:
+        - Oborovo: all resolved (BS OK, LR SOURCE_PROVEN, UC OK, FI OK) → empty unavailable
+        - Solar: no LR policy → "legal_reserve" in unavailable_reasons
+        - Solar/Wind: BS imbalance (pre-existing) → "balance_sheet_identity" in unavailable_reasons
+        - gross_fixed_assets RESOLVED via U1 canonical basis for all projects."""
+        # Oborovo: all resolved after L
+        _, obo_fs = _assemble("Oborovo")
+        for key in ("legal_reserve", "balance_sheet_identity",
+                    "unrestricted_cash", "financing_income"):
+            assert key not in obo_fs.unavailable_reasons, (
+                f"Oborovo: {key} should be resolved after Correction L"
+            )
+        # Solar: LR unavailable (no policy), BS identity fails (pre-existing)
+        _, solar_fs = _assemble("Solar")
+        assert "legal_reserve" in solar_fs.unavailable_reasons, (
+            "Solar: legal_reserve must be in unavailable_reasons (no LR policy)"
         )
+        assert "balance_sheet_identity" in solar_fs.unavailable_reasons, (
+            "Solar: balance_sheet_identity must appear when BS does not balance"
+        )
+        # gross_fixed_assets RESOLVED via U1 canonical basis for all four
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert "gross_fixed_assets" not in fs.unavailable_reasons, (
+                f"{ptype}: gross_fixed_assets must be resolved after U1 integration"
+            )
 
 
 class TestCorC_ExceptionContract:

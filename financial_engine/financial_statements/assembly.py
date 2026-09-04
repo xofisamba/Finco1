@@ -637,8 +637,13 @@ def _assemble_statements_checked(g2c_result, project_inputs):
 
         senior_int = _at(senior.senior_interest_keur, si) if si is not None else 0.0
         senior_int = senior_int or 0.0
-        # P&L SHL interest = gross accrued (cash + PIK) — never cash-only.
-        shl_gross = _at(shl.shl_gross_interest_keur, shi) if shi is not None else 0.0
+        # P&L SHL interest = G2C canonical gross (cash + PIK) when waterfall period present;
+        # G2C is authoritative because BS uses actual_shl_closing_balance_keur from the same
+        # G2C output — using the SHL schedule axis instead would break the BS identity.
+        if wp is not None and hasattr(wp, "shl_gross_interest_keur"):
+            shl_gross = float(getattr(wp, "shl_gross_interest_keur", 0.0) or 0.0)
+        else:
+            shl_gross = _at(shl.shl_gross_interest_keur, shi) if shi is not None else 0.0
         shl_gross = shl_gross or 0.0
         # H.2: NetFinancial = FI - SeniorInterest - SHLGrossInterest; EBT = EBIT + NetFinancial.
         net_financial = fi - senior_int - shl_gross
@@ -801,7 +806,9 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         bs_periods.append(BalanceSheetPeriod(
             period_index=int(idx),
             period_end=getattr(mp, "period_end", None),
-            senior_debt_balance_keur=_at(senior.senior_debt_closing_keur, si),
+            # Carry 0.0 post-repayment (si is None after senior axis ends) so BS check
+            # runs for all operating periods, not just the senior-active window.
+            senior_debt_balance_keur=_at(senior.senior_debt_closing_keur, si) if si is not None else 0.0,
             shl_balance_keur=(
                 float(getattr(wp, "actual_shl_closing_balance_keur", 0.0) or 0.0)
                 if _wp_is_real else None
@@ -929,7 +936,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             and _bsp_orig.distribution_account_balance_keur is not None
             and _re_close_val is not None
             and _lr_close_bsp is not None
-            and _bsp_orig.senior_debt_balance_keur is not None
             and _bsp_orig.shl_balance_keur is not None
             and _bsp_orig.share_capital_keur is not None
             and _bsp_orig.share_premium_keur is not None
