@@ -428,7 +428,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     else:
         _shl_accounting_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
 
-    _legal_reserve_authority = _apc.legal_reserve_authority
     _book_cap_authority = _apc.book_capitalization_authority
     _opening_re_pol_authority = _apc.opening_re_authority
     # H.3: FI authority comes from the U2 schedule itself, not from a C3 policy flag.
@@ -506,6 +505,18 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         if project_inputs is not None else None
     )
     _lr_policy_enabled = bool(getattr(_da_policy, "enabled", False))
+    # K.3: LR provenance maps from upstream DA policy, not _apc.legal_reserve_authority.
+    _da_auth_raw = getattr(_da_policy, "authority", None)
+    _da_auth_val = getattr(_da_auth_raw, "value", str(_da_auth_raw)) if _da_auth_raw is not None else None
+    if _lr_policy_enabled:
+        if _da_auth_val == "SOURCE_PROVEN":
+            _legal_reserve_authority = AccountingPolicyAuthority.SOURCE_PROVEN
+        elif _da_auth_val == "GENERIC_FINCO_POLICY":
+            _legal_reserve_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        else:
+            _legal_reserve_authority = AccountingPolicyAuthority.UNRESOLVED
+    else:
+        _legal_reserve_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY  # zero-by-policy
     # Correction G §13-§17: opening RE authority comes from typed
     # preconstruction_retained_earnings_authority, NOT from SHL treatment.
     # SHL treatment being EXPENSE_TO_PNL is a necessary accounting mechanic
@@ -995,21 +1006,54 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
         )
     )
-    # J.6: Overall status aggregates ALL required statements explicitly.
-    # Unresolved FI must prevent overall OK even if BS happens to balance.
-    _income_ok = _fi_resolved
-    _tax_ok = True  # always computed from canonical vectors
-    _cash_ok = True  # always computed from canonical vectors
-    _fa_ok = gfa_keur is not None
-    _re_ok = opening_re_authority
-    _lr_ok = _lr_computed
-    _uc_ok = _uc_resolved
-    _bs_ok = _bs_complete
+    # K.2: _re_complete derived from actual operating RE periods, not just opening authority.
+    # For LR-enabled projects: require opening authority + LR computed +
+    # every operating period's closing RE is non-None + continuity (opening[t+1]==closing[t]).
+    # For LR-disabled (zero-by-policy): require opening authority + every closing non-None.
+    _re_periods_ok = bool(re_periods)
+    _re_closings_all_present = all(
+        p.closing_retained_earnings_keur is not None for p in re_periods
+    )
+    _re_continuity_ok = True
+    _prev_re_close: float | None = None
+    for rp in re_periods:
+        if rp.opening_retained_earnings_keur is not None and _prev_re_close is not None:
+            if abs(rp.opening_retained_earnings_keur - _prev_re_close) > 1e-4:
+                _re_continuity_ok = False
+                break
+        _prev_re_close = rp.closing_retained_earnings_keur
+    _re_complete = (
+        opening_re_authority
+        and _re_periods_ok
+        and _re_closings_all_present
+        and _re_continuity_ok
+        and (_lr_computed or not _lr_policy_enabled)
+    )
+    _re_status = (
+        StatementStatus.OK if _re_complete else (
+            StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE if not _lr_computed else
+            StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
+        )
+    )
+    # K.5: Overall status gates ALL required statement statuses explicitly.
+    # No decorative unused variables.
+    _income_status = (
+        StatementStatus.OK if _fi_resolved else StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
+    )
+    _fa_status = _fixed_asset_status
     if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
-    elif not _income_ok:
-        overall = StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
-    elif not _bs_ok:
+    elif _income_status != StatementStatus.OK:
+        overall = _income_status
+    elif _fa_status != StatementStatus.OK:
+        overall = _fa_status
+    elif _re_status != StatementStatus.OK:
+        overall = _re_status
+    elif _legal_reserve_status != StatementStatus.OK:
+        overall = _legal_reserve_status
+    elif _uc_status != StatementStatus.OK:
+        overall = _uc_status
+    elif _bs_status != StatementStatus.OK:
         overall = _bs_status
     else:
         overall = StatementStatus.OK
@@ -1079,9 +1123,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         funding_audit=funding_audit,
         fixed_asset_status=_fixed_asset_status,
         fixed_asset_periods=tuple(fa_periods),
-        retained_earnings_status=(
-            StatementStatus.OK if opening_re_authority else opening_re_status
-        ),
+        retained_earnings_status=_re_status,
         retained_earnings_periods=tuple(re_periods),
         opening_retained_earnings_status=opening_re_status,
         cod_opening_retained_earnings_keur=cod_opening_re,

@@ -857,7 +857,7 @@ class TestAB_REFailClosedOnMissingLR:
 class TestAC_SCNODoubleCount:
     @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_ac_share_capital_non_decreasing(self, ptype):
-        """J.5 proof A: SC/SP must be non-decreasing across all BS periods."""
+        """K.4 proof A: SC/SP must be non-decreasing across all BS periods."""
         _, fs = _run(ptype)
         prev_sc = None
         prev_sp = None
@@ -878,39 +878,108 @@ class TestAC_SCNODoubleCount:
             prev_sp = bsp.share_premium_keur
 
     @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
-    def test_ac_construction_sc_comes_from_construction_authority(self, ptype):
-        """J.5 proof B: SC in first operating BS period == construction draw total."""
+    def test_ac_exact_sc_sp_reconciliation(self, ptype):
+        """K.4 proof B: Exact SC/SP reconciliation — no double-count.
+
+        Final SC = construction_authority_SC + NC_FC_SC + sum(operating_wp_SC).
+        Final SP = construction_authority_SP + NC_FC_SP + sum(operating_wp_SP).
+        Assert exact equality within tolerance.
+        """
         result, fs = _run(ptype)
         fin = result.g2c_result.financing_result
         cfr = getattr(fin, "construction_funding", None)
         if cfr is None:
             pytest.skip(f"{ptype}: no construction_funding")
+
+        # Authority 1: construction draws
         constr_sc = sum(
             float(getattr(cp, "share_capital_draw_keur", 0.0) or 0.0)
             for cp in getattr(cfr, "periods", ()) or ()
         )
+        constr_sp = sum(
+            float(getattr(cp, "share_premium_draw_keur", 0.0) or 0.0)
+            for cp in getattr(cfr, "periods", ()) or ()
+        )
+        # Authority 2: non-construction FC draw
         ncu = getattr(cfr, "non_construction_fc_use", None)
         nc_sc = float(getattr(ncu, "share_capital_draw_keur", 0.0) or 0.0) if ncu else 0.0
-        expected_initial_sc = constr_sc + nc_sc
-        # Find first operating BS period
+        nc_sp = float(getattr(ncu, "share_premium_draw_keur", 0.0) or 0.0) if ncu else 0.0
+
+        # Authority 3: operating-period G2C waterfall contributions only
         model_periods = list(fin.project_model_result.periods)
-        op_indices = sorted(
-            int(mp.period_index) for mp in model_periods
+        op_period_ends = {
+            getattr(mp, "period_end", None)
+            for mp in model_periods
             if not bool(getattr(mp, "is_construction", False))
+        }
+        wps_map = {
+            getattr(wp, "cashflow_date", None): wp
+            for wp in result.g2c_result.waterfall_periods
+        }
+        op_sc_contributions = sum(
+            float(getattr(wps_map[pe], "share_capital_contribution_keur", 0.0) or 0.0)
+            for pe in op_period_ends
+            if pe in wps_map
         )
-        if not op_indices:
-            pytest.skip(f"{ptype}: no operating periods")
-        first_op_idx = op_indices[0]
-        bs_by_idx = {bsp.period_index: bsp for bsp in fs.balance_sheet_periods}
-        first_op_bsp = bs_by_idx.get(first_op_idx)
-        assert first_op_bsp is not None, f"{ptype}: no BS for first operating period {first_op_idx}"
-        if first_op_bsp.share_capital_keur is None:
-            pytest.skip(f"{ptype}: SC is None in first operating period")
-        # First operating SC must be at least the construction total (operating contributions may add more)
-        assert first_op_bsp.share_capital_keur >= expected_initial_sc - 1e-4, (
-            f"{ptype}: first operating SC={first_op_bsp.share_capital_keur} "
-            f"< construction total={expected_initial_sc} — SC is understated"
+        op_sp_contributions = sum(
+            float(getattr(wps_map[pe], "share_premium_contribution_keur", 0.0) or 0.0)
+            for pe in op_period_ends
+            if pe in wps_map
         )
+
+        expected_final_sc = constr_sc + nc_sc + op_sc_contributions
+        expected_final_sp = constr_sp + nc_sp + op_sp_contributions
+
+        # Final BS SC/SP (last BS period)
+        bs_sorted = sorted(fs.balance_sheet_periods, key=lambda b: b.period_index)
+        if not bs_sorted or bs_sorted[-1].share_capital_keur is None:
+            pytest.skip(f"{ptype}: SC is None in last BS period")
+
+        final_sc = bs_sorted[-1].share_capital_keur
+        final_sp = bs_sorted[-1].share_premium_keur or 0.0
+
+        assert final_sc == pytest.approx(expected_final_sc, abs=1e-4), (
+            f"{ptype}: final SC={final_sc} != expected={expected_final_sc} "
+            f"(constr={constr_sc} nc={nc_sc} op={op_sc_contributions})"
+        )
+        assert final_sp == pytest.approx(expected_final_sp, abs=1e-4), (
+            f"{ptype}: final SP={final_sp} != expected={expected_final_sp} "
+            f"(constr={constr_sp} nc={nc_sp} op={op_sp_contributions})"
+        )
+
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
+    def test_ac_no_construction_contribution_in_operating_loop(self, ptype):
+        """K.4 proof C: Construction-period G2C wps must not exist or carry 0 SC/SP.
+
+        If any construction-period model period has a matching G2C wp AND that wp
+        carries non-zero SC, it would be double-counted (construction authority
+        already initializes it). Assert this does not happen.
+        """
+        result, _ = _run(ptype)
+        fin = result.g2c_result.financing_result
+        model_periods = list(fin.project_model_result.periods)
+        wps_map = {
+            getattr(wp, "cashflow_date", None): wp
+            for wp in result.g2c_result.waterfall_periods
+        }
+        for mp in model_periods:
+            if not bool(getattr(mp, "is_construction", False)):
+                continue
+            pe = getattr(mp, "period_end", None)
+            wp = wps_map.get(pe)
+            if wp is None:
+                continue
+            sc_contrib = float(getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
+            sp_contrib = float(getattr(wp, "share_premium_contribution_keur", 0.0) or 0.0)
+            assert abs(sc_contrib) < 1e-4, (
+                f"{ptype} construction period {mp.period_index}: "
+                f"G2C wp has SC contribution={sc_contrib} — would be double-counted "
+                f"with construction authority initialization"
+            )
+            assert abs(sp_contrib) < 1e-4, (
+                f"{ptype} construction period {mp.period_index}: "
+                f"G2C wp has SP contribution={sp_contrib} — would be double-counted"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -959,4 +1028,53 @@ class TestAD_OverallStatusAggregation:
         assert fs.income_statement_status == StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE, (
             f"income_statement_status must be FINANCING_INCOME_AUTHORITY_UNAVAILABLE, "
             f"got {fs.income_statement_status}"
+        )
+
+# ---------------------------------------------------------------------------
+# AE — K.2: RE status reflects actual completeness (negative test)
+# ---------------------------------------------------------------------------
+class TestAE_REStatusCompleteness:
+    def test_ae_neg_missing_lr_field_cascades_to_re_bs_overall(self):
+        """K.2 negative: DA enabled + missing LR transfer field →
+        legal_reserve_status != OK, retained_earnings_status != OK,
+        balance_sheet_status != OK, overall != OK."""
+        proj = _FACTORY["Oborovo"]()
+        from app.services.production_financial_authority import run_clean_production
+        result = run_clean_production(proj, project_type="Oborovo")
+
+        # Strip legal reserve from G2C waterfall periods to simulate missing LR.
+        class _WpNoLR:
+            def __init__(self, wp):
+                self._wp = wp
+
+            def __getattr__(self, name):
+                if name in ("opening_legal_reserve_keur",
+                             "legal_reserve_transfer_keur",
+                             "closing_legal_reserve_keur"):
+                    return None
+                return getattr(self._wp, name)
+
+        class _FakeG2CNoLR:
+            def __init__(self, real):
+                self._real = real
+                self.waterfall_periods = [_WpNoLR(wp) for wp in real.waterfall_periods]
+
+            def __getattr__(self, name):
+                return getattr(self._real, name)
+
+        fake_g2c = _FakeG2CNoLR(result.g2c_result)
+        fs = assemble_decision_complete_financial_statements(
+            fake_g2c, project_inputs=result.project_inputs
+        )
+        assert fs.legal_reserve_status != StatementStatus.OK, (
+            f"legal_reserve_status must not be OK when LR fields missing, got {fs.legal_reserve_status}"
+        )
+        assert fs.retained_earnings_status != StatementStatus.OK, (
+            f"retained_earnings_status must not be OK when LR missing, got {fs.retained_earnings_status}"
+        )
+        assert fs.balance_sheet_status != StatementStatus.OK, (
+            f"balance_sheet_status must not be OK when LR missing, got {fs.balance_sheet_status}"
+        )
+        assert fs.status != StatementStatus.OK, (
+            f"overall status must not be OK when LR missing, got {fs.status}"
         )

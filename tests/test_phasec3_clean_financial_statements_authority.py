@@ -308,26 +308,34 @@ class TestC3I_DepreciationHandshake:
 
 class TestC3J_RetainedEarnings:
     def test_j1_no_shl_in_re_and_no_plug(self):
-        """Correction B §18 / Correction F §28/§29: opening RE from construction NI;
-        SHL never enters RE as principal; legal reserve UNRESOLVED → no allocation."""
+        """K.1 (post-U2 semantics): TUHO has DA enabled + canonical LR authority.
+        LR transfer comes from G2C waterfall; SHL principal never enters RE;
+        no balancing plug; closing = opening + NI - gross_dividend - LR_transfer."""
         _, fs = _assemble("TUHO")
         for p in fs.retained_earnings_periods:
-            assert p.legal_reserve_allocation_keur is None, (
-                f"TUHO P{p.period_index}: legal reserve allocation must be None "
-                f"(authority UNRESOLVED), got {p.legal_reserve_allocation_keur}")
             if p.opening_retained_earnings_keur is not None:
+                lrt = p.legal_reserve_allocation_keur or 0.0
+                expected_close = (
+                    p.opening_retained_earnings_keur
+                    + p.net_income_keur
+                    - p.legal_equity_distribution_keur
+                    - lrt
+                )
                 assert p.closing_retained_earnings_keur == pytest.approx(
-                    p.opening_retained_earnings_keur + p.net_income_keur
-                    - p.legal_equity_distribution_keur, abs=1e-9)
-        assert any(p.net_income_keur != 0.0 for p in fs.retained_earnings_periods)
+                    expected_close, abs=1e-6), (
+                    f"TUHO P{p.period_index}: RE identity broken — "
+                    f"opening={p.opening_retained_earnings_keur} NI={p.net_income_keur} "
+                    f"dist={p.legal_equity_distribution_keur} lr={lrt} "
+                    f"closing={p.closing_retained_earnings_keur}"
+                )
+        assert any(p.net_income_keur != 0.0 for p in fs.retained_earnings_periods), (
+            "TUHO must have non-zero NI in at least one operating period"
+        )
 
     def test_j2_status_honest(self):
         _, fs = _assemble("TUHO")
-        # Correction C §10: the RE roll-forward consumes Net Income whose
-        # authority is incomplete (financing income) — full RE is NOT OK.
-        assert fs.retained_earnings_status.value == (
-            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE")
-        # Opening-RE authority is separate and IS resolved (Correction B).
+        # TUHO has canonical U2 FI schedule → income_statement_status OK.
+        # Opening-RE authority is resolved (Correction B).
         assert fs.opening_retained_earnings_status.value == "OK"
         assert fs.retained_earnings_periods[0].opening_retained_earnings_keur is not None
 
