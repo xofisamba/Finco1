@@ -957,14 +957,33 @@ class TestCorC_RetainedEarningsBoundary:
                     - (r.legal_reserve_allocation_keur or 0.0), abs=1e-9), ptype
 
     def test_opening_re_status_independent_from_full_re_status(self):
-        """§33-7/§9: separate concepts, separately reported.
-        Solar has no LR policy; LR is UNRESOLVED, so full RE is not OK even though
-        opening RE is OK. The two statuses are independently derived."""
-        _, fs = _assemble("Solar")
-        assert fs.opening_retained_earnings_status.value == "OK"
-        # Solar has no legal_reserve policy → LR=UNAVAILABLE → RE is not fully OK
-        assert fs.legal_reserve_status.value == "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"
-        assert fs.retained_earnings_status.value != "OK"
+        """§33-7/§9: opening_retained_earnings_status and retained_earnings_status
+        are independently derived and separately reported. When the opening RE is
+        blocked (no EXPENSE_TO_PNL treatment), full RE inherits that blocker — but
+        the two status fields are distinct concepts, not a single flag."""
+        import dataclasses
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        # When opening RE is unavailable, full RE status also reflects that blocker —
+        # each status is separately derived, not aliased.
+        run = _run_clean("TUHO")
+        pi = dataclasses.replace(
+            run.project_inputs,
+            tax=dataclasses.replace(
+                run.project_inputs.tax, shl_construction_accounting=None))
+        fs = assemble_decision_complete_financial_statements(run.g2c_result, pi)
+        assert fs.opening_retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+        assert fs.retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+        # The two fields are separately reported — not a single aliased value.
+        assert fs.opening_retained_earnings_status is not fs.retained_earnings_status
+        # Canonical projects: both statuses are OK when all authority is present.
+        for ptype in ("Oborovo", "TUHO"):
+            _, fs2 = _assemble(ptype)
+            assert fs2.opening_retained_earnings_status.value == "OK", ptype
+            assert fs2.retained_earnings_status.value == "OK", ptype
 
     def test_opening_unavailable_when_treatment_not_expense_to_pnl(self):
         import dataclasses
@@ -1006,34 +1025,76 @@ class TestCorC_RetainedEarningsBoundary:
             "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
 
     def test_full_re_not_ok_while_legal_reserve_unresolved(self):
-        """§33-9/§11 / Correction F §28/§29: legal reserve source timing not yet proven
-        for Solar/Wind (no legal reserve policy configured).
-        Oborovo/TUHO have LR=OK (SOURCE_PROVEN policy, Correction K)."""
-        for ptype in ("Solar", "Wind"):
-            _, fs = _assemble(ptype)
-            assert fs.legal_reserve_status.value == (
-                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"), ptype
-            assert "legal_reserve" in fs.unavailable_reasons, ptype
-            for r in fs.retained_earnings_periods:
-                assert r.legal_reserve_allocation_keur is None, ptype
+        """§33-9/§11: when legal reserve is unresolved, RE cannot be fully OK.
+        Proven via a synthetic case: waterfall periods stripped of LR fields force
+        _lr_computed=False, which propagates to RE status."""
+        import dataclasses
+        from types import SimpleNamespace
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        _LR_FIELDS = frozenset((
+            "opening_legal_reserve_keur",
+            "legal_reserve_transfer_keur",
+            "closing_legal_reserve_keur",
+        ))
+        run = _run_clean("Oborovo")
+        # Build SimpleNamespace WPs without LR attributes → getattr(wp, "opening_legal_reserve_keur", None) = None.
+        stripped_wps = tuple(
+            SimpleNamespace(**{
+                f.name: getattr(wp, f.name)
+                for f in dataclasses.fields(wp)
+                if f.name not in _LR_FIELDS
+            })
+            for wp in run.g2c_result.waterfall_periods
+        )
+        g2c = dataclasses.replace(run.g2c_result, waterfall_periods=stripped_wps)
+        fs = assemble_decision_complete_financial_statements(g2c, run.project_inputs)
+        assert fs.legal_reserve_status.value == (
+            "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"), "LR must be UNAVAILABLE without WP LR fields"
+        assert "legal_reserve" in fs.unavailable_reasons
+        assert fs.retained_earnings_status.value != "OK"
+        for r in fs.retained_earnings_periods:
+            assert r.legal_reserve_allocation_keur is None
 
     def test_balance_sheet_re_follows_re_authority(self):
         """§33-10/§15: full RE authority unavailable -> BS RE stays None.
-        Solar/Wind have no LR policy → RE not OK → BS RE is None.
-        Oborovo/TUHO have LR SOURCE_PROVEN (Correction K) → RE OK → BS RE is not None."""
-        for ptype in ("Solar", "Wind"):
-            _, fs = _assemble(ptype)
-            assert fs.retained_earnings_status.value != "OK", ptype
-            for b in fs.balance_sheet_periods:
-                assert b.retained_earnings_keur is None, ptype
+        Canonical projects have RE=OK → BS RE non-None for operating periods.
+        When RE is blocked (LR stripped), BS RE stays None."""
+        import dataclasses
+        from types import SimpleNamespace
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        # Canonical: RE=OK → BS RE non-None for operating periods.
         for ptype in ("Oborovo", "TUHO"):
             _, fs = _assemble(ptype)
             assert fs.retained_earnings_status.value == "OK", ptype
-            # When RE=OK, operating BS periods must carry a non-None RE balance.
             assert any(
                 b.retained_earnings_keur is not None
                 for b in fs.balance_sheet_periods
             ), ptype
+        # Synthetic: strip LR from WPs → RE not OK → BS RE None for all periods.
+        _LR_FIELDS = frozenset((
+            "opening_legal_reserve_keur",
+            "legal_reserve_transfer_keur",
+            "closing_legal_reserve_keur",
+        ))
+        run = _run_clean("Oborovo")
+        stripped_wps = tuple(
+            SimpleNamespace(**{
+                f.name: getattr(wp, f.name)
+                for f in dataclasses.fields(wp)
+                if f.name not in _LR_FIELDS
+            })
+            for wp in run.g2c_result.waterfall_periods
+        )
+        g2c = dataclasses.replace(run.g2c_result, waterfall_periods=stripped_wps)
+        fs = assemble_decision_complete_financial_statements(
+            g2c, run.project_inputs)
+        assert fs.retained_earnings_status.value != "OK"
+        for b in fs.balance_sheet_periods:
+            assert b.retained_earnings_keur is None
 
 
 class TestCorC_MetadataConsistency:
@@ -1088,10 +1149,10 @@ class TestCorC_MetadataConsistency:
             assert key not in obo_fs.unavailable_reasons, (
                 f"Oborovo: {key} should be resolved after Correction L"
             )
-        # Solar: LR unavailable (no policy), BS identity fails (pre-existing)
+        # Solar: LR is computed from WPs (OK), but BS identity fails (pre-existing G2C imbalance)
         _, solar_fs = _assemble("Solar")
-        assert "legal_reserve" in solar_fs.unavailable_reasons, (
-            "Solar: legal_reserve must be in unavailable_reasons (no LR policy)"
+        assert "legal_reserve" not in solar_fs.unavailable_reasons, (
+            "Solar: legal_reserve is resolved from G2C WPs after Correction L"
         )
         assert "balance_sheet_identity" in solar_fs.unavailable_reasons, (
             "Solar: balance_sheet_identity must appear when BS does not balance"
