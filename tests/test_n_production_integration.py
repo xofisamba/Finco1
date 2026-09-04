@@ -814,24 +814,45 @@ def test_s7_oborovo_clean_production_behavioral():
       FCF = 695.977, acct_cap = 0, gross_div = 0 (RE = -46.664 kEUR, negative).
       First clean distribution: cidx=41.
 
-    Classification: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL
+    Classification: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE
 
-    Period mapping (V.1): DS[n] → clean_period_index = n (confirmed by date alignment).
+    Period mapping (V.1 / W): DS[n] → clean_period_index = n (confirmed by date alignment).
       Source DS[1] bop=2030-07-01/eop=2030-12-31; clean cidx=1: start=2030-06-30/end=2030-12-31.
       One-day boundary convention difference (source inclusive, clean exclusive); mapping is n→n.
 
-    First authority gap (V.3 — B7 Bank CFADS residual):
-      DS1–DS5 Bank CFADS: source = clean exactly (delta = 0.000 kEUR each period).
-      DS6 FIRST DIVERGENCE: source=2648.870, clean=2657.781, delta=+8.910 kEUR.
-      This is the accepted B7 Bank CFADS / Senior cash residual from the canonical
-      DSCR-sculpted senior debt service schedule vs the source Excel senior schedule.
-      SHL balance evolution is the PROPAGATION MECHANISM — not the root authority gap.
+    W.3 — identity of 2657.781:
+      2657.781 = bank_ebitda_keur[6] = psc.base_cfads_keur[6] = tc.cfads_keur[6].
+      This is EBITDA (Base CFADS, pre-actual-cash-tax), NOT Bank CFADS.
+      Bank CFADS at cidx=6 = 2648.877 (= EBITDA - bank_cash_tax = 2657.781 - 8.904).
 
-    Propagation chain (V.4 — RECONCILIATION evidence):
-      accepted B7 Bank CFADS residual (DS6: source=2648.870, clean=2657.781, delta=+8.910 kEUR)
-        → clean post-Senior / DA available higher at DS6 (+8.905 kEUR)
-        → PARTIAL_CASH_PARTIAL_PIK split diverges: clean pays 8.899 kEUR more cash to SHL at DS6
-        → SHL balance evolution diverges from DS6 onward
+    W.4 — B7 Bank CFADS lock (frozen B7 authority, PR #930):
+      Source Bank CFADS DS6 = 2648.8702990221004 (B7 fixture).
+      Clean Bank CFADS DS6 = 2648.8765783777 (bank_cfads_keur[6]).
+      B7 residual = +0.006 kEUR (negligible, already accepted in merged PR #930).
+      B7 Bank CFADS arch rule preserved: Bank CFADS does NOT feed post-senior cash directly;
+      senior debt quantum is the bridge. No causal chain Bank CFADS → DA available without that bridge.
+
+    W.5 — Base vs Bank CFADS distinction:
+      Source and clean EBITDA at DS6 are IDENTICAL: 2657.780 kEUR (same revenue/opex model).
+      Source Bank CFADS DS6 = 2648.870 (= source EBITDA - source bank_cash_tax ~8.910).
+      Clean Bank CFADS DS6  = 2648.877 (= clean EBITDA - clean bank_cash_tax 8.904).
+      B7 residual (+0.006 kEUR) is NOT the cause of the post-senior divergence.
+
+    W.6 — First SHL-driving divergence (W identification):
+      DS1–DS5: post-senior cash = 0.000 delta between source and clean.
+      DS6 FIRST DIVERGENCE: post-senior delta = +8.905 kEUR (source=345.505, clean=354.410).
+      Root cause: source workbook computes post-senior = (EBITDA - bank_cash_tax) - senior_DS,
+        i.e. source distributes Bank CFADS minus senior_DS = 2648.870 - 2303.365 = 345.505 kEUR.
+        Clean computes post-senior = EBITDA - senior_DS = 2657.781 - 2303.371 = 354.410 kEUR,
+        with actual corporate cash tax = 0 at cidx=6 (deferred: 20.072 paid at cidx=7).
+      The divergence is entirely from DISTRIBUTION CASH TAX TIMING ARCHITECTURE:
+        source bank_cash_tax at DS6 ≈ 8.910 kEUR; clean actual corp cash tax at cidx=6 = 0.
+
+    Propagation chain (W.7 — RECONCILIATION evidence, confirmed V quantities):
+      cash tax timing gap at DS6 (source deducts ~8.910 from distributable cash; clean does not)
+        → source DA available = 345.505 vs clean DA available = 354.410 at DS6 (+8.905 kEUR)
+        → PARTIAL_CASH_PARTIAL_PIK split diverges: clean pays +8.899 kEUR more cash to SHL at DS6
+        → SHL closing balance diverges; balance recovers partially but residual propagates
         → cumulative excess clean SHL gross interest DS[1]–DS[40]: +65.123 kEUR
         → different fiscal reintegration → different LCF usage timing
         → cumulative excess clean CIT DS[1]–DS[40]: +71.193 kEUR
@@ -839,24 +860,25 @@ def test_s7_oborovo_clean_production_behavioral():
         → clean acct_cap=0 at cidx=40 (RE negative); source acct_cap=39.650
         → no distribution at cidx=40 → first clean distribution at cidx=41
 
-    U2 mechanics vs source-workbook parity (V.5):
+    U2 mechanics vs source-workbook parity (V.5 / W.9):
       SOURCE-PROVEN U2 mechanics (authority delivered):
         cash-interest rate, eligible account policy, day-count, UC rollforward, WHT, U2 fixed-point.
-      SOURCE-WORKBOOK NUMERIC PARITY (not achievable without violating governance):
+      SOURCE-WORKBOOK NUMERIC PARITY exceptions (upstream architecture boundary):
         UC at cidx=40: clean=695.977 vs source=550.000
-        FI total: clean=71.003 vs source=55.000 (estimated)
-        These gaps are PROPAGATION consequences of the accepted B7 Bank CFADS residual.
+        FI total: clean≈71.003 vs source≈55.000
+        These gaps are PROPAGATION consequences of the distribution cash tax timing architecture boundary.
+      U2 arithmetic is correct. Gap is upstream of U2.
 
     Architecture verdict: U2_CANONICAL_CLEAN_AUTHORITY_DELIVERED_WITH_DOCUMENTED_UPSTREAM_SOURCE_PARITY_EXCEPTIONS
 
     Distribution gate OPEN at cidx=40 in clean (senior_last_period_index=28;
     within_senior_maturity=False for all periods ≥29). Gate is NOT the cause of timing gap.
 
-    Closing the RE lineage gap would require matching the exact source senior DS schedule
-    (workbook replay) — which violates governance constraints.
+    Closing this gap would require matching source bank cash tax timing for distribution
+    — which is a source-workbook architecture convention outside the canonical engine.
 
     This test proves the source evidence, asserts clean model consistency (U2 fixed-point
-    convergence + idempotence), and documents the known classification.
+    convergence + idempotence), documents the B7 Bank CFADS lock, and documents the classification.
     """
     import json, pathlib
     from app.project_factories import create_default_oborovo
@@ -897,15 +919,30 @@ def test_s7_oborovo_clean_production_behavioral():
     ops = [wp for wp in r.waterfall_periods if not wp.is_construction]
     wp_by_idx = {wp.period_index: wp for wp in r.waterfall_periods}
 
-    # OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL:
-    # First authority gap = DS6 B7 Bank CFADS residual (source=2648.870, clean=2657.781, +8.910 kEUR).
-    # SHL balance evolution / CIT / RE gap are PROPAGATION RECONCILIATION of that upstream residual.
+    # W.4: B7 Bank CFADS behavioral lock — assert canonical clean Bank CFADS at DS6
+    # matches frozen B7 authority (PR #930). B7 residual = +0.006 kEUR (accepted).
+    pm = r.financing_result.project_model_result
+    cln_bank_cfads_ds6 = list(pm.debt_sizing.bank_cfads_keur)[6]
+    src_bank_cfads_ds6 = 2648.8702990221004   # B7 source fixture, DS row 20, DS6
+    b7_frozen_clean_ds6 = 2648.8766740626934  # B7 frozen clean value, PR #930
+    assert abs(cln_bank_cfads_ds6 - b7_frozen_clean_ds6) < 0.01, (
+        f"S.7: B7 Bank CFADS lock — clean DS6={cln_bank_cfads_ds6:.6f} "
+        f"deviates from frozen B7 value {b7_frozen_clean_ds6:.6f}"
+    )
+    # B7 residual: +0.006 kEUR. NOT the cause of post-senior divergence (+8.905 kEUR).
+    b7_residual = cln_bank_cfads_ds6 - src_bank_cfads_ds6
+    assert abs(b7_residual) < 0.1, f"S.7: B7 residual {b7_residual:.6f} outside expected range"
+
+    # OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE:
+    # DS6 post-senior: source=345.505 (= Bank CFADS - senior_DS), clean=354.410 (= EBITDA - senior_DS).
+    # Source deducts bank_cash_tax (~8.910) from distributable cash; clean defers to cidx=7.
+    # SHL / CIT / RE gaps are PROPAGATION RECONCILIATION of that cash tax timing boundary.
     # At DS[40]/cidx=40: clean acct_cap=0 (RE=-46.664); source acct_cap=39.650 (RE=+89.650).
     # RE gap=-136.314 kEUR = cumulative excess clean SHL interest (+65.123) + excess clean CIT (+71.193).
     clean_wp_40 = wp_by_idx.get(40)
     assert clean_wp_40 is not None
     assert clean_wp_40.accounting_dividend_capacity_keur == 0.0, (
-        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL — "
+        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE — "
         f"clean acct_cap at cidx=40={clean_wp_40.accounting_dividend_capacity_keur:.3f} != 0 "
         "(RE lineage divergence may have closed)"
     )
@@ -921,7 +958,7 @@ def test_s7_oborovo_clean_production_behavioral():
     )
     clean_fcf_p41 = first_dist.fcf_for_dividends_keur
     assert clean_fcf_p41 > src_fcf, (
-        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_ACCEPTED_B7_BANK_CFADS_RESIDUAL — "
+        "S.7: OBOROVO_SOURCE_RE_LINEAGE_PARITY_BLOCKED_BY_DISTRIBUTION_CASH_TAX_TIMING_ARCHITECTURE — "
         f"clean FCF at cidx=41 ({clean_fcf_p41:.3f}) should exceed source DS[40] FCF ({src_fcf:.3f}) "
         "due to full FCF carry from cidx=40 (acct_cap=0 blocked distribution)"
     )
