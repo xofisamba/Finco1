@@ -24,7 +24,7 @@ _FACTORY = {
     "TUHO": pf.create_default_tuho_wind1,
 }
 
-_U2_PROJECTS = ("Oborovo", "TUHO")   # have cash_reserve_interest_schedules
+_SOURCE_PROVEN_PROJECTS = ("Oborovo", "TUHO")  # projects with canonical U2 schedules
 _GENERIC_PROJECTS = ("Solar", "Wind")  # zero-by-policy FI
 
 
@@ -43,7 +43,7 @@ def _run(ptype: str):
 # A — FI exact typed handoff
 # ---------------------------------------------------------------------------
 class TestA_FIHandoff:
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_a_fi_values_match_u2_schedule(self, ptype):
         result, fs = _run(ptype)
         fin = result.g2c_result.financing_result
@@ -121,7 +121,7 @@ class TestD_CITAccrualVsCashTax:
 # E — FI authority from actual U2 schedule
 # ---------------------------------------------------------------------------
 class TestE_FIAuthorityFromSchedule:
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_e_income_statement_ok_for_u2_projects(self, ptype):
         _, fs = _run(ptype)
         assert fs.income_statement_status == StatementStatus.OK, (
@@ -178,7 +178,7 @@ class TestF_FIAxisMismatch:
 # G — Zero-FI source-proven period preserves EXISTING_CLEAN_AUTHORITY
 # ---------------------------------------------------------------------------
 class TestG_ZeroFIPreservesAuthority:
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_g_zero_fi_period_keeps_clean_authority(self, ptype):
         _, fs = _run(ptype)
         fin_result = None
@@ -268,7 +268,7 @@ class TestJ_CanonicalLRHandoff:
                     )
                 assert "roll_forward_equity_state" not in module
 
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_j_lr_matches_waterfall_closing(self, ptype):
         result, fs = _run(ptype)
         wps_map = {
@@ -292,7 +292,7 @@ class TestJ_CanonicalLRHandoff:
 # K — RE roll-forward
 # ---------------------------------------------------------------------------
 class TestK_RErollForward:
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_k_re_roll_forward_identity(self, ptype):
         _, fs = _run(ptype)
         if fs.retained_earnings_status != StatementStatus.OK:
@@ -350,7 +350,7 @@ class TestL_DANotUC:
 # M — Real BS equality / no residual plug
 # ---------------------------------------------------------------------------
 class TestM_BSIdentity:
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_m_bs_balance_check_near_zero(self, ptype):
         _, fs = _run(ptype)
         checks = [
@@ -386,7 +386,7 @@ class TestN_FourProjectMatrix:
         _, fs = _run(ptype)
         assert fs.unrestricted_cash_status == StatementStatus.OK
 
-    @pytest.mark.parametrize("ptype", _U2_PROJECTS)
+    @pytest.mark.parametrize("ptype", _SOURCE_PROVEN_PROJECTS)
     def test_n_lr_present_for_source_proven_projects(self, ptype):
         _, fs = _run(ptype)
         assert fs.legal_reserve_status == StatementStatus.OK, (
