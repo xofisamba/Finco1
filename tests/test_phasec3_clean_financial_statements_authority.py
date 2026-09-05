@@ -82,6 +82,11 @@ class TestC3A_SupportedMatrix:
         assert fs.retained_earnings_status.value in (
             "OK",
             "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+        # M.8 Correction M: BS identity must close for all four canonical projects.
+        assert fs.balance_sheet_status.value == "OK", (
+            f"{ptype}: expected balance_sheet_status OK after Correction M, "
+            f"got {fs.balance_sheet_status.value}"
+        )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_a2_no_legacy_engine_execution(self, ptype, monkeypatch):

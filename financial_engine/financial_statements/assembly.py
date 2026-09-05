@@ -608,6 +608,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     cod_opening_re: float | None = None
     # Collect operating period data for post-loop RE/legal-reserve build.
     _op_re_inputs: list = []
+    # M.6 Correction M: running UC accumulator for post-BULLET-maturity trapped cash.
+    _bullet_trapped_uc_accum: float = 0.0
     dsra_by_idx = (
         {pr.period_index: pr for pr in dsra.period_results} if dsra is not None else {}
     )
@@ -802,6 +804,23 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             float(dpr.closing_balance_keur) if dpr is not None else None
         )
         # H.7: UC is the canonical typed field; None when wp absent (not zero).
+        # M.6 Correction M: When BULLET SHL matures with unpaid residual, G2C's
+        # fail-closed gate forces distribution=0 and actual_shl_principal=0, but
+        # shl_cash_input (DA release) remains positive and has no route in G2C output.
+        # Physical cash must accumulate in the SPV (cannot be distributed to parent).
+        # Detect by: bullet_unpaid flag + shl_gross_interest=0 (strictly post-maturity,
+        # not at-maturity period) + legal_equity_distribution=0 + UC_close=0.
+        if (_wp_is_real
+                and not is_construction_period
+                and getattr(wp, "shl_bullet_unpaid_at_maturity", False)
+                and (getattr(wp, "shl_gross_interest_keur", 0.0) or 0.0) == 0.0
+                and (getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0) == 0.0
+                and (_wp_uc_close or 0.0) == 0.0):
+            _bullet_trapped_uc_accum += (
+                getattr(wp, "shl_cash_input_keur", 0.0) or 0.0)
+            _wp_uc_close = _bullet_trapped_uc_accum
+        else:
+            _bullet_trapped_uc_accum = float(_wp_uc_close or 0.0)
         _uc_val = _wp_uc_close
         bs_periods.append(BalanceSheetPeriod(
             period_index=int(idx),
