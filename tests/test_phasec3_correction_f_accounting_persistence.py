@@ -18,25 +18,25 @@ def _round_trip(factory_fn):
 
 class TestAccountingPersistence:
     def test_oborovo_serializes_accounting_policy(self):
-        """Correction F §28: legal reserve authority UNRESOLVED until source timing proved."""
+        """Correction K/L: legal reserve authority SOURCE_PROVEN (kernel activated)."""
         _, d, _ = _round_trip(create_default_oborovo)
         apc_d = d.get("accounting_policy_config")
         assert apc_d is not None
         assert apc_d["book_capitalization_authority"] == "SOURCE_PROVEN"
-        assert apc_d["legal_reserve_policy"]["enabled"] is False
+        assert apc_d["legal_reserve_policy"]["enabled"] is True
         assert apc_d["legal_reserve_policy"]["cap_fraction"] == 0.10
-        assert apc_d["legal_reserve_policy"]["authority"] == "UNRESOLVED"
-        assert apc_d["legal_reserve_authority"] == "UNRESOLVED"
+        assert apc_d["legal_reserve_policy"]["authority"] == "SOURCE_PROVEN"
+        assert apc_d["legal_reserve_authority"] == "SOURCE_PROVEN"
         assert apc_d["opening_re_authority"] == "SOURCE_PROVEN"
 
     def test_tuho_serializes_accounting_policy(self):
-        """Correction F §29: TUHO legal reserve authority UNRESOLVED."""
+        """Correction K/L: TUHO legal reserve authority SOURCE_PROVEN (kernel activated)."""
         _, d, _ = _round_trip(create_default_tuho_wind1)
         apc_d = d.get("accounting_policy_config")
         assert apc_d is not None
         assert apc_d["book_capitalization_authority"] == "SOURCE_PROVEN"
-        assert apc_d["legal_reserve_policy"]["enabled"] is False
-        assert apc_d["legal_reserve_authority"] == "UNRESOLVED"
+        assert apc_d["legal_reserve_policy"]["enabled"] is True
+        assert apc_d["legal_reserve_authority"] == "SOURCE_PROVEN"
 
     def test_solar_serializes_generic_accounting_policy(self):
         """Correction H: Solar now has explicit _GENERIC_CLEAN_ACCOUNTING_POLICY."""
@@ -64,15 +64,15 @@ class TestAccountingPersistence:
         assert pi2.accounting_policy_config is not None
         assert pi2.accounting_policy_config.book_capitalization_authority == AccountingPolicyAuthority.SOURCE_PROVEN
         assert pi2.accounting_policy_config.legal_reserve_policy is not None
-        assert pi2.accounting_policy_config.legal_reserve_policy.enabled is False
+        assert pi2.accounting_policy_config.legal_reserve_policy.enabled is True
         assert pi2.accounting_policy_config.legal_reserve_policy.cap_fraction == 0.10
-        assert pi2.accounting_policy_config.legal_reserve_policy.authority == AccountingPolicyAuthority.UNRESOLVED
+        assert pi2.accounting_policy_config.legal_reserve_policy.authority == AccountingPolicyAuthority.SOURCE_PROVEN
 
-    def test_tuho_round_trip_preserves_unresolved_lr(self):
+    def test_tuho_round_trip_preserves_source_proven_lr(self):
         pi, _, pi2 = _round_trip(create_default_tuho_wind1)
         assert pi2.accounting_policy_config is not None
-        assert pi2.accounting_policy_config.legal_reserve_policy.enabled is False
-        assert pi2.accounting_policy_config.legal_reserve_authority == AccountingPolicyAuthority.UNRESOLVED
+        assert pi2.accounting_policy_config.legal_reserve_policy.enabled is True
+        assert pi2.accounting_policy_config.legal_reserve_authority == AccountingPolicyAuthority.SOURCE_PROVEN
 
     def test_solar_round_trip_preserves_generic_policy(self):
         """Correction H: Solar round-trip preserves explicit generic policy."""
