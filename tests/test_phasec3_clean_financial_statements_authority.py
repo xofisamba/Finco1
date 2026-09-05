@@ -1142,12 +1142,16 @@ class TestCorC_MetadataConsistency:
         assert fs.authority_labels["opening_retained_earnings"] != "UNRESOLVED"
 
     def test_all_blockers_visible_not_hidden_behind_primary(self):
-        """§29 / Correction L: unavailable_reasons retains ALL unresolved components.
-        After Correction K/L:
-        - Oborovo: all resolved (BS OK, LR SOURCE_PROVEN, UC OK, FI OK) → empty unavailable
-        - Solar: no LR policy → "legal_reserve" in unavailable_reasons
-        - Solar/Wind: BS imbalance (pre-existing) → "balance_sheet_identity" in unavailable_reasons
+        """§29 / Correction M: unavailable_reasons retains ALL unresolved components.
+        After Correction M (all four projects BS_OK):
+        - Oborovo/TUHO/Solar/Wind: all resolved (BS OK, LR OK, UC OK, FI OK) → no BS blocker
         - gross_fixed_assets RESOLVED via U1 canonical basis for all projects."""
+        # All four projects: BS is now closed after Correction M
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert "balance_sheet_identity" not in fs.unavailable_reasons, (
+                f"{ptype}: balance_sheet_identity must not appear after Correction M BS closure"
+            )
         # Oborovo: all resolved after L
         _, obo_fs = _assemble("Oborovo")
         for key in ("legal_reserve", "balance_sheet_identity",
@@ -1155,13 +1159,13 @@ class TestCorC_MetadataConsistency:
             assert key not in obo_fs.unavailable_reasons, (
                 f"Oborovo: {key} should be resolved after Correction L"
             )
-        # Solar: LR is computed from WPs (OK), but BS identity fails (pre-existing G2C imbalance)
+        # Solar: LR is computed from WPs (OK), BS now closed by Correction M
         _, solar_fs = _assemble("Solar")
         assert "legal_reserve" not in solar_fs.unavailable_reasons, (
             "Solar: legal_reserve is resolved from G2C WPs after Correction L"
         )
-        assert "balance_sheet_identity" in solar_fs.unavailable_reasons, (
-            "Solar: balance_sheet_identity must appear when BS does not balance"
+        assert "balance_sheet_identity" not in solar_fs.unavailable_reasons, (
+            "Solar: balance_sheet_identity must not appear after Correction M"
         )
         # gross_fixed_assets RESOLVED via U1 canonical basis for all four
         for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
