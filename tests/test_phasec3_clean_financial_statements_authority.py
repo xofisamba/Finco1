@@ -1215,3 +1215,140 @@ class TestCorC_ExceptionContract:
             result = assemble_decision_complete_financial_statements(
                 broken, run.project_inputs)
             assert result.status.value == "STATEMENT_PERIOD_AXIS_MISMATCH", kind
+
+
+# ---------------------------------------------------------------------------
+# Correction N: G2C trapped-cash UC roll-forward for BULLET-fail-closed periods
+# ---------------------------------------------------------------------------
+
+class TestCorN_G2CTrappedCash:
+    """Verify Correction N.2: G2C computes a proper UC roll-forward for the
+    generic (Solar/Wind) path when BULLET SHL matures with unpaid residual."""
+
+    @staticmethod
+    def _solar_wps():
+        run, _ = _assemble("Solar")
+        wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
+        return wps
+
+    def test_a_pre_maturity_uc_zero(self):
+        """A: Pre-BULLET-maturity periods have unallocated=0 → UC_close=0."""
+        wps = self._solar_wps()
+        pre = [wp for wp in wps if not getattr(wp, "shl_bullet_unpaid_at_maturity", False)]
+        assert pre, "expect at least one pre-maturity operating period for Solar"
+        for wp in pre:
+            assert (wp.unrestricted_cash_closing_keur or 0.0) == pytest.approx(0.0, abs=1e-6), (
+                f"period {wp.period_index}: pre-maturity UC_close should be 0"
+            )
+
+    def test_b_at_maturity_no_double_count(self):
+        """B: At-maturity period: SHL service consumes cash → UC_change = 0."""
+        wps = self._solar_wps()
+        # At-maturity: first period where shl_bullet_unpaid_at_maturity flips True
+        bullet_wps = [wp for wp in wps if getattr(wp, "shl_bullet_unpaid_at_maturity", False)]
+        if not bullet_wps:
+            pytest.skip("Solar has no BULLET unpaid residual")
+        at_mat = min(bullet_wps, key=lambda w: w.period_index)
+        # At maturity the SHL interest or principal > 0; unallocated should be ~0
+        shl_in = float(getattr(at_mat, "shl_cash_input_keur", 0.0) or 0.0)
+        shl_ci = float(getattr(at_mat, "shl_cash_interest_receipt_keur", 0.0) or 0.0)
+        shl_pr = float(getattr(at_mat, "actual_shl_principal_paid_keur", 0.0) or 0.0)
+        dist = float(at_mat.legal_equity_distribution_keur or 0.0)
+        unalloc = shl_in - shl_ci - shl_pr - dist
+        assert unalloc >= -1e-6, "at-maturity period must not over-allocate"
+
+    def test_c_first_post_maturity_uc_change_equals_shl_input(self):
+        """C: First strictly post-maturity period: UC_change = shl_cash_input."""
+        wps = self._solar_wps()
+        bullet_wps = sorted(
+            [wp for wp in wps if getattr(wp, "shl_bullet_unpaid_at_maturity", False)],
+            key=lambda w: w.period_index,
+        )
+        if len(bullet_wps) < 2:
+            pytest.skip("Solar has fewer than 2 post-maturity periods — cannot test C")
+        # Second bullet period is first *strictly* post-maturity (first is at-maturity)
+        first_post = bullet_wps[1]
+        shl_in = float(getattr(first_post, "shl_cash_input_keur", 0.0) or 0.0)
+        uc_chg = float(first_post.change_in_unrestricted_cash_keur or 0.0)
+        assert uc_chg == pytest.approx(shl_in, abs=1e-6), (
+            f"period {first_post.period_index}: UC_change={uc_chg} should equal "
+            f"shl_cash_input={shl_in} when SHL service and dist are both 0"
+        )
+
+    def test_d_uc_continuity(self):
+        """D: UC opening of each period equals UC closing of prior period."""
+        wps = self._solar_wps()
+        sorted_wps = sorted(wps, key=lambda w: w.period_index)
+        for prev, curr in zip(sorted_wps, sorted_wps[1:]):
+            prev_cl = float(prev.unrestricted_cash_closing_keur or 0.0)
+            curr_op = float(curr.unrestricted_cash_opening_keur or 0.0)
+            assert prev_cl == pytest.approx(curr_op, abs=1e-6), (
+                f"UC continuity broken between periods "
+                f"{prev.period_index} (close={prev_cl}) and "
+                f"{curr.period_index} (open={curr_op})"
+            )
+
+    def test_e_unpaid_shl_liability_unchanged_post_maturity(self):
+        """E: Unpaid SHL balance stays constant post-maturity (no phantom repayment)."""
+        wps = self._solar_wps()
+        bullet_wps = sorted(
+            [wp for wp in wps if getattr(wp, "shl_bullet_unpaid_at_maturity", False)],
+            key=lambda w: w.period_index,
+        )
+        if len(bullet_wps) < 2:
+            pytest.skip("need at least 2 bullet periods")
+        unpaid_vals = [
+            float(getattr(wp, "unpaid_shl_principal_keur", 0.0) or 0.0)
+            for wp in bullet_wps
+        ]
+        # All post-maturity periods must have the same (non-zero) unpaid balance
+        assert all(v > 0 for v in unpaid_vals), "unpaid must be positive post-maturity"
+        assert all(v == pytest.approx(unpaid_vals[0], abs=1e-6) for v in unpaid_vals), (
+            "unpaid SHL liability must not change post-maturity"
+        )
+
+    def test_f_sponsor_distributions_zero_post_maturity(self):
+        """F: Sponsor distributions remain zero for all post-maturity periods."""
+        wps = self._solar_wps()
+        bullet_wps = [wp for wp in wps if getattr(wp, "shl_bullet_unpaid_at_maturity", False)]
+        if not bullet_wps:
+            pytest.skip("no bullet periods for Solar")
+        for wp in bullet_wps:
+            dist = float(wp.legal_equity_distribution_keur or 0.0)
+            assert dist == pytest.approx(0.0, abs=1e-6), (
+                f"period {wp.period_index}: distribution must be 0 post-maturity, got {dist}"
+            )
+
+    def test_g_no_financing_income_solar_wind(self):
+        """G: Solar/Wind have no cash-reserve financing income (FI = ZERO_BY_POLICY)."""
+        for ptype in ("Solar", "Wind"):
+            run, fs = _assemble(ptype)
+            fi_vals = [
+                p.financing_income_keur
+                for p in fs.pf_cash_waterfall_periods
+                if p.financing_income_keur is not None
+            ]
+            assert all(v == pytest.approx(0.0, abs=1e-6) for v in fi_vals), (
+                f"{ptype}: financing income must be zero (ZERO_BY_POLICY)"
+            )
+
+    def test_n_c3_uc_equals_g2c_uc(self):
+        """N: C3 assembly UC == G2C UC for all four project types (Correction N end-to-end)."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            run, fs = _assemble(ptype)
+            wps = run.g2c_result.waterfall_periods
+            wp_by_idx = {wp.period_index: wp for wp in wps if not wp.is_construction}
+            mismatches = []
+            for p in fs.balance_sheet_periods:
+                wp = wp_by_idx.get(p.period_index)
+                if wp is None:
+                    continue
+                g2c_uc = wp.unrestricted_cash_closing_keur
+                c3_uc = p.unrestricted_cash_keur
+                if g2c_uc is None or c3_uc is None:
+                    continue
+                if abs(float(g2c_uc) - float(c3_uc)) > 1e-6:
+                    mismatches.append((p.period_index, g2c_uc, c3_uc))
+            assert not mismatches, (
+                f"{ptype}: C3 UC != G2C UC at periods {mismatches[:3]}"
+            )

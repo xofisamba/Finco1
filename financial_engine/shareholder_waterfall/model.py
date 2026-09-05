@@ -1109,10 +1109,39 @@ def run_project_shareholder_waterfall_model(
 
         # ── U2 Phase L: Accounting cap second pass ────────────────────────────
         if not _dist_accounting_enabled:
-            # Preserve frozen G2C semantics: gross = net = legal_equity_distribution
+            # Preserve frozen G2C semantics: gross = net = legal_equity_distribution.
+            # Correction N: compute proper UC roll-forward for post-BULLET-fail-closed periods.
+            # Causal identity (N.2):
+            #   unallocated = shl_cash_input - shl_cash_interest - shl_principal - gross_dividend
+            # For normal periods = 0 (G2C first pass fully allocates released cash).
+            # For post-BULLET-fail-closed: SHL service=0, dist=0 → unallocated = shl_cash_input.
+            # Physical cash stays in SPV as UC (cannot be distributed, not applied to SHL).
             _new_wp = []
+            _uc_running: float = 0.0  # UC carry across operating periods
             for _wp in waterfall_periods:
                 _dist = _wp.legal_equity_distribution_keur
+                if _wp.is_construction:
+                    _uc_op = 0.0
+                    _uc_chg = 0.0
+                    _uc_cl = 0.0
+                else:
+                    _shl_in = float(getattr(_wp, "shl_cash_input_keur", 0.0) or 0.0)
+                    _shl_ci = float(getattr(_wp, "shl_cash_interest_receipt_keur", 0.0) or 0.0)
+                    _shl_pr = float(getattr(_wp, "actual_shl_principal_paid_keur", 0.0) or 0.0)
+                    _unalloc = _shl_in - _shl_ci - _shl_pr - _dist
+                    # Fail closed if materially negative (rounding is acceptable).
+                    if _unalloc < -1e-6:
+                        raise ValueError(
+                            f"G2C generic trapped-cash identity: unallocated_released_cash="
+                            f"{_unalloc:.6f} kEUR at period {_wp.period_index} — "
+                            f"negative means cash over-allocated; shl_in={_shl_in:.4f}, "
+                            f"shl_ci={_shl_ci:.4f}, shl_pr={_shl_pr:.4f}, dist={_dist:.4f}"
+                        )
+                    _unalloc = max(0.0, _unalloc)
+                    _uc_op = _uc_running
+                    _uc_chg = _unalloc
+                    _uc_cl = _uc_op + _unalloc
+                    _uc_running = _uc_cl
                 _new_wp.append(dataclasses.replace(
                     _wp,
                     fcf_for_dividends_keur=_dist,
@@ -1123,9 +1152,9 @@ def run_project_shareholder_waterfall_model(
                     dividend_wht_rate=0.0,
                     dividend_wht_keur=0.0,
                     net_dividend_received_keur=_dist,
-                    unrestricted_cash_opening_keur=0.0,
-                    change_in_unrestricted_cash_keur=0.0,
-                    unrestricted_cash_closing_keur=0.0,
+                    unrestricted_cash_opening_keur=_uc_op,
+                    change_in_unrestricted_cash_keur=_uc_chg,
+                    unrestricted_cash_closing_keur=_uc_cl,
                     # pure_equity_net_cashflow_keur and total_sponsor_net_cashflow_keur
                     # keep the original values set in the first pass
                 ))
