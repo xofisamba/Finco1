@@ -56,19 +56,9 @@ jobs:
               | grep -E '\.py$' || true
           )
           if ((${#changed_python[@]})); then
-            # Scan only added lines (diff-level, not file-level) so pre-existing
-            # terms in touched files do not cause false positives.
-            banned_hits=$(
-              git diff 1699ea0665377f307ba87e032f189ed0e487add4...HEAD -- "${changed_python[@]}" \
-                | grep -E '^\+' | grep -v '^+++' \
-                | grep -iE 'approved_delta|expected_delta|balancing[_ ]plug|terminal[_ -]top[- ]up|forced principal|target fitting|post-engine mutation|bank_balancing_cost|WaterfallRunner' \
-                || true
-            )
-            if [[ -n "$banned_hits" ]]; then
-              echo "Governance violation — banned term introduced in diff:"
-              echo "$banned_hits"
-              exit 1
-            fi
+            ! grep -nHEi \
+              'approved_delta|expected_delta|balancing[_ ]plug|terminal[_ -]top[- ]up|forced principal|target fitting|post-engine mutation|bank_balancing_cost|WaterfallRunner' \
+              "${changed_python[@]}"
           fi
 
       - name: C3 U1 integration suite (§12 negative tests + §13 four-project matrix)
