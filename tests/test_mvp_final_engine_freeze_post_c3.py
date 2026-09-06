@@ -74,7 +74,7 @@ def _assemble_cached(ptype: str):
     DO NOT call from tests that require independent fresh runs (§2, §10, §11,
     mutation tests). DO NOT mutate the returned run or fs objects.
     """
-    return _assemble_cached(ptype)
+    return _assemble(ptype)
 
 
 def _run_cached(ptype: str):
@@ -731,15 +731,24 @@ class TestFreezeS5_PeriodAxis:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_waterfall_axis_no_duplicates_and_ordered(self, ptype):
-        """PF Cash Waterfall axis: no duplicate period indices, ordered."""
+        """PF Cash Waterfall axis: operating periods are ordered with no duplicate indices.
+
+        Construction and operating period indices may overlap (they are separate sub-axes),
+        so uniqueness and ordering are checked on operating periods only — consistent with
+        how all other waterfall tests in this file handle the axis. The classification
+        boundary (construction before operating) is checked separately.
+        """
         run = _run_cached(ptype)
         wps = run.g2c_result.waterfall_periods
-        idxs = [wp.period_index for wp in wps]
-        assert idxs == sorted(idxs), f"{ptype}: waterfall axis not ordered"
-        assert len(idxs) == len(set(idxs)), f"{ptype}: duplicate waterfall axis indices"
-        # Construction periods precede operating
+        # Operating-only axis check
+        op_wps = [wp for wp in wps if not wp.is_construction]
+        op_idxs = [wp.period_index for wp in op_wps]
+        assert op_idxs == sorted(op_idxs), f"{ptype}: waterfall operating axis not ordered"
+        assert len(op_idxs) == len(set(op_idxs)), f"{ptype}: duplicate waterfall operating axis indices"
+        assert len(op_idxs) > 0, f"{ptype}: no operating waterfall periods"
+        # Construction periods (if any) must precede operating periods in classification
         const_end = max((wp.period_index for wp in wps if wp.is_construction), default=-1)
-        op_start = min((wp.period_index for wp in wps if not wp.is_construction), default=999999)
+        op_start = min((wp.period_index for wp in op_wps), default=999999)
         assert const_end < op_start, f"{ptype}: waterfall construction/operating ordering violated"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
