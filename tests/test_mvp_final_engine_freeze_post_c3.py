@@ -257,6 +257,14 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "retained_earnings": "640b886ce58214e4dd3e8974",
         "nfa": "bd5f6ea8e77f69ff0f618b56",
         "balance_check": "b97af5877a33a5f8de72d515",
+        # Senior debt schedule (canonical Senior axis — 30 periods)
+        "senior_opening": "0836118cb4bb4bd43f154888",
+        "senior_interest": "8e8731a1b7a94f44faf174e1",
+        "senior_principal": "381ba6b41baa339e7f76ccf9",
+        "senior_debt_service": "ef422390708043fe71f91d09",
+        "senior_closing": "e839a4cae314de2e452e3689",
+        # Canonical Base CFADS (tax/CFADS authority — full axis)
+        "cfads": "c33503ee7a00d29453065825",
     },
     "Wind": {
         "revenue": "fc376f60563a1cfe75d760e2",
@@ -278,6 +286,14 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "retained_earnings": "deef28d3e5c6f7acdfc11ddc",
         "nfa": "e4a9058d3d9f26fbc7211084",
         "balance_check": "63d9f732f7d213e11a79d671",
+        # Senior debt schedule (canonical Senior axis — 30 periods)
+        "senior_opening": "d0e472597885438d38a385a9",
+        "senior_interest": "251d5a26e5ce45a89c1bbe6f",
+        "senior_principal": "dca603b2ca0ca7f8bcd139ae",
+        "senior_debt_service": "c3018f2582eef3eb0de92e17",
+        "senior_closing": "e70ba863438815c45f10e6fa",
+        # Canonical Base CFADS (tax/CFADS authority — full axis)
+        "cfads": "8bee08c480b1c3ef6000bd43",
     },
     "Oborovo": {
         "revenue": "f3f69706105c5df3c0aecfe5",
@@ -299,6 +315,14 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "retained_earnings": "35227050398a602e5f024385",
         "nfa": "d18bb1af22e0940d62e4d58f",
         "balance_check": "0de38a6f20b07ff85b617ace",
+        # Senior debt schedule (canonical Senior axis — 28 periods)
+        "senior_opening": "84600e22c90f6da2aa5e587a",
+        "senior_interest": "c18c39b4c23dcb383c14d0fc",
+        "senior_principal": "775558a0b2ec21a3c5d223f8",
+        "senior_debt_service": "219e9f8c83ad031bae1dbadd",
+        "senior_closing": "46267cb977f8238644668c13",
+        # Canonical Base CFADS (tax/CFADS authority — full axis)
+        "cfads": "845a421f06ef34a202a43189",
     },
     "TUHO": {
         "revenue": "5a693322b5cf3cf21adecd71",
@@ -320,6 +344,14 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "retained_earnings": "c9937781f592a16f48fa9dd1",
         "nfa": "d9121dce5208cfd83b222071",
         "balance_check": "b65d3ebafdd2d62b9dc35501",
+        # Senior debt schedule (canonical Senior axis — 28 periods)
+        "senior_opening": "453acbb8c0b9bdb3f036c5ff",
+        "senior_interest": "f7b88aa6b5debdcf25b5eb22",
+        "senior_principal": "f1ac387cf3b557bc9f1e689b",
+        "senior_debt_service": "4851f38bf0df67ca621c1283",
+        "senior_closing": "a6a7ea55685ec973db5d9dfe",
+        # Canonical Base CFADS (tax/CFADS authority — full axis)
+        "cfads": "00ac2091370d0acc2087e56c",
     },
 }
 
@@ -490,6 +522,25 @@ class TestFreezeS3_ScalarFingerprints:
         assert ret.project.project_xirr_status.value == fp["project_xirr_status"]
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_income_statement_pnl_scalars(self, ptype):
+        """Assert all IS P&L scalar fingerprints: financing income, senior interest, SHL interest, net income."""
+        _, fs = _assemble(ptype)
+        fp = _FINGERPRINTS[ptype]
+        isp = fs.income_statement_periods
+        assert sum(p.net_income_keur for p in isp) == pytest.approx(fp["total_net_income_keur"], rel=1e-6)
+        fi_expected = fp["total_financing_income_keur"]
+        assert sum(p.financing_income_keur for p in isp) == pytest.approx(
+            fi_expected, abs=1e-4 if fi_expected == 0.0 else None,
+            rel=None if fi_expected == 0.0 else 1e-6,
+        )
+        assert sum(p.senior_interest_expense_keur for p in isp) == pytest.approx(
+            fp["total_senior_interest_pnl_keur"], rel=1e-6
+        )
+        assert sum(p.shl_interest_expense_keur for p in isp) == pytest.approx(
+            fp["total_shl_interest_pnl_keur"], rel=1e-6
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_c3_statement_statuses(self, ptype):
         _, fs = _assemble(ptype)
         assert fs.income_statement_status.value == "OK"
@@ -563,6 +614,26 @@ class TestFreezeS4_VectorDigests:
         bsp = fs.balance_sheet_periods
         assert _vec_digest([float(p.balance_check_keur or 0) for p in bsp]) == exp["balance_check"]
 
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_senior_schedule_digests(self, ptype):
+        """Senior debt schedule vectors read directly from canonical SeniorDebtSchedules."""
+        run = _run_clean(ptype)
+        exp = _DIGESTS[ptype]
+        sd = run.g2c_result.financing_result.project_model_result.senior_debt
+        assert _vec_digest(list(sd.senior_debt_opening_keur)) == exp["senior_opening"]
+        assert _vec_digest(list(sd.senior_interest_keur)) == exp["senior_interest"]
+        assert _vec_digest(list(sd.senior_principal_keur)) == exp["senior_principal"]
+        assert _vec_digest(list(sd.senior_debt_service_keur)) == exp["senior_debt_service"]
+        assert _vec_digest(list(sd.senior_debt_closing_keur)) == exp["senior_closing"]
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_cfads_digest(self, ptype):
+        """Canonical Base CFADS read from the authoritative tax/CFADS schedule."""
+        run = _run_clean(ptype)
+        exp = _DIGESTS[ptype]
+        tax = run.g2c_result.financing_result.project_model_result.tax_and_cfads
+        assert _vec_digest(list(tax.cfads_keur)) == exp["cfads"]
+
 
 # ===========================================================================
 # §5 — Period-axis freeze
@@ -631,6 +702,62 @@ class TestFreezeS5_PeriodAxis:
             (p.period_index for p in isp if not p.is_construction), default=999999
         )
         assert const_end < op_start, f"{ptype}: construction/operating ordering violated"
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_senior_axis_no_duplicates_and_ordered(self, ptype):
+        """Senior axis: no duplicate period indices, strictly ordered, non-empty."""
+        run = _run_clean(ptype)
+        sd = run.g2c_result.financing_result.project_model_result.senior_debt
+        idxs = list(sd.period_indices)
+        assert len(idxs) > 0, f"{ptype}: senior_debt has no periods"
+        assert idxs == sorted(idxs), f"{ptype}: senior axis not ordered"
+        assert len(idxs) == len(set(idxs)), f"{ptype}: duplicate senior axis indices"
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_cfads_axis_no_duplicates_and_ordered(self, ptype):
+        """CFADS axis (tax authority): no duplicate period indices, ordered, non-empty."""
+        run = _run_clean(ptype)
+        tax = run.g2c_result.financing_result.project_model_result.tax_and_cfads
+        idxs = list(tax.period_indices)
+        assert len(idxs) > 0, f"{ptype}: tax_and_cfads has no periods"
+        assert idxs == sorted(idxs), f"{ptype}: CFADS axis not ordered"
+        assert len(idxs) == len(set(idxs)), f"{ptype}: duplicate CFADS axis indices"
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_waterfall_axis_no_duplicates_and_ordered(self, ptype):
+        """PF Cash Waterfall axis: no duplicate period indices, ordered."""
+        run = _run_clean(ptype)
+        wps = run.g2c_result.waterfall_periods
+        idxs = [wp.period_index for wp in wps]
+        assert idxs == sorted(idxs), f"{ptype}: waterfall axis not ordered"
+        assert len(idxs) == len(set(idxs)), f"{ptype}: duplicate waterfall axis indices"
+        # Construction periods precede operating
+        const_end = max((wp.period_index for wp in wps if wp.is_construction), default=-1)
+        op_start = min((wp.period_index for wp in wps if not wp.is_construction), default=999999)
+        assert const_end < op_start, f"{ptype}: waterfall construction/operating ordering violated"
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_re_axis_no_duplicates_and_covers_operating(self, ptype):
+        """RE roll-forward axis: no duplicates, ordered, covers all operating IS periods."""
+        _, fs = _assemble(ptype)
+        rep = fs.retained_earnings_periods
+        re_idxs = [p.period_index for p in rep]
+        assert re_idxs == sorted(re_idxs), f"{ptype}: RE axis not ordered"
+        assert len(re_idxs) == len(set(re_idxs)), f"{ptype}: duplicate RE axis indices"
+        op_is_idxs = {p.period_index for p in fs.income_statement_periods if not p.is_construction}
+        assert op_is_idxs.issubset(set(re_idxs)), (
+            f"{ptype}: operating IS periods not covered by RE axis: "
+            f"missing {op_is_idxs - set(re_idxs)}"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_tax_bridge_axis_matches_is_axis(self, ptype):
+        """Tax Bridge axis must match IS axis exactly (no missing, no extra periods)."""
+        _, fs = _assemble(ptype)
+        is_idx = sorted(p.period_index for p in fs.income_statement_periods)
+        tb_idx = sorted(p.period_index for p in fs.tax_bridge_periods)
+        assert tb_idx == is_idx, f"{ptype}: tax bridge axis != IS axis"
+        assert len(tb_idx) == len(set(tb_idx)), f"{ptype}: duplicate TB axis indices"
 
 
 # ===========================================================================
@@ -707,22 +834,24 @@ class TestFreezeS7_AccountingIdentities:
         used_vals = [float(x) for x in tax.tax_loss_used_audit_keur]
         idxs = list(tax.period_indices)
 
-        # Non-negativity of all closing and opening values
+        # FIFO non-negativity: all ledger values must be >= 0 for EVERY period,
+        # including construction. No COD exemption inside the per-period identity.
         for i, idx in enumerate(idxs):
             assert closes[i] >= -1e-6, (
-                f"{ptype}: negative tax loss closing {closes[i]} at period {idx}"
+                f"{ptype}: negative tax loss closing {closes[i]:.6f} at period {idx}"
             )
             assert opens[i] >= -1e-6, (
-                f"{ptype}: negative tax loss opening {opens[i]} at period {idx}"
+                f"{ptype}: negative tax loss opening {opens[i]:.6f} at period {idx}"
             )
             assert used_vals[i] >= -1e-6, (
-                f"{ptype}: negative tax loss used {used_vals[i]} at period {idx}"
+                f"{ptype}: negative tax loss used {used_vals[i]:.6f} at period {idx}"
             )
 
-        # Year-end continuity: within operating periods, opening of year_i+1 cannot exceed
-        # closing of year_i (losses cannot be invented). Expiry reduces the carryforward
-        # (opening < prior_closing is valid). The construction→operating boundary is exempt:
-        # the tax year is reassessed at COD with a possibly different annual base.
+        # Annual FIFO continuity: within operating periods, the year-end closing must
+        # exactly equal the next year's opening (strict equality, not just ≤).
+        # The construction→operating boundary is exempt: the tax base is reassessed
+        # at COD and the opening of the first operating tax year may legitimately
+        # differ from the closing of the last construction tax year.
         isp = fs_tax.income_statement_periods
         const_idx = {p.period_index for p in isp if p.is_construction}
         year_end_positions = [i for i in range(len(idxs))
@@ -730,16 +859,15 @@ class TestFreezeS7_AccountingIdentities:
         for j in range(len(year_end_positions) - 1):
             pos_curr = year_end_positions[j]
             pos_next = year_end_positions[j + 1]
-            # Skip the construction→operating boundary
+            # Skip the construction→operating boundary (COD reassessment)
             if idxs[pos_curr] in const_idx or idxs[pos_next] in const_idx:
                 continue
             cl = closes[pos_curr]
             op_next = opens[pos_next]
-            assert op_next <= cl + 1e-6, (
-                f"{ptype}: tax loss ledger upward gap: "
-                f"closing {cl:.6f} at period {idxs[pos_curr]} < "
-                f"opening {op_next:.6f} at period {idxs[pos_next]} "
-                f"(losses cannot be invented)"
+            assert op_next == pytest.approx(cl, abs=1e-6), (
+                f"{ptype}: tax loss ledger discontinuity: "
+                f"closing {cl} at period {idxs[pos_curr]} "
+                f"!= opening {op_next} at period {idxs[pos_next]}"
             )
 
         # Downstream TaxBridgePeriod must be consistent with the audit authority

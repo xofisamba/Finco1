@@ -1,6 +1,6 @@
 # MVP Core Financial Engine Freeze — Post-C3
 
-**Status: MVP_ENGINE_FREEZE_CORRECTION_A_READY_FOR_INDEPENDENT_REVIEW**
+**Status: MVP_ENGINE_FREEZE_CORRECTION_B_READY_FOR_INDEPENDENT_REVIEW**
 
 ## Baseline
 
@@ -211,10 +211,17 @@ def vec_digest(v: list) -> str:
 ```
 
 Digests cover operating periods only (construction periods excluded),
-unless the schedule is naturally continuous (e.g. BS, SHL).
+unless the schedule is naturally continuous (e.g. BS, SHL, Senior, CFADS).
 
 Full digest tables embedded in `_DIGESTS` dict in
 `tests/test_mvp_final_engine_freeze_post_c3.py`.
+
+**Digest count per project (Correction B): 25**
+- IS/Tax/BS/SHL/CFADS/NFA/RE: 19 (original)
+- Senior schedule (opening, interest, principal, debt_service, closing): +5
+- Canonical Base CFADS: +1
+
+Total: 25 authoritative vector digests per project × 4 projects = 100 digests.
 
 ---
 
@@ -369,6 +376,6 @@ The UI must NOT reconstruct any financial logic; it must consume these outputs a
 
 ---
 
-**MVP_ENGINE_FREEZE_CORRECTION_A_READY_FOR_INDEPENDENT_REVIEW**
+**MVP_ENGINE_FREEZE_CORRECTION_B_READY_FOR_INDEPENDENT_REVIEW**
 
 Freeze evidence file: `tests/test_mvp_final_engine_freeze_post_c3.py`
