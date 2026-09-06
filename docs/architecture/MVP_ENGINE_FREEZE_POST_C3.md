@@ -1,6 +1,6 @@
 # MVP Core Financial Engine Freeze — Post-C3
 
-**Status: MVP_CORE_FINANCIAL_ENGINE_FROZEN_FOR_UI_INTEGRATION**
+**Status: MVP_ENGINE_FREEZE_CORRECTION_A_READY_FOR_INDEPENDENT_REVIEW**
 
 ## Baseline
 
@@ -271,7 +271,7 @@ AccumDep_terminal = Σ(BookDep over all periods)
 | TUHO | 61/61 | 8.16e-09 kEUR | ✓ |
 
 All residuals are floating-point rounding noise, not economic gaps.
-Tolerance limit: 1e-4 kEUR (100 EUR). All projects well within.
+Tolerance limit: 1e-4 kEUR (0.10 EUR). All projects well within.
 
 ---
 
@@ -369,6 +369,6 @@ The UI must NOT reconstruct any financial logic; it must consume these outputs a
 
 ---
 
-**MVP_CORE_FINANCIAL_ENGINE_FROZEN_FOR_UI_INTEGRATION**
+**MVP_ENGINE_FREEZE_CORRECTION_A_READY_FOR_INDEPENDENT_REVIEW**
 
 Freeze evidence file: `tests/test_mvp_final_engine_freeze_post_c3.py`

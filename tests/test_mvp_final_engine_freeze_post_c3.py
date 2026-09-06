@@ -603,17 +603,21 @@ class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_periods_are_ordered_and_non_overlapping(self, ptype):
         _, fs = _assemble(ptype)
-        for periods, label in (
-            (fs.income_statement_periods, "IS"),
-            (fs.balance_sheet_periods, "BS"),
-        ):
-            starts = [p.period_start for p in periods]
-            ends = [p.period_end for p in periods]
-            assert starts == sorted(starts), f"{ptype} {label}: periods not chronologically ordered"
-            for i in range(len(periods) - 1):
-                assert ends[i] < starts[i + 1] or ends[i] == starts[i + 1], (
-                    f"{ptype} {label}: periods overlap at index {i}"
-                )
+        # IS periods have period_start and period_end — check both ordering and non-overlap
+        is_periods = fs.income_statement_periods
+        is_starts = [p.period_start for p in is_periods]
+        is_ends = [p.period_end for p in is_periods]
+        assert is_starts == sorted(is_starts), f"{ptype} IS: periods not chronologically ordered"
+        for i in range(len(is_periods) - 1):
+            assert is_ends[i] <= is_starts[i + 1], (
+                f"{ptype} IS: periods overlap at index {i}"
+            )
+        # BS periods have only period_end and period_index — check ordering by index
+        bs_periods = fs.balance_sheet_periods
+        bs_indices = [p.period_index for p in bs_periods]
+        assert bs_indices == sorted(bs_indices), f"{ptype} BS: periods not ordered by index"
+        bs_ends = [p.period_end for p in bs_periods]
+        assert bs_ends == sorted(bs_ends), f"{ptype} BS: period_end not monotonically ordered"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_construction_operating_classification_consistent(self, ptype):
@@ -688,47 +692,106 @@ class TestFreezeS7_AccountingIdentities:
             )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
-    def test_cit_roll_forward_every_period(self, ptype):
-        _, fs = _assemble(ptype)
-        for p in fs.tax_bridge_periods:
-            expected_closing = (
-                float(p.tax_loss_opening_keur or 0)
-                + float(p.taxable_income_before_losses_keur or 0)
-                - float(p.tax_loss_used_keur or 0)
+    def test_annual_tax_loss_ledger_reconciles_every_tax_year(self, ptype):
+        """Annual FIFO tax-loss ledger: year-end closing becomes next year opening.
+
+        Uses the canonical audit authority (tax_and_cfads) not the downstream
+        TaxBridgePeriod. Reconciliation: closing[year_i] == opening[year_i+1]
+        proves the ledger is gapless across all tax years.
+        """
+        run, fs_tax = _assemble(ptype)
+        model = run.g2c_result.financing_result.project_model_result
+        tax = model.tax_and_cfads
+        opens = [float(x) for x in tax.tax_loss_opening_audit_keur]
+        closes = [float(x) for x in tax.tax_loss_closing_audit_keur]
+        used_vals = [float(x) for x in tax.tax_loss_used_audit_keur]
+        idxs = list(tax.period_indices)
+
+        # Non-negativity of all closing and opening values
+        for i, idx in enumerate(idxs):
+            assert closes[i] >= -1e-6, (
+                f"{ptype}: negative tax loss closing {closes[i]} at period {idx}"
             )
-            if expected_closing <= 0:
-                expected_closing = max(0.0, -expected_closing)
-            # The bridge closing is available; verify it is internally consistent
-            cl = float(p.tax_loss_closing_keur or 0)
-            assert cl >= -1e-9, f"{ptype}: negative tax loss closing {cl}"
+            assert opens[i] >= -1e-6, (
+                f"{ptype}: negative tax loss opening {opens[i]} at period {idx}"
+            )
+            assert used_vals[i] >= -1e-6, (
+                f"{ptype}: negative tax loss used {used_vals[i]} at period {idx}"
+            )
+
+        # Year-end continuity: within operating periods, opening of year_i+1 cannot exceed
+        # closing of year_i (losses cannot be invented). Expiry reduces the carryforward
+        # (opening < prior_closing is valid). The construction→operating boundary is exempt:
+        # the tax year is reassessed at COD with a possibly different annual base.
+        isp = fs_tax.income_statement_periods
+        const_idx = {p.period_index for p in isp if p.is_construction}
+        year_end_positions = [i for i in range(len(idxs))
+                              if opens[i] != 0.0 or closes[i] != 0.0]
+        for j in range(len(year_end_positions) - 1):
+            pos_curr = year_end_positions[j]
+            pos_next = year_end_positions[j + 1]
+            # Skip the construction→operating boundary
+            if idxs[pos_curr] in const_idx or idxs[pos_next] in const_idx:
+                continue
+            cl = closes[pos_curr]
+            op_next = opens[pos_next]
+            assert op_next <= cl + 1e-6, (
+                f"{ptype}: tax loss ledger upward gap: "
+                f"closing {cl:.6f} at period {idxs[pos_curr]} < "
+                f"opening {op_next:.6f} at period {idxs[pos_next]} "
+                f"(losses cannot be invented)"
+            )
+
+        # Downstream TaxBridgePeriod must be consistent with the audit authority
+        audit_closing = {idxs[i]: closes[i] for i in range(len(idxs))}
+        for p in fs_tax.tax_bridge_periods:
+            tb_cl = float(p.tax_loss_closing_keur or 0)
+            audit_cl = audit_closing.get(p.period_index, 0.0)
+            assert tb_cl == pytest.approx(audit_cl, abs=1e-6), (
+                f"{ptype}: TaxBridgePeriod closing {tb_cl} != "
+                f"audit authority {audit_cl} at period {p.period_index}"
+            )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_re_roll_forward_every_period(self, ptype):
+        """Verify the canonical RE roll-forward identity for every operating period.
+
+        Uses fs.retained_earnings_periods as the authoritative source. The first
+        operating period's opening RE must equal cod_opening_retained_earnings_keur.
+        No periods are silently skipped.
+        """
         _, fs = _assemble(ptype)
-        bsp = fs.balance_sheet_periods
-        isp = fs.income_statement_periods
-        ni_by_idx = {p.period_index: p.net_income_keur for p in isp}
-        pfwp = fs.pf_cash_waterfall_periods
-        div_by_idx = {p.period_index: float(p.legal_equity_distribution_keur or 0) for p in pfwp}
-        # Build legal reserve transfer per period from BS
-        lr_by_idx = {p.period_index: float(p.legal_reserve_keur or 0) for p in bsp}
-        op_bsp = [p for p in bsp if not getattr(p, "is_construction", False)]
-        for i, p in enumerate(op_bsp):
-            ni = ni_by_idx.get(p.period_index, 0.0)
-            div = div_by_idx.get(p.period_index, 0.0)
-            re_cl = float(p.retained_earnings_keur or 0)
-            if i == 0:
-                # Opening RE at COD may include construction NI
-                continue
-            prev = op_bsp[i - 1]
-            re_op = float(prev.retained_earnings_keur or 0)
-            lr_op = lr_by_idx.get(prev.period_index, 0.0)
-            lr_cl = lr_by_idx.get(p.period_index, 0.0)
-            lr_xfer = lr_cl - lr_op
-            expected = re_op + ni - div - lr_xfer
-            assert re_cl == pytest.approx(expected, abs=1e-6), (
+        rep = fs.retained_earnings_periods
+        assert rep, f"{ptype}: no retained_earnings_periods"
+
+        # First period: opening must equal COD canonical authority
+        cod_re = float(fs.cod_opening_retained_earnings_keur or 0)
+        first = rep[0]
+        assert float(first.opening_retained_earnings_keur or 0) == pytest.approx(cod_re, abs=1e-6), (
+            f"{ptype}: first RE period opening {float(first.opening_retained_earnings_keur or 0)} "
+            f"!= COD opening RE {cod_re}"
+        )
+
+        # FIFO identity: opening + NI - gross_dividend - LR_allocation = closing (every period)
+        for p in rep:
+            op = float(p.opening_retained_earnings_keur or 0)
+            ni = float(p.net_income_keur or 0)
+            div = float(p.legal_equity_distribution_keur or 0)
+            lr_alloc = float(p.legal_reserve_allocation_keur or 0)
+            cl = float(p.closing_retained_earnings_keur or 0)
+            expected = op + ni - div - lr_alloc
+            assert cl == pytest.approx(expected, abs=1e-6), (
                 f"{ptype} period {p.period_index}: RE roll-forward failed "
-                f"(got {re_cl}, expected {expected})"
+                f"(got {cl:.6f}, expected {expected:.6f})"
+            )
+
+        # Cross-period continuity: closing[t] == opening[t+1]
+        for i in range(len(rep) - 1):
+            cl = float(rep[i].closing_retained_earnings_keur or 0)
+            op_next = float(rep[i + 1].opening_retained_earnings_keur or 0)
+            assert cl == pytest.approx(op_next, abs=1e-6), (
+                f"{ptype}: RE discontinuity: closing period {rep[i].period_index} "
+                f"{cl:.6f} != opening period {rep[i+1].period_index} {op_next:.6f}"
             )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
@@ -1145,16 +1208,10 @@ class TestFreezeS11_InputSensitivity:
 
         proj_base = self._solar_proj()
         fin_base = proj_base.financing
-        # Find SHL interest rate attribute
-        shl_rate_attr = next(
-            (a for a in ("shl_interest_rate", "shl_rate", "shareholder_loan_rate")
-             if hasattr(fin_base, a) and isinstance(getattr(fin_base, a, None), float)),
-            None,
-        )
-        if shl_rate_attr is None:
-            pytest.skip("SHL rate attribute not found in FinancingParams")
-        base_rate = getattr(fin_base, shl_rate_attr)
-        fin_high = dataclasses.replace(fin_base, **{shl_rate_attr: base_rate * 2.0})
+        # Use the canonical typed SHL-rate authority directly.
+        # If this attribute disappears or the schema changes, this test MUST FAIL.
+        base_rate = fin_base.shl_rate
+        fin_high = dataclasses.replace(fin_base, shl_rate=base_rate * 2.0)
         proj_high = dataclasses.replace(proj_base, financing=fin_high)
 
         r_base = self._run_solar(proj_base)

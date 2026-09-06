@@ -12,8 +12,9 @@ on:
       - 'tests/test_mvp_final_engine_freeze_post_c3.py'
       - 'docs/architecture/MVP_ENGINE_FREEZE_POST_C3.md'
       - 'financial_engine/**'
-      - 'app/services/production_financial_authority.py'
-      - 'app/project_factories.py'
+      - 'finco_core/**'
+      - 'app/**'
+      - 'domain/**'
       - '.github/workflows/mvp_final_engine_freeze_post_c3.yml'
 
 env:
