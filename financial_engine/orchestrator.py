@@ -16,9 +16,8 @@ Required sequence:
   8. Assemble immutable result.
   9. Attach immutable provenance.
 
-The clean engine does NOT call:
-  run_waterfall, run_waterfall_v3_core, WaterfallRunner, WaterfallRunConfig,
-  run_service, run_project, or any legacy engine path.
+The clean engine does NOT call any legacy waterfall,
+service, or project runtime entry point.
 
 The clean engine is unaware that the legacy engine exists.
 """
@@ -717,6 +716,7 @@ def _assemble_tax_cfads_schedules(
         shl_additional_non_deductible_component_audit_keur=tuple(
             pr.shl_additional_non_deductible_component_keur for pr in period_results
         ),
+        annual_results=tuple(tax_result.annual_results),
     )
 
 
