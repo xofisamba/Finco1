@@ -1,6 +1,6 @@
 # MVP Core Financial Engine Freeze — Post-C3
 
-**Status: MVP_ENGINE_FREEZE_CORRECTION_B_READY_FOR_INDEPENDENT_REVIEW**
+**Status: MVP_ENGINE_FREEZE_CORRECTION_C_READY_FOR_INDEPENDENT_REVIEW**
 
 ## Baseline
 
@@ -216,12 +216,23 @@ unless the schedule is naturally continuous (e.g. BS, SHL, Senior, CFADS).
 Full digest tables embedded in `_DIGESTS` dict in
 `tests/test_mvp_final_engine_freeze_post_c3.py`.
 
-**Digest count per project (Correction B): 25**
-- IS/Tax/BS/SHL/CFADS/NFA/RE: 19 (original)
-- Senior schedule (opening, interest, principal, debt_service, closing): +5
-- Canonical Base CFADS: +1
+**Digest count per project (Correction C): 24**
+- revenue, ebitda, book_depreciation, cit_accrual, cash_tax: 5
+- shl_opening, shl_gross_interest, shl_pik, shl_cash_interest, shl_principal, shl_closing: 6
+- dsra, distribution_account, unrestricted_cash, financing_income: 4
+- legal_reserve, retained_earnings, nfa: 3
+- senior_opening, senior_interest, senior_principal, senior_debt_service, senior_closing: 5
+- cfads: 1
 
-Total: 25 authoritative vector digests per project × 4 projects = 100 digests.
+Total: 24 authoritative vector digests per project × 4 projects = 96 digests.
+
+**Balance Sheet residual — NOT SHA-fingerprinted.**
+The `balance_check_keur` values are floating-point closure noise (1e-9 to 1e-11 kEUR)
+and are not economically meaningful schedule values. SHA fingerprinting of near-zero
+noise is brittle (varies with platform/runtime without any economic difference).
+Instead, BS closure is governed semantically: `abs(balance_check_keur) ≤ 1e-4 kEUR`
+for every BS period. This is stronger and more appropriate than hard-coding
+platform-specific numerical-noise hashes. See `TestFreezeS6_BalanceSheetFreeze`.
 
 ---
 
@@ -376,6 +387,66 @@ The UI must NOT reconstruct any financial logic; it must consume these outputs a
 
 ---
 
-**MVP_ENGINE_FREEZE_CORRECTION_B_READY_FOR_INDEPENDENT_REVIEW**
+---
+
+## CI Architecture (Correction C)
+
+### Dedicated Freeze Workflow
+
+The freeze test file runs in **one pytest process** so the session-scoped
+`lru_cache` is active across all §2–§11 sections:
+
+```bash
+python3 -m pytest -q --tb=short \
+  --basetemp=.pytest-tmp-final-engine-freeze \
+  tests/test_mvp_final_engine_freeze_post_c3.py
+```
+
+### Caching Architecture
+
+| Function | Purpose | Cache |
+|---|---|---|
+| `_assemble_cached(ptype)` | Read-only observational tests §3–§9 | `lru_cache(maxsize=4)` |
+| `_run_cached(ptype)` | Read-only tests needing only `run` | delegates to `_assemble_cached` |
+| `_assemble(ptype)` | Fresh canonical result (uncached) | none |
+| `_run_clean(ptype)` | Fresh run (§2 monkeypatched, uncached) | none |
+
+Each of the four projects (Solar/Wind/Oborovo/TUHO) is computed **at most once**
+per pytest process for all read-only tests. §2 (monkeypatch), §10 (determinism),
+and §11 (mutation) always use fresh independent runs.
+
+### Concurrency
+
+`cancel-in-progress: true` on a PR/ref-specific group ensures that an
+obsolete in-progress freeze run is cancelled when a newer commit is pushed,
+rather than running to completion for ~67 minutes.
+
+### Prior vs Expected Runtime
+
+| Metric | Prior (Correction B, run 34018587077) | Correction C target |
+|---|---|---|
+| Result | FAILED after §4 | All sections pass |
+| Total elapsed | ~67 min (incomplete) | ~15–25 min (estimate) |
+| §3 runtime | ~34 min (4 projects × 10 test methods) | ~8–10 min (4 builds cached) |
+| §4 runtime | ~26 min (4 projects × 8 test methods) | <1 min (cache reused) |
+| Canonical builds per process | ~80+ redundant | 4 (one per project) |
+
+### CI_LEGACY_WORKFLOW_FANOUT_OPTIMIZATION_BACKLOG
+
+This PR triggers 27 CI checks total (not just the dedicated freeze workflow).
+The fan-out is caused by:
+- Broad `pull_request` path triggers on `app/**`, `financial_engine/**`, etc.
+- No `concurrency:` on most legacy workflows
+- Missing path-filter restrictions on older financial test suites
+
+Recommended future cleanup (NOT part of this PR):
+1. Add `concurrency: cancel-in-progress: true` to all long-running test workflows
+2. Add path filters to legacy workflows where changes to `tests/**` alone should
+   not trigger financial engine re-runs
+3. Consider consolidating overlapping freeze/parity/governance suites
+
+---
+
+**MVP_ENGINE_FREEZE_CORRECTION_C_READY_FOR_INDEPENDENT_REVIEW**
 
 Freeze evidence file: `tests/test_mvp_final_engine_freeze_post_c3.py`

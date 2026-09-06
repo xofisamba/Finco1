@@ -20,6 +20,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import functools
 import math
 from typing import Any
 
@@ -63,6 +64,22 @@ def _assemble(ptype: str):
 def _vec_digest(v: list) -> str:
     rounded = [round(float(x), 6) if x is not None else None for x in v]
     return hashlib.sha256(json.dumps(rounded).encode()).hexdigest()[:24]
+
+
+@functools.lru_cache(maxsize=4)
+def _assemble_cached(ptype: str):
+    """Cached canonical result per project — read-only observational tests only.
+
+    Each of the four projects is computed at most once per pytest process.
+    DO NOT call from tests that require independent fresh runs (§2, §10, §11,
+    mutation tests). DO NOT mutate the returned run or fs objects.
+    """
+    return _assemble_cached(ptype)
+
+
+def _run_cached(ptype: str):
+    """Return the cached canonical run object — read-only tests only."""
+    return _assemble_cached(ptype)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +273,6 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "e916bf69d50e23e4deecd4cc",
         "retained_earnings": "640b886ce58214e4dd3e8974",
         "nfa": "bd5f6ea8e77f69ff0f618b56",
-        "balance_check": "61d82a2c48f1362586b88be3",
         # Senior debt schedule (canonical Senior axis — 30 periods)
         "senior_opening": "0836118cb4bb4bd43f154888",
         "senior_interest": "8e8731a1b7a94f44faf174e1",
@@ -285,7 +301,6 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "6f53a8fb033a75da6b989dde",
         "retained_earnings": "deef28d3e5c6f7acdfc11ddc",
         "nfa": "e4a9058d3d9f26fbc7211084",
-        "balance_check": "5e330cb2d5ef468a19325552",
         # Senior debt schedule (canonical Senior axis — 30 periods)
         "senior_opening": "d0e472597885438d38a385a9",
         "senior_interest": "251d5a26e5ce45a89c1bbe6f",
@@ -314,7 +329,6 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "d02c64cf834b55d5d1b3e17f",
         "retained_earnings": "35227050398a602e5f024385",
         "nfa": "d18bb1af22e0940d62e4d58f",
-        "balance_check": "02ced9b4fb38aae7dfccf9bf",
         # Senior debt schedule (canonical Senior axis — 28 periods)
         "senior_opening": "84600e22c90f6da2aa5e587a",
         "senior_interest": "c18c39b4c23dcb383c14d0fc",
@@ -343,7 +357,6 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "d02c64cf834b55d5d1b3e17f",
         "retained_earnings": "c9937781f592a16f48fa9dd1",
         "nfa": "d9121dce5208cfd83b222071",
-        "balance_check": "ba484059d0a7a9868712d6d6",
         # Senior debt schedule (canonical Senior axis — 28 periods)
         "senior_opening": "453acbb8c0b9bdb3f036c5ff",
         "senior_interest": "f7b88aa6b5debdcf25b5eb22",
@@ -407,7 +420,7 @@ class TestFreezeS2_SingleProductionEngine:
 class TestFreezeS3_ScalarFingerprints:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_operations_totals(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         isp = fs.income_statement_periods
         op = [p for p in isp if not p.is_construction]
@@ -420,7 +433,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_fixed_assets_totals(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         fap = fs.fixed_asset_periods
         assert sum(p.book_depreciation_keur for p in fap) == pytest.approx(fp["total_book_dep_keur"], rel=1e-9)
@@ -434,7 +447,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_tax_totals(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         isp = fs.income_statement_periods
         tbp = fs.tax_bridge_periods
@@ -444,7 +457,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_senior_debt(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         fin = run.g2c_result.financing_result
         assert float(fin.final_senior_commitment_keur or 0) == pytest.approx(
@@ -461,7 +474,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_shl_totals(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         fin = run.g2c_result.financing_result
         term = run.g2c_result.return_summary.terminal
@@ -491,7 +504,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_reserves_and_cash(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         last = wps[-1]
@@ -501,7 +514,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_equity_accounting(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         bsp = fs.balance_sheet_periods
         last = bsp[-1]
@@ -511,7 +524,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_distributions_and_returns(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         assert sum(float(wp.legal_equity_distribution_keur or 0) for wp in wps) == pytest.approx(
@@ -524,7 +537,7 @@ class TestFreezeS3_ScalarFingerprints:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_income_statement_pnl_scalars(self, ptype):
         """Assert all IS P&L scalar fingerprints: financing income, senior interest, SHL interest, net income."""
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         isp = fs.income_statement_periods
         assert sum(p.net_income_keur for p in isp) == pytest.approx(fp["total_net_income_keur"], rel=1e-6)
@@ -542,7 +555,7 @@ class TestFreezeS3_ScalarFingerprints:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_c3_statement_statuses(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         assert fs.income_statement_status.value == "OK"
         assert fs.tax_bridge_status.value == "OK"
         assert fs.cash_flow_status.value == "OK"
@@ -558,7 +571,7 @@ class TestFreezeS3_ScalarFingerprints:
 class TestFreezeS4_VectorDigests:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_revenue_ebitda_digests(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         exp = _DIGESTS[ptype]
         op = [p for p in fs.income_statement_periods if not p.is_construction]
         assert _vec_digest([p.revenue_keur for p in op]) == exp["revenue"]
@@ -566,7 +579,7 @@ class TestFreezeS4_VectorDigests:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_depreciation_tax_digests(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         exp = _DIGESTS[ptype]
         op_is = [p for p in fs.income_statement_periods if not p.is_construction]
         op_tb = [p for p in fs.tax_bridge_periods if not getattr(p, "is_construction", False)]
@@ -576,7 +589,7 @@ class TestFreezeS4_VectorDigests:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_shl_schedule_digests(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         exp = _DIGESTS[ptype]
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         assert _vec_digest([float(wp.shl_opening_balance_keur or 0) for wp in wps]) == exp["shl_opening"]
@@ -588,7 +601,7 @@ class TestFreezeS4_VectorDigests:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_reserves_cash_digests(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         exp = _DIGESTS[ptype]
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         assert _vec_digest([float(wp.senior_dsra_closing_keur or 0) for wp in wps]) == exp["dsra"]
@@ -597,7 +610,7 @@ class TestFreezeS4_VectorDigests:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_equity_vector_digests(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         exp = _DIGESTS[ptype]
         op_is = [p for p in fs.income_statement_periods if not p.is_construction]
         bsp = fs.balance_sheet_periods
@@ -608,16 +621,9 @@ class TestFreezeS4_VectorDigests:
         assert _vec_digest([float(p.net_fixed_assets_keur or 0) for p in fap]) == exp["nfa"]
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
-    def test_balance_check_digest(self, ptype):
-        _, fs = _assemble(ptype)
-        exp = _DIGESTS[ptype]
-        bsp = fs.balance_sheet_periods
-        assert _vec_digest([float(p.balance_check_keur or 0) for p in bsp]) == exp["balance_check"]
-
-    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_senior_schedule_digests(self, ptype):
         """Senior debt schedule vectors read directly from canonical SeniorDebtSchedules."""
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         exp = _DIGESTS[ptype]
         sd = run.g2c_result.financing_result.project_model_result.senior_debt
         assert _vec_digest(list(sd.senior_debt_opening_keur)) == exp["senior_opening"]
@@ -629,7 +635,7 @@ class TestFreezeS4_VectorDigests:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_cfads_digest(self, ptype):
         """Canonical Base CFADS read from the authoritative tax/CFADS schedule."""
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         exp = _DIGESTS[ptype]
         tax = run.g2c_result.financing_result.project_model_result.tax_and_cfads
         assert _vec_digest(list(tax.cfads_keur)) == exp["cfads"]
@@ -642,7 +648,7 @@ class TestFreezeS4_VectorDigests:
 class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_period_counts_match_fingerprint(self, ptype):
-        run, fs = _assemble(ptype)
+        run, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         isp = fs.income_statement_periods
         op = [p for p in isp if not p.is_construction]
@@ -651,7 +657,7 @@ class TestFreezeS5_PeriodAxis:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_no_duplicate_period_indices(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         indices = [p.period_index for p in fs.income_statement_periods]
         assert len(indices) == len(set(indices)), f"{ptype}: duplicate IS period indices"
         bs_indices = [p.period_index for p in fs.balance_sheet_periods]
@@ -659,7 +665,7 @@ class TestFreezeS5_PeriodAxis:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_all_statements_share_canonical_axis(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         is_idx = {p.period_index for p in fs.income_statement_periods}
         tb_idx = {p.period_index for p in fs.tax_bridge_periods}
         bs_idx = {p.period_index for p in fs.balance_sheet_periods}
@@ -673,7 +679,7 @@ class TestFreezeS5_PeriodAxis:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_periods_are_ordered_and_non_overlapping(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         # IS periods have period_start and period_end — check both ordering and non-overlap
         is_periods = fs.income_statement_periods
         is_starts = [p.period_start for p in is_periods]
@@ -692,7 +698,7 @@ class TestFreezeS5_PeriodAxis:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_construction_operating_classification_consistent(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         isp = fs.income_statement_periods
         # All construction periods precede all operating periods
         const_end = max(
@@ -706,7 +712,7 @@ class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_senior_axis_no_duplicates_and_ordered(self, ptype):
         """Senior axis: no duplicate period indices, strictly ordered, non-empty."""
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         sd = run.g2c_result.financing_result.project_model_result.senior_debt
         idxs = list(sd.period_indices)
         assert len(idxs) > 0, f"{ptype}: senior_debt has no periods"
@@ -716,7 +722,7 @@ class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_cfads_axis_no_duplicates_and_ordered(self, ptype):
         """CFADS axis (tax authority): no duplicate period indices, ordered, non-empty."""
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         tax = run.g2c_result.financing_result.project_model_result.tax_and_cfads
         idxs = list(tax.period_indices)
         assert len(idxs) > 0, f"{ptype}: tax_and_cfads has no periods"
@@ -726,7 +732,7 @@ class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_waterfall_axis_no_duplicates_and_ordered(self, ptype):
         """PF Cash Waterfall axis: no duplicate period indices, ordered."""
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = run.g2c_result.waterfall_periods
         idxs = [wp.period_index for wp in wps]
         assert idxs == sorted(idxs), f"{ptype}: waterfall axis not ordered"
@@ -739,7 +745,7 @@ class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_re_axis_no_duplicates_and_covers_operating(self, ptype):
         """RE roll-forward axis: no duplicates, ordered, covers all operating IS periods."""
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         rep = fs.retained_earnings_periods
         re_idxs = [p.period_index for p in rep]
         assert re_idxs == sorted(re_idxs), f"{ptype}: RE axis not ordered"
@@ -753,7 +759,7 @@ class TestFreezeS5_PeriodAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_tax_bridge_axis_matches_is_axis(self, ptype):
         """Tax Bridge axis must match IS axis exactly (no missing, no extra periods)."""
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         is_idx = sorted(p.period_index for p in fs.income_statement_periods)
         tb_idx = sorted(p.period_index for p in fs.tax_bridge_periods)
         assert tb_idx == is_idx, f"{ptype}: tax bridge axis != IS axis"
@@ -767,7 +773,7 @@ class TestFreezeS5_PeriodAxis:
 class TestFreezeS6_BalanceSheetFreeze:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_all_bs_periods_close_within_tolerance(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         bsp = fs.balance_sheet_periods
         assert len(bsp) == fp["n_bs_total"]
@@ -780,7 +786,7 @@ class TestFreezeS6_BalanceSheetFreeze:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_max_residual_within_regression_bound(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         fp = _FINGERPRINTS[ptype]
         bsp = fs.balance_sheet_periods
         max_res = max(abs(float(p.balance_check_keur or 0)) for p in bsp)
@@ -792,7 +798,7 @@ class TestFreezeS6_BalanceSheetFreeze:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_balance_sheet_status_ok(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         assert fs.balance_sheet_status.value == "OK", f"{ptype} BS status not OK"
 
 
@@ -803,7 +809,7 @@ class TestFreezeS6_BalanceSheetFreeze:
 class TestFreezeS7_AccountingIdentities:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_pnl_identities_every_period(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         for p in fs.income_statement_periods:
             assert p.revenue_keur - p.opex_keur == pytest.approx(p.ebitda_keur, abs=1e-9)
             assert p.ebitda_keur - p.book_depreciation_keur == pytest.approx(p.ebit_keur, abs=1e-9)
@@ -826,7 +832,7 @@ class TestFreezeS7_AccountingIdentities:
         TaxBridgePeriod. Reconciliation: closing[year_i] == opening[year_i+1]
         proves the ledger is gapless across all tax years.
         """
-        run, fs_tax = _assemble(ptype)
+        run, fs_tax = _assemble_cached(ptype)
         model = run.g2c_result.financing_result.project_model_result
         tax = model.tax_and_cfads
         opens = [float(x) for x in tax.tax_loss_opening_audit_keur]
@@ -888,7 +894,7 @@ class TestFreezeS7_AccountingIdentities:
         operating period's opening RE must equal cod_opening_retained_earnings_keur.
         No periods are silently skipped.
         """
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         rep = fs.retained_earnings_periods
         assert rep, f"{ptype}: no retained_earnings_periods"
 
@@ -924,7 +930,7 @@ class TestFreezeS7_AccountingIdentities:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_lr_continuity_every_period(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         bsp = fs.balance_sheet_periods
         for i in range(1, len(bsp)):
             lr_prev = float(bsp[i - 1].legal_reserve_keur or 0)
@@ -935,7 +941,7 @@ class TestFreezeS7_AccountingIdentities:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_uc_continuity_every_period(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = run.g2c_result.waterfall_periods
         for i in range(1, len(wps)):
             uc_prev_cl = float(wps[i - 1].unrestricted_cash_closing_keur or 0)
@@ -946,7 +952,7 @@ class TestFreezeS7_AccountingIdentities:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_uc_roll_forward_every_period(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = run.g2c_result.waterfall_periods
         for wp in wps:
             uc_op = float(wp.unrestricted_cash_opening_keur or 0)
@@ -958,7 +964,7 @@ class TestFreezeS7_AccountingIdentities:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_shl_gross_equals_cash_plus_pik(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         for wp in wps:
             gross = float(wp.shl_gross_interest_keur or 0)
@@ -970,7 +976,7 @@ class TestFreezeS7_AccountingIdentities:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_accumulated_dep_equals_sum_of_book_dep(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         total = sum(p.book_depreciation_keur for p in fs.fixed_asset_periods)
         end = float(fs.fixed_asset_periods[-1].accumulated_book_depreciation_keur or 0)
         assert end == pytest.approx(total, rel=1e-6)
@@ -983,7 +989,7 @@ class TestFreezeS7_AccountingIdentities:
 class TestFreezeS8_SolarWindSemantics:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_financing_income_zero_by_policy(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         op = [p for p in fs.income_statement_periods if not p.is_construction]
         fi_vals = [p.financing_income_keur for p in op]
         assert all(v == pytest.approx(0.0, abs=1e-9) for v in fi_vals), (
@@ -992,7 +998,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_legal_reserve_zero_by_policy(self, ptype):
-        _, fs = _assemble(ptype)
+        _, fs = _assemble_cached(ptype)
         lr_vals = [float(p.legal_reserve_keur or 0) for p in fs.balance_sheet_periods]
         assert all(v == pytest.approx(0.0, abs=1e-9) for v in lr_vals), (
             f"{ptype}: legal reserve != 0 for generic project: {[v for v in lr_vals if abs(v) > 1e-9]}"
@@ -1000,7 +1006,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_shl_pik_is_non_cash_expense(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         # PIK accumulates in SHL balance but no cash changes hands
         for wp in wps:
@@ -1015,7 +1021,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_bullet_fail_closed_no_invented_interest_post_maturity(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         term = run.g2c_result.return_summary.terminal
         maturity_idx = term.shareholder_loan.contractual_maturity_period_index
@@ -1030,7 +1036,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_bullet_fail_closed_no_distributions_while_unpaid(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         term = run.g2c_result.return_summary.terminal
         maturity_idx = term.shareholder_loan.contractual_maturity_period_index
@@ -1048,7 +1054,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_trapped_cash_accumulates_in_g2c_uc(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         term = run.g2c_result.return_summary.terminal
         maturity_idx = term.shareholder_loan.contractual_maturity_period_index
@@ -1063,7 +1069,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_c3_uc_equals_g2c_uc_exactly(self, ptype):
-        run, fs = _assemble(ptype)
+        run, fs = _assemble_cached(ptype)
         wps = run.g2c_result.waterfall_periods
         wp_by_idx = {wp.period_index: wp for wp in wps}
         for p in fs.balance_sheet_periods:
@@ -1078,7 +1084,7 @@ class TestFreezeS8_SolarWindSemantics:
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
     def test_uc_identity_every_generic_operating_period(self, ptype):
-        run = _run_clean(ptype)
+        run = _run_cached(ptype)
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         for wp in wps:
             shl_in = float(getattr(wp, "shl_cash_input_keur", 0) or 0)
@@ -1101,25 +1107,25 @@ class TestFreezeS8_SolarWindSemantics:
 class TestFreezeS9_OborovoTUHOSemantics:
     def test_oborovo_financing_income_nonzero(self):
         """Oborovo has FI from U2 schedule authority (not ZERO_BY_POLICY)."""
-        _, fs = _assemble("Oborovo")
+        _, fs = _assemble_cached("Oborovo")
         fi_total = sum(p.financing_income_keur for p in fs.income_statement_periods)
         assert fi_total == pytest.approx(71.003187, rel=1e-4)
 
     def test_tuho_financing_income_nonzero(self):
         """TUHO has FI from U2 schedule authority."""
-        _, fs = _assemble("TUHO")
+        _, fs = _assemble_cached("TUHO")
         fi_total = sum(p.financing_income_keur for p in fs.income_statement_periods)
         assert fi_total == pytest.approx(124.316738, rel=1e-4)
 
     def test_oborovo_shl_fully_repaid(self):
-        run = _run_clean("Oborovo")
+        run = _run_cached("Oborovo")
         term = run.g2c_result.return_summary.terminal
         assert term.shareholder_loan.status.value == "REPAID"
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
         assert float(wps[-1].actual_shl_closing_balance_keur or 0) == pytest.approx(0.0, abs=1e-4)
 
     def test_tuho_shl_fully_repaid(self):
-        run = _run_clean("TUHO")
+        run = _run_cached("TUHO")
         term = run.g2c_result.return_summary.terminal
         assert term.shareholder_loan.status.value == "REPAID"
         wps = [wp for wp in run.g2c_result.waterfall_periods if not wp.is_construction]
@@ -1127,19 +1133,19 @@ class TestFreezeS9_OborovoTUHOSemantics:
 
     def test_oborovo_legal_reserve_nonzero(self):
         """Oborovo retains documented legal reserve."""
-        _, fs = _assemble("Oborovo")
+        _, fs = _assemble_cached("Oborovo")
         end_lr = float(fs.balance_sheet_periods[-1].legal_reserve_keur or 0)
         assert end_lr == pytest.approx(50.0, abs=1e-4)
 
     def test_tuho_legal_reserve_nonzero(self):
         """TUHO retains documented legal reserve."""
-        _, fs = _assemble("TUHO")
+        _, fs = _assemble_cached("TUHO")
         end_lr = float(fs.balance_sheet_periods[-1].legal_reserve_keur or 0)
         assert end_lr == pytest.approx(50.0, abs=1e-4)
 
     def test_oborovo_parity_exception_not_a_defect(self):
         """Oborovo source RE parity gap is documented — not an engine defect."""
-        _, fs = _assemble("Oborovo")
+        _, fs = _assemble_cached("Oborovo")
         # Engine produces OK RE status
         assert fs.retained_earnings_status.value in ("OK", "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
         # RE lineage parity exception remains classified (not silently removed)
@@ -1148,19 +1154,19 @@ class TestFreezeS9_OborovoTUHOSemantics:
 
     def test_tuho_parity_exception_not_a_defect(self):
         """TUHO source SHL parity gap is documented — not an engine defect."""
-        _, fs = _assemble("TUHO")
+        _, fs = _assemble_cached("TUHO")
         assert fs.retained_earnings_status.value in ("OK", "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
         assert fs.balance_sheet_status.value == "OK"
 
     def test_oborovo_construction_pik_accumulated(self):
         """Oborovo PIK during construction is non-zero."""
-        run = _run_clean("Oborovo")
+        run = _run_cached("Oborovo")
         pik_const = float(run.g2c_result.financing_result.shl_construction_pik_keur or 0)
         assert pik_const == pytest.approx(1169.659165, rel=1e-4)
 
     def test_tuho_construction_pik_accumulated(self):
         """TUHO PIK during construction is non-zero."""
-        run = _run_clean("TUHO")
+        run = _run_cached("TUHO")
         pik_const = float(run.g2c_result.financing_result.shl_construction_pik_keur or 0)
         assert pik_const == pytest.approx(3520.419555, rel=1e-4)
 

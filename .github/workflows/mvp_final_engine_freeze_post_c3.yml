@@ -17,6 +17,12 @@ on:
       - 'domain/**'
       - '.github/workflows/mvp_final_engine_freeze_post_c3.yml'
 
+# Cancel any in-progress run on the same PR/ref when a newer commit is pushed.
+# This prevents an obsolete 67-minute freeze run from blocking a newer commit.
+concurrency:
+  group: mvp-final-engine-freeze-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
@@ -31,68 +37,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            constraints.txt
+            pyproject.toml
 
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
-      - name: §2 — Single production engine, zero legacy
+      - name: §2–§11 Full freeze suite (single process — session cache active)
         run: |
           python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s2 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS2_SingleProductionEngine
-
-      - name: §3 — Scalar fingerprints
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s3 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS3_ScalarFingerprints
-
-      - name: §4 — Period-vector digests
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s4 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS4_VectorDigests
-
-      - name: §5 — Period-axis freeze
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s5 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS5_PeriodAxis
-
-      - name: §6 — Balance-sheet freeze
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s6 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS6_BalanceSheetFreeze
-
-      - name: §7 — Accounting identities
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s7 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS7_AccountingIdentities
-
-      - name: §8 — Solar/Wind generic semantics
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s8 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS8_SolarWindSemantics
-
-      - name: §9 — Oborovo/TUHO source-proven semantics
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s9 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS9_OborovoTUHOSemantics
-
-      - name: §10 — Determinism
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s10 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS10_Determinism
-
-      - name: §11 — Input sensitivity
-        run: |
-          python3 -m pytest -q --tb=short \
-            --basetemp=.pytest-tmp-freeze-s11 \
-            tests/test_mvp_final_engine_freeze_post_c3.py::TestFreezeS11_InputSensitivity
+            --basetemp=.pytest-tmp-final-engine-freeze \
+            tests/test_mvp_final_engine_freeze_post_c3.py
