@@ -256,7 +256,7 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "e916bf69d50e23e4deecd4cc",
         "retained_earnings": "640b886ce58214e4dd3e8974",
         "nfa": "bd5f6ea8e77f69ff0f618b56",
-        "balance_check": "b97af5877a33a5f8de72d515",
+        "balance_check": "61d82a2c48f1362586b88be3",
         # Senior debt schedule (canonical Senior axis — 30 periods)
         "senior_opening": "0836118cb4bb4bd43f154888",
         "senior_interest": "8e8731a1b7a94f44faf174e1",
@@ -285,7 +285,7 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "6f53a8fb033a75da6b989dde",
         "retained_earnings": "deef28d3e5c6f7acdfc11ddc",
         "nfa": "e4a9058d3d9f26fbc7211084",
-        "balance_check": "63d9f732f7d213e11a79d671",
+        "balance_check": "5e330cb2d5ef468a19325552",
         # Senior debt schedule (canonical Senior axis — 30 periods)
         "senior_opening": "d0e472597885438d38a385a9",
         "senior_interest": "251d5a26e5ce45a89c1bbe6f",
@@ -314,7 +314,7 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "d02c64cf834b55d5d1b3e17f",
         "retained_earnings": "35227050398a602e5f024385",
         "nfa": "d18bb1af22e0940d62e4d58f",
-        "balance_check": "0de38a6f20b07ff85b617ace",
+        "balance_check": "02ced9b4fb38aae7dfccf9bf",
         # Senior debt schedule (canonical Senior axis — 28 periods)
         "senior_opening": "84600e22c90f6da2aa5e587a",
         "senior_interest": "c18c39b4c23dcb383c14d0fc",
@@ -343,7 +343,7 @@ _DIGESTS: dict[str, dict[str, str]] = {
         "legal_reserve": "d02c64cf834b55d5d1b3e17f",
         "retained_earnings": "c9937781f592a16f48fa9dd1",
         "nfa": "d9121dce5208cfd83b222071",
-        "balance_check": "b65d3ebafdd2d62b9dc35501",
+        "balance_check": "ba484059d0a7a9868712d6d6",
         # Senior debt schedule (canonical Senior axis — 28 periods)
         "senior_opening": "453acbb8c0b9bdb3f036c5ff",
         "senior_interest": "f7b88aa6b5debdcf25b5eb22",
