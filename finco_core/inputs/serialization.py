@@ -55,6 +55,11 @@ from finco_core.inputs._models import (
     TechnicalParams,
     YieldScenario,
 )
+from finco_core.inputs.accounting import (
+    AccountingPolicyAuthority,
+    AccountingPolicyConfig,
+    LegalReservePolicy,
+)
 from finco_core.inputs.bess import BessParams
 from finco_core.inputs.valuation import (
     CoverageCashflowBasis,
@@ -569,6 +574,62 @@ def _deser_valuation_policies(payload: dict | None) -> ValuationPolicies:
     return ValuationPolicies(project=project, coverage=coverage)
 
 
+def _ser_accounting_policy_config(apc) -> "dict | None":
+    if apc is None:
+        return None
+    lr = apc.legal_reserve_policy
+    return {
+        "book_capitalization_authority": apc.book_capitalization_authority.value,
+        "book_capitalization_components": dict(apc.book_capitalization_components),
+        "shl_construction_accounting_authority": apc.shl_construction_accounting_authority.value,
+        "opening_re_authority": apc.opening_re_authority.value,
+        "legal_reserve_policy": {
+            "enabled": lr.enabled,
+            "cap_fraction": lr.cap_fraction,
+            "authority": lr.authority.value,
+        } if lr is not None else None,
+        "legal_reserve_authority": apc.legal_reserve_authority.value,
+        "cash_interest_authority": apc.cash_interest_authority.value,
+        "preconstruction_retained_earnings_keur": apc.preconstruction_retained_earnings_keur,
+        "preconstruction_retained_earnings_authority": apc.preconstruction_retained_earnings_authority.value,
+    }
+
+
+def _deser_accounting_policy_config(d: "dict | None") -> "AccountingPolicyConfig | None":
+    """Deserialize accounting_policy_config. Missing key -> None (generic/unavailable).
+    This is the backward-compatible default: old payloads without this field
+    deserialize to None, which assembly treats as GENERIC_FINCO_POLICY / UNRESOLVED —
+    never silently upgrading to SOURCE_PROVEN."""
+    if d is None:
+        return None
+    lr_d = d.get("legal_reserve_policy")
+    lr = None
+    if lr_d is not None:
+        lr = LegalReservePolicy(
+            enabled=lr_d["enabled"],
+            cap_fraction=lr_d["cap_fraction"],
+            authority=AccountingPolicyAuthority(lr_d.get("authority", "GENERIC_FINCO_POLICY")),
+        )
+    return AccountingPolicyConfig(
+        book_capitalization_authority=AccountingPolicyAuthority(
+            d.get("book_capitalization_authority", "GENERIC_FINCO_POLICY")),
+        book_capitalization_components=d.get("book_capitalization_components", {}),
+        shl_construction_accounting_authority=AccountingPolicyAuthority(
+            d.get("shl_construction_accounting_authority", "GENERIC_FINCO_POLICY")),
+        opening_re_authority=AccountingPolicyAuthority(
+            d.get("opening_re_authority", "GENERIC_FINCO_POLICY")),
+        legal_reserve_policy=lr,
+        legal_reserve_authority=AccountingPolicyAuthority(
+            d.get("legal_reserve_authority", "GENERIC_FINCO_POLICY")),
+        cash_interest_authority=AccountingPolicyAuthority(
+            d.get("cash_interest_authority", "UNRESOLVED")),
+        preconstruction_retained_earnings_keur=d.get(
+            "preconstruction_retained_earnings_keur", None),
+        preconstruction_retained_earnings_authority=AccountingPolicyAuthority(
+            d.get("preconstruction_retained_earnings_authority", "UNRESOLVED")),
+    )
+
+
 # ── Public serializer ──────────────────────────────────────────────────────────
 
 def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
@@ -806,6 +867,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             # STL is now implemented via ATAD (atad_enabled=True).
         },
         "valuation": _ser_valuation_policies(inputs.valuation),
+        "accounting_policy_config": _ser_accounting_policy_config(inputs.accounting_policy_config),
     }
 
 
@@ -1227,4 +1289,5 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         financing=financing,
         tax=tax,
         valuation=_deser_valuation_policies(d.get("valuation")),
+        accounting_policy_config=_deser_accounting_policy_config(d.get("accounting_policy_config")),
     )

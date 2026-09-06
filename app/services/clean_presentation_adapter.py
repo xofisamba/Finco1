@@ -129,6 +129,7 @@ class CleanWaterfallView:
     min_plcr: float | None = None
     project_npv: float | None = None
     equity_npv: float | None = None
+    financial_statements_result: object | None = None  # Phase C3 clean statement authority
     _authority_metadata: dict = field(default_factory=dict)
 
 
@@ -577,6 +578,10 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
             "return_summary": _return_summary_payload(g2c),
             "valuation_summary": _valuation_summary_payload(g2c),
         },
+        # Phase C3 Correction A: pure pass-through of the statement
+        # authority assembled once inside run_clean_production. The adapter
+        # contains no statement assembly and no C3 accounting formulas.
+        financial_statements_result=clean_run.financial_statements_result,
     )
 
 

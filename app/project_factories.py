@@ -84,6 +84,12 @@ from finco_core.inputs.valuation import (
     ValuationPolicies,
 )
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
+from financial_engine.financial_statements.contracts import (
+    AccountingPolicyAuthority,
+    AccountingPolicyConfig,
+    BookCapitalizationTreatment,
+    LegalReservePolicy,
+)
 from finco_core.inputs.cash_reserve_interest_policy import (
     CashReserveInterestPolicy,
     CashReserveInterestAuthority,
@@ -95,6 +101,93 @@ from finco_core.inputs.distribution_accounting_policy import (
     DistributionAccountingPolicy,
     DistributionAccountingAuthority,
     OpeningUCAuthority,
+)
+
+
+# =============================================================================
+# Accounting policy configs — source-proven per project
+# =============================================================================
+
+_BOOK_CAP_COMPONENTS_SOURCE_PROVEN = {
+    "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+    "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
+    "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
+}
+
+# Legal reserve: §28/§29 — the clean kernel produces 50.0 kEUR total reserve
+# for both Oborovo and TUHO (correct cap), but the per-period timing does not
+# match the independently established source anchors (Oborovo first partial
+# ≈0.7952 kEUR, cap-filling ≈49.2048 kEUR; TUHO: similar two-transfer pattern).
+# Until the timing discrepancy is resolved by upstream source-trace audit,
+# legal_reserve_authority is UNRESOLVED and the roll-forward is NOT activated.
+# LegalReservePolicy(enabled=False) ensures the roll-forward kernel is not called.
+_LR_UNRESOLVED = LegalReservePolicy(
+    enabled=False,
+    cap_fraction=0.10,
+    authority=AccountingPolicyAuthority.UNRESOLVED,
+)
+
+# Pre-construction retained earnings: both Oborovo and TUHO are newly
+# incorporated project SPVs with no pre-project equity history.
+# Source evidence: SPV incorporation at first model period → zero opening RE.
+# Authority: SOURCE_PROVEN (confirmed newly incorporated SPV structure).
+_PRE_CONSTRUCTION_RE_SOURCE_PROVEN = dict(
+    preconstruction_retained_earnings_keur=0.0,
+    preconstruction_retained_earnings_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
+
+# U2 delivered: legal reserve authority is now SOURCE_PROVEN (canonical
+# distribution-accounting roll-forward consumes NI including financing income).
+# Cash interest authority: SOURCE_PROVEN (U2 cash_reserve_interest_schedules).
+_SOURCE_PROVEN_LR = LegalReservePolicy(
+    enabled=True,
+    cap_fraction=0.10,
+    authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
+
+_OBOROVO_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
+    shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    legal_reserve_policy=_SOURCE_PROVEN_LR,
+    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    cash_interest_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
+)
+
+_TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
+    shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    legal_reserve_policy=_SOURCE_PROVEN_LR,
+    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    cash_interest_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
+)
+
+# Generic clean accounting policy for fictional Solar/Wind SPVs.
+# Only the four approved dimensions are set to GENERIC_FINCO_POLICY.
+# All other dimensions are explicitly UNRESOLVED to prevent dataclass
+# defaults from accidentally upgrading unapproved accounting dimensions.
+_GENERIC_CLEAN_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    # Approved generic dimensions:
+    preconstruction_retained_earnings_keur=0.0,
+    preconstruction_retained_earnings_authority=AccountingPolicyAuthority.GENERIC_FINCO_POLICY,
+    opening_re_authority=AccountingPolicyAuthority.GENERIC_FINCO_POLICY,
+    shl_construction_accounting_authority=AccountingPolicyAuthority.GENERIC_FINCO_POLICY,
+    # All other dimensions explicitly UNRESOLVED:
+    book_capitalization_authority=AccountingPolicyAuthority.UNRESOLVED,
+    book_capitalization_components={},
+    legal_reserve_policy=None,
+    legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
+    cash_interest_authority=AccountingPolicyAuthority.UNRESOLVED,
 )
 
 
@@ -718,6 +811,7 @@ def create_default_oborovo() -> ProjectInputs:
         financing=financing,
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
+        accounting_policy_config=_OBOROVO_ACCOUNTING_POLICY,
         cash_reserve_interest_policy=_OBOROVO_CASH_INTEREST_POLICY,
         distribution_accounting_policy=DistributionAccountingPolicy(
             enabled=True,
@@ -1361,6 +1455,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
                 ),
             ),
         ),
+        accounting_policy_config=_TUHO_ACCOUNTING_POLICY,
     )
 
 
@@ -1468,7 +1563,8 @@ def create_default_solar_project(
         clean_cash_tax_timing_enabled=True)
 
     return ProjectInputs(info=info, technical=technical, capex=capex,
-        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax,
+        accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY)
 
 
 def create_default_wind_project(
@@ -1555,7 +1651,8 @@ def create_default_wind_project(
         clean_cash_tax_timing_enabled=True)
 
     return ProjectInputs(info=info, technical=technical, capex=capex,
-        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax,
+        accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY)
 
 
 def create_default_bess_project(

@@ -22,6 +22,8 @@ from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 from finco_core.inputs.valuation import ValuationPolicies
 from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
+from finco_core.inputs.accounting import AccountingPolicyConfig
+
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
@@ -1641,6 +1643,9 @@ class ProjectInputs:
     # Presence (non-None) is the sole dispatch signal — never check project name.
     hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
     valuation: ValuationPolicies = field(default_factory=ValuationPolicies)
+    # Typed accounting-policy config set by project factories (outside
+    # financial_engine/).  Assembly reads this — never project identity.
+    accounting_policy_config: "AccountingPolicyConfig | None" = None
     cash_reserve_interest_policy: "CashReserveInterestPolicy | None" = None
     distribution_accounting_policy: "DistributionAccountingPolicy | None" = None
 
@@ -1652,6 +1657,24 @@ class ProjectInputs:
             self.tax.wht_sponsor_dividends,
             self.distribution_accounting_policy,
         )
+
+
+def _hash_accounting_policy(apc) -> tuple:
+    """Deterministic immutable representation of accounting policy for cache keying."""
+    if apc is None:
+        return (None,)
+    lr = apc.legal_reserve_policy
+    return (
+        apc.book_capitalization_authority.value,
+        tuple(sorted(apc.book_capitalization_components.items())),
+        apc.shl_construction_accounting_authority.value,
+        apc.opening_re_authority.value,
+        (lr.enabled, lr.cap_fraction, lr.authority.value) if lr is not None else None,
+        apc.legal_reserve_authority.value,
+        apc.cash_interest_authority.value,
+        apc.preconstruction_retained_earnings_keur,
+        apc.preconstruction_retained_earnings_authority.value,
+    )
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -1756,6 +1779,8 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
             )
             if inputs.hierarchical_opex_capability is not None else None
         ),
+        # Accounting policy config — determines C3 output semantics.
+        _hash_accounting_policy(inputs.accounting_policy_config),
         # U2: cash/reserve interest policy — None sentinel for backward compat
         (
             (

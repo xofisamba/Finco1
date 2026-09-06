@@ -239,7 +239,13 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
 
 @dataclass
 class CleanProductionRun:
-    """One clean production calculation and its lineage metadata."""
+    """One clean production calculation and its lineage metadata.
+
+    Phase C3 Correction A: the canonical complete production-run artifact.
+    Owns the downstream C3 statement assembly result (assembled EXACTLY
+    once here, downstream of the single clean G2C execution) so the
+    presentation layer stays a pure pass-through.
+    """
 
     g2c_result: object
     project_inputs: object          # effective inputs (scenario applied)
@@ -247,6 +253,7 @@ class CleanProductionRun:
     scenario: str
     decision: AuthorityDecision
     authority_metadata: dict = field(default_factory=dict)
+    financial_statements_result: object | None = None
 
 
 def run_clean_production(
@@ -315,6 +322,17 @@ def run_clean_production(
             vat_facility_commitment_mode=construction.vat_commitment_mode,
             vat_effective_commitment_keur=construction.vat_effective_commitment_keur,
         )
+    # Phase C3 Correction A: assemble the clean financial statements here,
+    # EXACTLY once, downstream of the single G2C execution. The
+    # presentation adapter only passes this result through. Assembly errors
+    # propagate (fail closed) — never silently swallowed into a None.
+    from financial_engine.financial_statements import (
+        assemble_decision_complete_financial_statements,
+    )
+    financial_statements_result = assemble_decision_complete_financial_statements(
+        g2c, effective_inputs
+    )
+
     return CleanProductionRun(
         g2c_result=g2c,
         project_inputs=effective_inputs,
@@ -322,4 +340,5 @@ def run_clean_production(
         scenario=scenario,
         decision=decision,
         authority_metadata=metadata,
+        financial_statements_result=financial_statements_result,
     )
