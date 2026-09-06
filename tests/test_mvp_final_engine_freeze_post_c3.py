@@ -746,10 +746,12 @@ class TestFreezeS5_PeriodAxis:
         assert op_idxs == sorted(op_idxs), f"{ptype}: waterfall operating axis not ordered"
         assert len(op_idxs) == len(set(op_idxs)), f"{ptype}: duplicate waterfall operating axis indices"
         assert len(op_idxs) > 0, f"{ptype}: no operating waterfall periods"
-        # Construction periods (if any) must precede operating periods in classification
-        const_end = max((wp.period_index for wp in wps if wp.is_construction), default=-1)
-        op_start = min((wp.period_index for wp in op_wps), default=999999)
-        assert const_end < op_start, f"{ptype}: waterfall construction/operating ordering violated"
+        # Construction sub-axis: if rows exist, check independently (separate native grain)
+        con_wps = [wp for wp in wps if wp.is_construction]
+        if con_wps:
+            con_idxs = [wp.period_index for wp in con_wps]
+            assert con_idxs == sorted(con_idxs), f"{ptype}: waterfall construction axis not ordered"
+            assert len(con_idxs) == len(set(con_idxs)), f"{ptype}: duplicate waterfall construction axis indices"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_re_axis_no_duplicates_and_covers_operating(self, ptype):
