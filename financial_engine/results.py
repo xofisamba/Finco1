@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from financial_engine.provenance import EngineProvenance
     from financial_engine.validation import ValidationIssue
     from finco_core.engine.axis_contract import CanonicalAxisContract
+    from financial_engine.tax.models import TaxAnnualResult
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,12 @@ class TaxAndCfadsSchedules:
     shl_absolute_limit_component_audit_keur: tuple[float, ...] = ()
     shl_ebitda_limit_component_audit_keur: tuple[float, ...] = ()
     shl_additional_non_deductible_component_audit_keur: tuple[float, ...] = ()
+    # Canonical annual tax authority — typed handoff of the already-computed
+    # TaxAndCfadsResult.annual_results.  Tax is NOT recomputed; this retains
+    # the result produced by calculate_tax() so downstream consumers (incl. the
+    # freeze evidence contract) can inspect the authoritative FIFO ledger without
+    # a side-channel recalculation.
+    annual_results: tuple["TaxAnnualResult", ...] = ()
 
 
 @dataclass(frozen=True)

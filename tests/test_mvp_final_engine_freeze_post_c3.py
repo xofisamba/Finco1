@@ -836,12 +836,151 @@ class TestFreezeS7_AccountingIdentities:
             )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
-    def test_annual_tax_loss_ledger_reconciles_every_tax_year(self, ptype):
-        """Annual FIFO tax-loss ledger: year-end closing becomes next year opening.
+    def test_annual_tax_authority_handoff(self, ptype):
+        """Typed annual tax authority is populated on the canonical result graph.
 
-        Uses the canonical audit authority (tax_and_cfads) not the downstream
-        TaxBridgePeriod. Reconciliation: closing[year_i] == opening[year_i+1]
-        proves the ledger is gapless across all tax years.
+        Proves the field is present, non-empty, ordered by tax year, and contains
+        no duplicate tax years. This verifies the typed handoff from calculate_tax()
+        through _assemble_tax_cfads_schedules() onto tax_and_cfads.annual_results.
+        No second tax calculation is performed.
+        """
+        run = _run_cached(ptype)
+        tax = run.g2c_result.financing_result.project_model_result.tax_and_cfads
+        annual = tax.annual_results
+        assert len(annual) > 0, f"{ptype}: tax_and_cfads.annual_results is empty"
+        years = [ar.tax_year for ar in annual]
+        assert years == sorted(years), f"{ptype}: annual_results not ordered by tax_year"
+        assert len(years) == len(set(years)), f"{ptype}: duplicate tax years in annual_results"
+        # Structural contract: each entry carries a ledger_entry with the typed fields
+        for ar in annual:
+            le = ar.ledger_entry
+            assert hasattr(le, "opening_loss_pre_expiry_keur")
+            assert hasattr(le, "loss_generated_keur")
+            assert hasattr(le, "loss_used_keur")
+            assert hasattr(le, "loss_expired_keur")
+            assert hasattr(le, "closing_loss_keur")
+        # Consistency: flattened audit closing totals agree with annual closing sum
+        # (within tolerance — period-level flattening vs annual aggregation).
+        # This proves the two views derive from the same tax calculation.
+        annual_closing_sum = sum(ar.ledger_entry.closing_loss_keur for ar in annual)
+        period_closing_last = float(tax.tax_loss_closing_audit_keur[-1]) if tax.tax_loss_closing_audit_keur else 0.0
+        # The last period's closing equals the final annual closing (same ledger authority)
+        final_annual_closing = annual[-1].ledger_entry.closing_loss_keur
+        assert period_closing_last == pytest.approx(final_annual_closing, abs=1e-6), (
+            f"{ptype}: last period audit closing {period_closing_last:.6f} "
+            f"!= final annual ledger closing {final_annual_closing:.6f}"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_annual_tax_loss_ledger_reconciles_every_tax_year(self, ptype):
+        """Canonical annual FIFO tax-loss ledger identity — every tax year, every project.
+
+        Primary annual FIFO reconciliation proof.
+        Uses tax_and_cfads.annual_results (typed TaxAnnualResult.ledger_entry) directly —
+        the same authority produced by calculate_tax() and retained via the typed handoff.
+        No second tax calculation. No reconstruction from period arrays.
+
+        Proves three things per year:
+          1. Aggregate scalar identity:
+               opening + generated − used − expired == closing  (abs tol 1e-9)
+          2. Per-vintage identity (same formula per TaxLossVintage in closing_vintages)
+          3. Aggregate-to-vintage-tuple consistency
+        All ledger quantities are non-negative.
+        """
+        run = _run_cached(ptype)
+        tax = run.g2c_result.financing_result.project_model_result.tax_and_cfads
+        annual = tax.annual_results
+        assert len(annual) > 0, f"{ptype}: no annual_results"
+
+        for ar in annual:
+            le = ar.ledger_entry
+            yr = le.tax_year
+
+            # ── Non-negativity ────────────────────────────────────────────────
+            assert le.opening_loss_pre_expiry_keur >= -1e-9, (
+                f"{ptype} {yr}: negative opening {le.opening_loss_pre_expiry_keur:.3e}"
+            )
+            assert le.loss_generated_keur >= -1e-9, (
+                f"{ptype} {yr}: negative generated {le.loss_generated_keur:.3e}"
+            )
+            assert le.loss_used_keur >= -1e-9, (
+                f"{ptype} {yr}: negative used {le.loss_used_keur:.3e}"
+            )
+            assert le.loss_expired_keur >= -1e-9, (
+                f"{ptype} {yr}: negative expired {le.loss_expired_keur:.3e}"
+            )
+            assert le.closing_loss_keur >= -1e-9, (
+                f"{ptype} {yr}: negative closing {le.closing_loss_keur:.3e}"
+            )
+
+            # ── 1. Aggregate scalar identity ──────────────────────────────────
+            expected_closing = (
+                le.opening_loss_pre_expiry_keur
+                + le.loss_generated_keur
+                - le.loss_used_keur
+                - le.loss_expired_keur
+            )
+            assert le.closing_loss_keur == pytest.approx(expected_closing, abs=1e-9), (
+                f"{ptype} {yr}: aggregate FIFO identity violated — "
+                f"opening={le.opening_loss_pre_expiry_keur:.6f} "
+                f"+ generated={le.loss_generated_keur:.6f} "
+                f"- used={le.loss_used_keur:.6f} "
+                f"- expired={le.loss_expired_keur:.6f} "
+                f"= {expected_closing:.6f} != closing={le.closing_loss_keur:.6f}"
+            )
+
+            # ── 2. Per-vintage identity (closing_vintages) ────────────────────
+            for v in le.closing_vintages:
+                assert v.opening_keur >= -1e-9, (
+                    f"{ptype} {yr} vintage {v.vintage_id}: negative opening"
+                )
+                assert v.generated_keur >= -1e-9, (
+                    f"{ptype} {yr} vintage {v.vintage_id}: negative generated"
+                )
+                assert v.used_keur >= -1e-9, (
+                    f"{ptype} {yr} vintage {v.vintage_id}: negative used"
+                )
+                assert v.expired_keur >= -1e-9, (
+                    f"{ptype} {yr} vintage {v.vintage_id}: negative expired"
+                )
+                assert v.closing_keur >= -1e-9, (
+                    f"{ptype} {yr} vintage {v.vintage_id}: negative closing"
+                )
+                expected_v = v.opening_keur + v.generated_keur - v.used_keur - v.expired_keur
+                assert v.closing_keur == pytest.approx(expected_v, abs=1e-9), (
+                    f"{ptype} {yr} vintage {v.vintage_id}: per-vintage FIFO identity violated"
+                )
+
+            # ── 3. Aggregate-to-vintage-tuple consistency ─────────────────────
+            gen_total = sum(v.generated_keur for v in le.generated_vintages)
+            used_total = sum(v.used_keur for v in le.used_vintages)
+            expired_total = sum(v.expired_keur for v in le.expired_vintages)
+            closing_total = sum(v.closing_keur for v in le.closing_vintages)
+
+            assert le.loss_generated_keur == pytest.approx(gen_total, abs=1e-9), (
+                f"{ptype} {yr}: aggregate generated {le.loss_generated_keur:.6f} "
+                f"!= vintage-tuple sum {gen_total:.6f}"
+            )
+            assert le.loss_used_keur == pytest.approx(used_total, abs=1e-9), (
+                f"{ptype} {yr}: aggregate used {le.loss_used_keur:.6f} "
+                f"!= vintage-tuple sum {used_total:.6f}"
+            )
+            assert le.loss_expired_keur == pytest.approx(expired_total, abs=1e-9), (
+                f"{ptype} {yr}: aggregate expired {le.loss_expired_keur:.6f} "
+                f"!= vintage-tuple sum {expired_total:.6f}"
+            )
+            assert le.closing_loss_keur == pytest.approx(closing_total, abs=1e-9), (
+                f"{ptype} {yr}: aggregate closing {le.closing_loss_keur:.6f} "
+                f"!= vintage-tuple sum {closing_total:.6f}"
+            )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_period_tax_loss_audit_continuity(self, ptype):
+        """Period-level downstream audit continuity (secondary evidence only).
+
+        Proves flattened period audit arrays are self-consistent and agree with
+        TaxBridgePeriod. This is NOT the annual FIFO reconciliation — see
+        test_annual_tax_loss_ledger_reconciles_every_tax_year for the primary proof.
         """
         run, fs_tax = _assemble_cached(ptype)
         model = run.g2c_result.financing_result.project_model_result
@@ -851,8 +990,6 @@ class TestFreezeS7_AccountingIdentities:
         used_vals = [float(x) for x in tax.tax_loss_used_audit_keur]
         idxs = list(tax.period_indices)
 
-        # FIFO non-negativity: all ledger values must be >= 0 for EVERY period,
-        # including construction. No COD exemption inside the per-period identity.
         for i, idx in enumerate(idxs):
             assert closes[i] >= -1e-6, (
                 f"{ptype}: negative tax loss closing {closes[i]:.6f} at period {idx}"
@@ -864,11 +1001,7 @@ class TestFreezeS7_AccountingIdentities:
                 f"{ptype}: negative tax loss used {used_vals[i]:.6f} at period {idx}"
             )
 
-        # Annual FIFO continuity: within operating periods, the year-end closing must
-        # exactly equal the next year's opening (strict equality, not just ≤).
-        # The construction→operating boundary is exempt: the tax base is reassessed
-        # at COD and the opening of the first operating tax year may legitimately
-        # differ from the closing of the last construction tax year.
+        # Year-end continuity within operating periods
         isp = fs_tax.income_statement_periods
         const_idx = {p.period_index for p in isp if p.is_construction}
         year_end_positions = [i for i in range(len(idxs))
@@ -876,18 +1009,17 @@ class TestFreezeS7_AccountingIdentities:
         for j in range(len(year_end_positions) - 1):
             pos_curr = year_end_positions[j]
             pos_next = year_end_positions[j + 1]
-            # Skip the construction→operating boundary (COD reassessment)
             if idxs[pos_curr] in const_idx or idxs[pos_next] in const_idx:
                 continue
             cl = closes[pos_curr]
             op_next = opens[pos_next]
             assert op_next == pytest.approx(cl, abs=1e-6), (
-                f"{ptype}: tax loss ledger discontinuity: "
+                f"{ptype}: tax loss audit discontinuity: "
                 f"closing {cl} at period {idxs[pos_curr]} "
                 f"!= opening {op_next} at period {idxs[pos_next]}"
             )
 
-        # Downstream TaxBridgePeriod must be consistent with the audit authority
+        # TaxBridgePeriod consistency with audit authority
         audit_closing = {idxs[i]: closes[i] for i in range(len(idxs))}
         for p in fs_tax.tax_bridge_periods:
             tb_cl = float(p.tax_loss_closing_keur or 0)

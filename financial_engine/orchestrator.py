@@ -717,6 +717,7 @@ def _assemble_tax_cfads_schedules(
         shl_additional_non_deductible_component_audit_keur=tuple(
             pr.shl_additional_non_deductible_component_keur for pr in period_results
         ),
+        annual_results=tuple(tax_result.annual_results),
     )
 
 
