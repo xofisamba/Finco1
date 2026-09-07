@@ -20,7 +20,8 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 
-<div id="v2-sheet-project-setup" data-sheet="project_setup">
+<div id="v2-sheet-project-setup" data-sheet="project_setup"
+     data-fc-grid="project_setup" data-fc-scroll-container>
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
