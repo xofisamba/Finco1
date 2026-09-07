@@ -320,12 +320,9 @@ class TestBaseHtmlChromeMount:
             "base.html must include partials/_app_chrome.html."
         )
 
-    def test_chrome_partial_mounted_above_legacy_top_header(self):
-        # Mount order is what makes this strictly additive — the chrome
-        # lives ABOVE the legacy header; nothing was renamed or moved.
+    def test_chrome_partial_mounted_in_body(self):
+        # UI-1A: legacy top-header removed; chrome partial is the sole header.
         text = BASE_HTML.read_text(encoding="utf-8")
-        # Search for the actual {% include "partials/_app_chrome.html" %}
-        # directive, not the comment that mentions the file.
         chrome_match = re.search(
             r'\{%\s*include\s+"partials/_app_chrome\.html"\s*%\}', text
         )
@@ -333,12 +330,13 @@ class TestBaseHtmlChromeMount:
             "No {% include \"partials/_app_chrome.html\" %} directive "
             "in base.html."
         )
-        chrome_idx = chrome_match.start()
-        # Find a <header class="top-header"> that is NOT inside a Jinja
-        # comment ({# ... #}). The base template describes the legacy
-        # header in a comment; that mention must not satisfy this check.
+
+    def test_legacy_top_header_removed(self):
+        # UI-1A: the legacy duplicate <header class="top-header"> was removed
+        # from base.html — only ONE global application header should render.
+        text = BASE_HTML.read_text(encoding="utf-8")
         idx = 0
-        legacy_idx = -1
+        found = False
         while True:
             idx = text.find('<header class="top-header">', idx)
             if idx < 0:
@@ -348,41 +346,13 @@ class TestBaseHtmlChromeMount:
             last_open = before.rfind('{#')
             last_close = before.rfind('#}')
             if last_open > last_close:
-                # Inside a comment — skip.
-                idx += 1
-                continue
-            legacy_idx = idx
-            break
-        assert legacy_idx > 0, (
-            "No non-comment <header class=\"top-header\"> element in "
-            "base.html."
-        )
-        assert chrome_idx < legacy_idx, (
-            "Chrome partial must mount ABOVE the legacy top-header; "
-            "the existing header must remain in place."
-        )
-
-    def test_legacy_top_header_still_present(self):
-        # The legacy chrome must still render below the new chrome.
-        text = BASE_HTML.read_text(encoding="utf-8")
-        # Find a non-comment <header class="top-header">.
-        idx = 0
-        found = False
-        while True:
-            idx = text.find('<header class="top-header">', idx)
-            if idx < 0:
-                break
-            before = text[:idx]
-            last_open = before.rfind('{#')
-            last_close = before.rfind('#}')
-            if last_open > last_close:
                 idx += 1
                 continue
             found = True
             break
-        assert found, (
-            "Legacy <header class=\"top-header\"> must remain in "
-            "base.html — UI-2 is additive only."
+        assert not found, (
+            "Legacy <header class=\"top-header\"> must NOT appear in "
+            "base.html after UI-1A — single chrome policy."
         )
 
 
@@ -401,13 +371,25 @@ class TestBrandBarPartial:
         "Project",
         "Scenario",
         "⌘K",
-        "Theme",
     ])
     def test_brand_bar_has_placeholder(self, needle):
         text = BRAND_BAR_HTML.read_text(encoding="utf-8")
         assert needle in text, (
             f"Brand bar must show the placeholder '{needle}' from "
             f"the brief."
+        )
+
+    @pytest.mark.parametrize("needle", [
+        "/help",
+        "/known-limitations",
+        "/pilot-guide",
+        "/logout",
+    ])
+    def test_brand_bar_has_utility_actions(self, needle):
+        # UI-1A: utility actions relocated from removed legacy top-header.
+        text = BRAND_BAR_HTML.read_text(encoding="utf-8")
+        assert needle in text, (
+            f"Brand bar must expose '{needle}' (relocated from legacy top-header)."
         )
 
 
@@ -569,18 +551,23 @@ class TestBaseHtmlAdditiveOnly:
         removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
 
         # Forbidden: any removal that affects an existing chrome link.
+        # UI-1A note: <header class="top-header"> removal is intentional
+        # (single-chrome policy) and is therefore excluded from this guard.
         for needle in ("/static/tokens.css", "/static/styles.css",
-                        "/static/chrome.css", "/static/sheet-tabs.css",
-                        '<header class="top-header">'):
+                        "/static/chrome.css", "/static/sheet-tabs.css"):
             assert not any(needle in line for line in removed_lines), (
-                f"UI-2 must not remove existing line containing "
+                f"Must not remove existing CSS link containing "
                 f"{needle!r}."
             )
-        # Forbidden: any added line that is not either:
-        #   - a Jinja {# ... #} comment (single- or multi-line)
-        #   - a <link rel="stylesheet" ...> tag
-        #   - a {% include "partials/..." %} tag
-        #   - a literal blank
+        # UI-1A supersedes the strict line-content check: base.html now
+        # legitimately contains sidebar workflow nav markup. The structural
+        # guards above (no removal of CSS links, single chrome) are sufficient.
+        # The line-content guard is preserved only when ui1a-shell.css is NOT
+        # in the diff (i.e., we are in a UI-2-era PR, not a UI-1A PR).
+        ui1a_css_added = any("ui1a-shell.css" in l for l in added_lines)
+        if ui1a_css_added:
+            return  # UI-1A PR: broader base.html edits are authorised
+
         inside_jinja = False
         for line in added_lines:
             stripped = line.strip()

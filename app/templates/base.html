@@ -44,6 +44,9 @@
   {# UI-8G: Final consistency audit — spacing, focus rings, tabular numerals,
      disabled states, empty-state polish, copy cleanup. Additive only. #}
   <link rel="stylesheet" href="/static/ui8g-consistency.css?v={{ asset_version }}" />
+  {# UI-1A: Single application shell — brand bar utilities + sidebar
+     Level-1 workflow nav. Additive only; no legacy selector edits. #}
+  <link rel="stylesheet" href="/static/ui1a-shell.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
      bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}
@@ -152,41 +155,10 @@
    existing markup is moved, renamed, or re-skinned. #}
 {% include "partials/_app_chrome.html" %}
 
-<header class="top-header">
-  <div class="header-inner">
-    <div class="header-brand">
-      <div class="brand-logo">F</div>
-      <div class="brand-text">
-        <span class="brand-name">Finco One</span>
-        <span class="brand-sub">Project Finance Model</span>
-      </div>
-    </div>
-    <div class="header-right">
-      <span class="version-badge">v1.7 Pilot</span>
-      {# Phase P2-min-1: Help link is an icon, not a sixth top-level tab #}
-      <a class="header-help-link" href="/help" title="Help">?</a>
-      {# U6: Known Limitations page, reachable from the Help menu area #}
-      <a class="header-known-limitations-link" href="/known-limitations" title="Known Limitations">Known Limitations</a>
-      {# EXTERNAL-FRIENDLY-PILOT-PREP-A: Pilot Guide, reachable from the Help menu area #}
-      <a class="header-pilot-guide-link" href="/pilot-guide" title="Pilot Guide">Pilot Guide</a>
-      {% if user %}
-      <form method="POST" action="/logout" style="display:inline;">
-        <button type="submit" class="logout-btn">Sign out</button>
-      </form>
-      {% endif %}
-    </div>
-  </div>
-</header>
+{# UI-1A: legacy top-header removed — actions relocated to brand bar. #}
 
 <div class="app-layout">
-  {# Phase P2-min-4: Navigation Compression (presentation only).
-     5 top-level tabs (Dashboard, Inputs, Scenarios, Outputs,
-     Export & Audit, Help). The underlying ws-tab buttons + panel
-     panels + routes are preserved. No route deletion. No panel
-     deletion. Hidden != deleted. #}
-  {% if nav_compression_enabled|default(false) %}
-    {% include "partials/_nav_compression.html" %}
-  {% endif %}
+  {# UI-1A: nav_compression superseded by sidebar Level-1 workflow nav below. #}
   {% include "partials/workspace_tabs.html" %}
 
   <nav class="project-sidebar" id="project-sidebar">
@@ -196,6 +168,59 @@
     </div>
 
     {% include "partials/project_selector.html" %}
+
+    {# UI-1A: Level-1 project workflow navigation ─────────────────────────
+       Level 1: Overview / Inputs / Outputs / Scenarios / Export–Audit
+       Level 2: expandable sub-items for Inputs and Outputs.
+       Wires to existing switchTab() and URL routes — no new panels created. #}
+    <nav class="ps-workflow-nav" aria-label="Project workflow">
+      <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+              data-workflow-area="overview"
+              onclick="switchTab('overview'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active');">
+        Overview
+      </button>
+
+      <div class="ps-workflow-group" data-workflow-area="inputs">
+        <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+                data-workflow-area="inputs"
+                onclick="switchTab('inputs'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active'); this.closest('.ps-workflow-group').classList.toggle('ps-workflow-group--open');">
+          Inputs
+          <span class="ps-workflow-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="ps-workflow-sub">
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('inputs');">General</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('revenue');">Revenue</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('opex');">OPEX</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('capex');">CAPEX</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('senior-debt');">Financing</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('tax');">Tax</button>
+        </div>
+      </div>
+
+      <div class="ps-workflow-group" data-workflow-area="outputs">
+        <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+                data-workflow-area="outputs"
+                onclick="switchTab('pl'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active'); this.closest('.ps-workflow-group').classList.toggle('ps-workflow-group--open');">
+          Outputs
+          <span class="ps-workflow-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="ps-workflow-sub">
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('overview');">Summary</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('cashflow');">Cash Flow</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('senior-debt');">Debt</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('sponsor');">Returns</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('pl');">Financial Statements</button>
+        </div>
+      </div>
+
+      <a href="/scenarios" class="ps-workflow-item ps-workflow-item--l1 ps-workflow-item--link">
+        Scenarios
+      </a>
+
+      <a href="/download" class="ps-workflow-item ps-workflow-item--l1 ps-workflow-item--link">
+        Export / Audit
+      </a>
+    </nav>
 
     <div class="ps-section">
       <div class="ps-section-label">Actions</div>

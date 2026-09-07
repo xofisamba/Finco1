@@ -48,15 +48,23 @@
     <span class="fo-brand-bar__kbd">Search</span>
   </button>
 
-  {# Theme toggle placeholder — wired in a future PR. #}
-  <span class="fo-theme-toggle" role="status" aria-label="Theme toggle">
-    <span aria-hidden="true">☾</span>
-    <span>Theme</span>
-  </span>
+  {# Utility links relocated from legacy top-header (UI-1A) #}
+  <span class="fo-brand-bar__version" aria-label="Version">v1.7</span>
 
-  <span class="fo-theme-toggle" role="status" aria-label="User menu">
-    <span aria-hidden="true">◌</span>
-    <span>User</span>
-  </span>
+  <a class="fo-brand-bar__action fo-brand-bar__action--link" href="/help"
+     title="Help" aria-label="Help">?</a>
+
+  <a class="fo-brand-bar__action fo-brand-bar__action--link" href="/known-limitations"
+     title="Known Limitations" aria-label="Known Limitations">Limitations</a>
+
+  <a class="fo-brand-bar__action fo-brand-bar__action--link" href="/pilot-guide"
+     title="Pilot Guide" aria-label="Pilot Guide">Guide</a>
+
+  {% if user %}
+  <form method="POST" action="/logout" style="display:contents;">
+    <button type="submit" class="fo-brand-bar__action fo-brand-bar__action--signout"
+            aria-label="Sign out">Sign out</button>
+  </form>
+  {% endif %}
 
 </div>
