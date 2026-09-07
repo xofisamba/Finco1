@@ -1,4 +1,4 @@
-{# ── UI-2 Application Chrome Wrapper (extended by UI-3) ─────────────────────
+{# ── Finco One Application Chrome (UI-2 base, extended by UI-3) ──────────────
    Single include that renders all four chrome rows inside the sticky
    `.fo-chrome` wrapper:
      1. Brand bar        (28 px)        _brand_bar.html
@@ -6,9 +6,10 @@
      3. KPI strip        (56 px)        _kpi_strip.html
      4. Sheet tabs       (36 px)        _sheet_tabs.html   (UI-3)
 
-   Strictly additive. The legacy `.top-header` below this wrapper is
-   NOT removed or re-skinned — it coexists with the new chrome so
-   existing pages continue to render unchanged.
+   UI-1A: this is the ONE global Finco One application header.
+   The legacy `.top-header` was removed from base.html in UI-1A —
+   its utility actions (help / known-limitations / pilot-guide /
+   sign-out) are now in _brand_bar.html.
 
    `dirty`, `dashboard_kpis`, `validation_summary`, `runtime_*`,
    `active_scenario_name`, `project_record` are all already in the
