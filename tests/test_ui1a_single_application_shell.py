@@ -230,44 +230,14 @@ class TestSpreadsheetAssets:
 
 
 # ---------------------------------------------------------------------------
-# I & J. Financial engine files unchanged — PR-level diff gate
+# I & J. Financial engine isolation — CSS content gate only
 # ---------------------------------------------------------------------------
+# Historical PR-level SHA diff (b915e749...HEAD) was removed from permanent
+# test suite: it would cause future unrelated engine maintenance to break
+# this UI test. Engine safety for this PR was verified externally at review
+# time (see PR #968 description). Only the content gate is kept permanently.
 
-UI1A_FROZEN_MAIN = "b915e749cfae52d987bb1ccb8f0be53b181ca136"
-
-# Explicit review gate: run git diff between the frozen main SHA and HEAD,
-# assert that no financial-engine paths appear. This is a deterministic
-# structural check, not a `git diff HEAD` (which only covers uncommitted
-# working-tree changes and is meaningless after commit).
-
-class TestEngineUnchanged:
-    def _pr_changed_paths(self) -> list[str]:
-        import subprocess
-        result = subprocess.run(
-            ["git", "diff", "--name-only", f"{UI1A_FROZEN_MAIN}...HEAD"],
-            capture_output=True, text=True, cwd=REPO_ROOT
-        )
-        return result.stdout.strip().splitlines()
-
-    @pytest.mark.parametrize("prefix", [
-        "financial_engine/",
-        "finco_core/",
-    ])
-    def test_no_engine_directory_in_pr_diff(self, prefix):
-        changed = self._pr_changed_paths()
-        offenders = [p for p in changed if p.startswith(prefix)]
-        assert not offenders, \
-            f"UI-1A PR diff must not modify '{prefix}*'. Found: {offenders}"
-
-    @pytest.mark.parametrize("path", [
-        "app/api/project_runner.py",
-        "app/services/production_financial_authority.py",
-    ])
-    def test_no_financial_service_in_pr_diff(self, path):
-        changed = self._pr_changed_paths()
-        assert path not in changed, \
-            f"UI-1A PR diff must not modify '{path}'."
-
+class TestEngineIsolation:
     def test_ui1a_css_does_not_touch_engine_tokens(self):
         text = UI1A_CSS.read_text(encoding="utf-8")
         engine_terms = [
