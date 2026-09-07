@@ -26,7 +26,8 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 
-<div id="v2-sheet-tax" data-sheet="tax">
+<div id="v2-sheet-tax" data-sheet="tax"
+     data-fc-grid="tax" data-fc-scroll-container>
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">

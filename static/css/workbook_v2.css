@@ -1102,3 +1102,40 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
+
+/* ── UI-2A: Spreadsheet interaction visuals ─────────────────────────────── */
+
+/* Cell focus state — outline suppressed in favour of inset box-shadow */
+[data-fc-cell] {
+  position: relative;
+  outline: none;
+  box-sizing: border-box;
+}
+
+/* Active cell: Excel-style 2 px inset border using focus token */
+[data-fc-cell].fc-active-cell {
+  box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);
+  z-index: 1;
+}
+
+/* Selected range: very subtle tint, lower priority than active cell */
+[data-fc-cell].fc-selected-cell:not(.fc-active-cell) {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+/* Value-cell wrapper — fills remaining row space */
+.v2-fc-value-cell {
+  display: contents;
+}
+
+/* Editable label: no visible style change — editable is conveyed by
+   the input control that renders inside the value cell */
+.v2-field-row[data-fc-row] {
+  cursor: default;
+}
+
+/* Keyboard-focus ring on navigable label cells when they are active */
+[data-fc-cell][data-fc-kind="label"].fc-active-cell {
+  box-shadow: inset 0 0 0 1px var(--v2-border, #e2e8f0);
+  background: var(--v2-sticky-bg, #f8fafc);
+}

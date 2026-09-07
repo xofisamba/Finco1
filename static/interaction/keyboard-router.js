@@ -127,6 +127,20 @@
     var current = _currentActive();
     if (!current) return;
 
+    // UI-2A safety: if a native interactive control inside the cell
+    // owns focus (e.g. a V2 <input> or <select> in a field row), do
+    // NOT intercept — let the control handle its own keyboard
+    // semantics (cursor movement, Home/End in text, option selection).
+    // Only intercept when the [data-fc-cell] element itself is focused.
+    var ae = document.activeElement;
+    if (ae && ae !== current.cell.el) {
+      var tag = ae.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' ||
+          tag === 'BUTTON' || tag === 'A' || ae.isContentEditable) {
+        return;
+      }
+    }
+
     var grid = window.FcGridRegistry.getGrid(current.gridId);
     if (!grid) return;
 

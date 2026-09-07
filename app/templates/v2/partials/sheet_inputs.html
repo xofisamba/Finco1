@@ -25,7 +25,8 @@
 {% if inputs_slice1_enabled|default(false) %}
   {% include "partials/inputs_slice1.html" %}
 {% else %}
-<div id="v2-sheet-inputs" class="v2-slice1-config-state" role="status">
+<div id="v2-sheet-inputs" class="v2-slice1-config-state" role="status"
+     data-fc-grid="inputs" data-fc-scroll-container>
   <p class="v2-slice1-disabled-notice">
     Canonical Inputs are disabled by configuration.
     Set <code>FINCO_INPUTS_SLICE1_ENABLED=1</code> or remove the explicit false value

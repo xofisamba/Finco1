@@ -20,13 +20,32 @@
   override for other sheets so HTMX swaps the correct container.
 #}
 {% macro render_field(f, project_code, workbook_version, content_hash, project_editable=True, hx_target="#v2-sheet-project-setup", sheet_id="project_setup") %}
+{# UI-2A: derive C1 kind from field_type #}
+{%- set fc_kind = 'amount' -%}
+{%- if f.field_type == 'date' -%}{%- set fc_kind = 'date' -%}
+{%- elif f.field_type == 'select' -%}{%- set fc_kind = 'select' -%}
+{%- elif f.field_type == 'bool' -%}{%- set fc_kind = 'bool' -%}
+{%- elif f.field_type in ('text', 'str', 'string') -%}{%- set fc_kind = 'text' -%}
+{%- endif -%}
 <div class="v2-field-row {% if f.binding_label == 'bound' and project_editable %}v2-field-editable{% else %}v2-field-readonly{% endif %}"
      data-field-id="{{ f.field_id }}"
      data-binding="{{ f.binding_label }}"
-     data-field-type="{{ f.field_type }}">
-  <span class="v2-field-label">
+     data-field-type="{{ f.field_type }}"
+     data-fc-row>
+  <span class="v2-field-label"
+        data-fc-cell
+        data-fc-addr="{{ sheet_id }}.{{ f.field_id }}.label"
+        data-fc-editable="false"
+        data-fc-kind="label"
+        tabindex="-1">
     {{ f.label }}{% if f.unit %}&thinsp;<span class="v2-unit">{{ f.unit }}</span>{% endif %}
   </span>
+  <div class="v2-fc-value-cell"
+       data-fc-cell
+       data-fc-addr="{{ sheet_id }}.{{ f.field_id }}.value"
+       data-fc-editable="{{ 'true' if (f.binding_label == 'bound' and project_editable) else 'false' }}"
+       data-fc-kind="{{ fc_kind }}"
+       tabindex="-1">
   {% if f.binding_label == 'bound' and project_editable %}
     <form method="post" action="/v2/workbook/update" class="v2-field-form"
           autocomplete="off"
@@ -124,5 +143,6 @@
     <span class="v2-binding-badge v2-binding-{{ f.binding_label }}"
           title="{{ f.binding_label }}">{{ f.binding_label }}</span>
   {% endif %}
+  </div>{# /v2-fc-value-cell [data-fc-cell] #}
 </div>
 {% endmacro %}
