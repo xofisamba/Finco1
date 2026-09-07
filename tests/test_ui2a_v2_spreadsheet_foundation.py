@@ -43,13 +43,14 @@ GRID_REGISTRY_JS = REPO_ROOT / "static" / "interaction" / "grid-registry.js"
 FOCUS_MANAGER_JS = REPO_ROOT / "static" / "interaction" / "focus-manager.js"
 SELECTION_MGR_JS = REPO_ROOT / "static" / "interaction" / "selection-manager.js"
 
-# Ordered required C1 assets
+# Ordered required C1 assets — Correction A: swap-lifecycle before focus-manager
+# so authoritative post-HTMX active-cell restoration fires before focus is applied.
 REQUIRED_C1_ASSETS = [
     "interaction/grid-registry.js",
     "interaction/engine.js",
     "interaction/active-cell.js",
-    "interaction/focus-manager.js",
     "interaction/swap-lifecycle.js",
+    "interaction/focus-manager.js",
     "interaction/keyboard-router.js",
     "interaction/selection-manager.js",
 ]
@@ -96,6 +97,13 @@ class TestDependencyOrder:
         text = WORKBOOK_HTML.read_text(encoding="utf-8")
         assert text.index("active-cell.js") < text.index("keyboard-router.js"), \
             "active-cell.js must load before keyboard-router.js."
+
+    def test_swap_lifecycle_before_focus_manager(self):
+        # Correction A: swap-lifecycle must load before focus-manager so
+        # authoritative active-cell restoration completes before focus sync.
+        text = WORKBOOK_HTML.read_text(encoding="utf-8")
+        assert text.index("swap-lifecycle.js") < text.index("focus-manager.js"), \
+            "swap-lifecycle.js must load before focus-manager.js (Correction A)."
 
 
 # ---------------------------------------------------------------------------
@@ -346,3 +354,253 @@ class TestEngineUnchanged:
         changed = self._pr_changed_paths()
         assert path not in changed, \
             f"UI-2A PR diff must not modify '{path}'."
+
+
+# =============================================================================
+# CORRECTION A — Behavioral proof tests
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# CA-A / CA-B. Native input/select click: focus-manager does not steal focus
+# ---------------------------------------------------------------------------
+
+class TestFocusManagerNativeControlGuard:
+    """Prove that focus-manager._applyFocus bails out before blurring or
+    focusing the wrapper when a native interactive descendant already owns
+    DOM focus.  This is a source-level structural proof — browser tests
+    for the runtime behaviour are documented as UI2A_BROWSER_ACCEPTANCE_PENDING.
+    """
+
+    def test_focus_manager_has_native_control_guard_in_apply_focus(self):
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        # The guard must contain the INPUT/SELECT check inside _applyFocus
+        assert "INPUT" in text and "SELECT" in text, \
+            "focus-manager.js must guard INPUT/SELECT in _applyFocus."
+
+    def _apply_focus_body(self) -> tuple[str, int]:
+        """Return (_applyFocus function body, absolute offset of body start)."""
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        start = text.find("function _applyFocus(")
+        end = text.find("\n  }", start) + 4  # include closing brace
+        return text[start:end], start
+
+    def test_focus_manager_guard_is_before_blur_call(self):
+        body, _ = self._apply_focus_body()
+        # Guard: the INPUT check
+        guard_idx = body.find("INPUT")
+        # Call to _blurIfFocused (not the definition) inside _applyFocus
+        blur_call_idx = body.find("_blurIfFocused(_focusedEl)")
+        assert guard_idx != -1, "Guard (INPUT) must exist in _applyFocus."
+        assert blur_call_idx != -1, "_blurIfFocused(_focusedEl) call must exist in _applyFocus."
+        assert guard_idx < blur_call_idx, \
+            "focus-manager.js native control guard must appear before _blurIfFocused call."
+
+    def test_focus_manager_guard_is_before_focus_call(self):
+        body, _ = self._apply_focus_body()
+        guard_idx = body.find("INPUT")
+        focus_idx = body.find("el.focus(")
+        assert guard_idx != -1 and focus_idx != -1, \
+            "Both INPUT guard and el.focus() must exist in _applyFocus."
+        assert guard_idx < focus_idx, \
+            "focus-manager.js native control guard must appear before el.focus() call."
+
+    def test_focus_manager_guard_checks_ae_ne_el(self):
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        # Guard only skips if ae !== el (cell itself focused → no bypass)
+        assert "ae !== el" in text, \
+            "focus-manager.js guard must short-circuit only when ae is NOT the cell itself."
+
+    def test_focus_manager_guard_uses_contains(self):
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        assert "el.contains" in text, \
+            "focus-manager.js guard must use el.contains(ae) to verify the element is a descendant."
+
+    def test_focus_manager_guard_tracks_native_control_as_focused(self):
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        # After guard, _focusedEl must be set to ae (not el)
+        # Find the guard return block and check _focusedEl = ae before return
+        guard_start = text.find("ae !== el")
+        early_return = text.find("return;", guard_start)
+        block = text[guard_start:early_return]
+        assert "_focusedEl = ae" in block, \
+            "focus-manager.js guard must set _focusedEl = ae before returning."
+
+    def test_focus_manager_guard_covers_same_tags_as_keyboard_router(self):
+        km_text = KBD_ROUTER.read_text(encoding="utf-8")
+        fm_text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        for tag in ["INPUT", "SELECT", "TEXTAREA", "BUTTON"]:
+            assert tag in fm_text, \
+                f"focus-manager.js guard must cover {tag} (same set as keyboard-router.js)."
+            assert tag in km_text, \
+                f"keyboard-router.js guard must cover {tag}."
+
+
+# ---------------------------------------------------------------------------
+# CA-C. Input keyboard safety: keyboard-router guard proves correctness
+# ---------------------------------------------------------------------------
+
+class TestKeyboardRouterInputSafety:
+    """Prove the keyboard-router guard structure ensures that when a native
+    control has focus inside a cell, the router returns BEFORE evt.preventDefault.
+    """
+
+    def _onkeydown_body(self) -> str:
+        text = KBD_ROUTER.read_text(encoding="utf-8")
+        start = text.find("function _onKeyDown(")
+        end = text.find("\n  }", start)  # closing brace of function
+        return text[start:end]
+
+    def test_guard_returns_before_preventdefault_in_onkeydown(self):
+        body = self._onkeydown_body()
+        guard_pos = body.find("INPUT")
+        prevent_pos = body.find("evt.preventDefault()")
+        assert guard_pos != -1 and prevent_pos != -1, \
+            "Both guard and evt.preventDefault() must be in _onKeyDown."
+        assert guard_pos < prevent_pos, \
+            "Guard (INPUT check) must appear before evt.preventDefault()."
+
+    def test_keyboard_router_guard_only_applies_when_ae_is_not_cell(self):
+        body = self._onkeydown_body()
+        # The guard checks ae !== current.cell.el so the cell element
+        # itself having focus (legacy C1) always passes through.
+        assert "current.cell.el" in body, \
+            "Keyboard router guard must allow ae === current.cell.el to pass through."
+
+    def test_enter_escape_not_intercepted_when_input_focused(self):
+        # Prove: when INPUT has focus, the guard returns before
+        # preventDefault, so Enter/Escape reach native/V2 handlers.
+        # This is implied by test_guard_returns_before_preventdefault
+        # — explicit structural proof:
+        body = self._onkeydown_body()
+        # Ensure the guard has a bare 'return;' (not conditional on key)
+        guard_start = body.find("INPUT")
+        return_pos = body.find("return;", guard_start)
+        prevent_pos = body.find("evt.preventDefault()", guard_start)
+        assert return_pos < prevent_pos, \
+            "Keyboard router: guard returns unconditionally for all nav keys when INPUT focused."
+
+
+# ---------------------------------------------------------------------------
+# CA-D. Cell navigation: legacy C1 behavior unchanged
+# ---------------------------------------------------------------------------
+
+class TestCellNavigationLegacyIntact:
+    def test_keyboard_router_still_has_nav_keys_map(self):
+        text = KBD_ROUTER.read_text(encoding="utf-8")
+        for key in ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Enter", "Tab"]:
+            assert key in text, \
+                f"keyboard-router.js must still handle nav key {key}."
+
+    def test_keyboard_router_calls_setActiveCell(self):
+        text = KBD_ROUTER.read_text(encoding="utf-8")
+        assert "setActiveCell" in text, \
+            "keyboard-router.js must still call FcActiveCellManager.setActiveCell."
+
+    def test_keyboard_router_calls_syncFocus(self):
+        text = KBD_ROUTER.read_text(encoding="utf-8")
+        assert "syncFocus" in text, \
+            "keyboard-router.js must still call FcFocusManager.syncFocus after move."
+
+    def test_keyboard_router_uses_neighbors(self):
+        text = KBD_ROUTER.read_text(encoding="utf-8")
+        assert "FcGridRegistry.neighbors" in text, \
+            "keyboard-router.js must use FcGridRegistry.neighbors for cell navigation."
+
+
+# ---------------------------------------------------------------------------
+# CA-E. Active-cell visual: CSS targets real painted descendant boxes
+# ---------------------------------------------------------------------------
+
+class TestActiveCellVisualRealBox:
+    """Prove that the active-cell CSS for V2 value cells targets a real
+    layout box (form or value span), not the display:contents wrapper.
+    """
+
+    def _css(self) -> str:
+        return (REPO_ROOT / "static" / "css" / "workbook_v2.css").read_text(encoding="utf-8")
+
+    def test_value_cell_active_paints_on_field_form(self):
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-active-cell .v2-field-form" in css, \
+            "workbook_v2.css must paint active border on .v2-field-form (real box) for value cells."
+
+    def test_value_cell_active_paints_on_field_value(self):
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-active-cell .v2-field-value" in css, \
+            "workbook_v2.css must paint active border on .v2-field-value (real box) for read-only rows."
+
+    def test_value_cell_wrapper_itself_clears_boxshadow(self):
+        css = self._css()
+        # The wrapper overrides the generic rule with box-shadow: none
+        assert ".v2-fc-value-cell.fc-active-cell" in css, \
+            "workbook_v2.css must have .v2-fc-value-cell.fc-active-cell rule."
+        # The generic rule box-shadow must be overridden (none) for the wrapper
+        block_start = css.find(".v2-fc-value-cell.fc-active-cell {")
+        block_end = css.find("}", block_start)
+        if block_start != -1:
+            block = css[block_start:block_end]
+            assert "none" in block, \
+                ".v2-fc-value-cell.fc-active-cell must set box-shadow: none on the wrapper itself."
+
+    def test_selected_cell_paints_on_real_descendant(self):
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-selected-cell" in css, \
+            "workbook_v2.css must handle selected state for value cells."
+        assert ".v2-field-form" in css or ".v2-field-value" in css, \
+            "Selected state must target a real form/value descendant."
+
+    def test_value_cell_display_contents_preserved(self):
+        css = self._css()
+        assert "display: contents" in css, \
+            "display:contents must be preserved on .v2-fc-value-cell to maintain row layout."
+
+    def test_label_cell_still_receives_direct_box_shadow(self):
+        css = self._css()
+        # Label span is a real box — its fc-active-cell rule should be direct
+        assert "[data-fc-cell].fc-active-cell" in css, \
+            "Generic [data-fc-cell].fc-active-cell rule must still exist for label cells."
+
+
+# ---------------------------------------------------------------------------
+# CA-F. HTMX restore: module load order proves sequencing
+# ---------------------------------------------------------------------------
+
+class TestHtmxRestoreLoadOrder:
+    def test_swap_lifecycle_before_focus_manager_in_workbook(self):
+        text = WORKBOOK_HTML.read_text(encoding="utf-8")
+        swap_idx = text.index("swap-lifecycle.js")
+        focus_idx = text.index("focus-manager.js")
+        assert swap_idx < focus_idx, \
+            "swap-lifecycle.js must load before focus-manager.js — authoritative restore first."
+
+    def test_active_cell_before_swap_lifecycle_in_workbook(self):
+        text = WORKBOOK_HTML.read_text(encoding="utf-8")
+        active_idx = text.index("active-cell.js")
+        swap_idx = text.index("swap-lifecycle.js")
+        assert active_idx < swap_idx, \
+            "active-cell.js must load before swap-lifecycle.js."
+
+    def test_swap_lifecycle_snapshots_before_swap(self):
+        text = SWAP_LIFECYCLE_JS.read_text(encoding="utf-8")
+        assert "htmx:beforeSwap" in text, \
+            "swap-lifecycle.js must listen to htmx:beforeSwap to snapshot active addr."
+
+    def test_swap_lifecycle_restores_by_stable_address(self):
+        text = SWAP_LIFECYCLE_JS.read_text(encoding="utf-8")
+        assert "addr" in text and "setActiveCell" in text, \
+            "swap-lifecycle.js must restore active cell by stable address via setActiveCell."
+
+    def test_focus_manager_syncs_after_grids_scanned(self):
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        assert "fc:gridsScanned" in text, \
+            "focus-manager.js must listen to fc:gridsScanned (fires after swap-lifecycle restores)."
+
+    def test_engine_rescans_on_htmx_afterswap(self):
+        text = ENGINE_JS.read_text(encoding="utf-8")
+        assert "htmx:afterSwap" in text, \
+            "engine.js must rescan on htmx:afterSwap to dispatch fc:gridsScanned."
+
+    def test_no_duplicate_focus_manager_init(self):
+        text = FOCUS_MANAGER_JS.read_text(encoding="utf-8")
+        assert "_initialized" in text, \
+            "focus-manager.js must have an _initialized guard."

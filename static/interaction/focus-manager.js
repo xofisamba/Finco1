@@ -55,6 +55,26 @@
     if (!cell || !cell.el) return;
     var el = cell.el;
 
+    // UI-2A: If a native interactive descendant of the cell currently
+    // owns DOM focus (e.g. a V2 <input> or <select> just clicked by
+    // the user), do NOT transfer focus to the wrapper.  The cell is
+    // still the logical active cell — this guard only skips the DOM
+    // focus steal that would break native-control behaviour.
+    // Legacy C1 grids where [data-fc-cell] is itself the focused element
+    // (ae === el) are unaffected because the guard's second condition
+    // (ae !== el) will be false.
+    var ae = document.activeElement;
+    if (ae && ae !== el && el.contains && el.contains(ae)) {
+      var tag = ae.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' ||
+          tag === 'BUTTON' || tag === 'A' || ae.isContentEditable) {
+        // Track the native control so _clearFocus knows what to blur
+        // when this cell later loses active state.
+        _focusedEl = ae;
+        return;
+      }
+    }
+
     if (!el.hasAttribute('tabindex')) {
       el.setAttribute('tabindex', '-1');
     }
