@@ -35,6 +35,13 @@
     return key.length === 1 && !key.match(/[\x00-\x1F\x7F]/);
   }
 
+  function _resolveEditor(cellEl) {
+    if (!cellEl) return null;
+    var tag = cellEl.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return cellEl;
+    return cellEl.querySelector('input:not([type="hidden"]),textarea') || null;
+  }
+
   function _onKeyDown(evt) {
     // Skip modifier-combos (Ctrl+X etc handled by other managers)
     if (evt.ctrlKey || evt.metaKey || evt.altKey) return;
@@ -53,13 +60,14 @@
     if (!cellEl) return;
     if (cellEl.dataset.fcEditable !== 'true') return;
 
-    var inp = cellEl.querySelector && cellEl.querySelector('input:not([type="hidden"]),textarea');
+    var inp = _resolveEditor(cellEl);
     if (!inp) return;
 
-    // Save original value for Escape
+    // Save original value for Escape and for FcUndoManager recording
     if (inp.dataset.originalValue === undefined || inp.dataset.originalValue === '') {
       inp.dataset.originalValue = inp.value;
     }
+    inp._fcUndoOldValue = inp.dataset.originalValue;
 
     // Replace value with the typed character and move focus
     inp.value = evt.key;

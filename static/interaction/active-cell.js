@@ -37,6 +37,12 @@
   var _activeGridId = null;
   var _activeCell = null;
 
+  function _dispatchChanged(gridId, cell) {
+    document.dispatchEvent(new CustomEvent('fc:activeCellChanged', {
+      detail: { gridId: gridId, cell: cell }
+    }));
+  }
+
   function setActiveCell(gridId, cell) {
     if (!gridId || !cell) return null;
 
@@ -49,6 +55,7 @@
     _activeCell = cell;
     window.FcGridRegistry.setActiveCell(gridId, cell);
     _applyVisual(cell);
+    _dispatchChanged(gridId, cell);
 
     return cell;
   }
@@ -59,6 +66,7 @@
     window.FcGridRegistry.clearActiveCell(_activeGridId);
     _activeGridId = null;
     _activeCell = null;
+    _dispatchChanged(null, null);
   }
 
   function getActiveCell() {

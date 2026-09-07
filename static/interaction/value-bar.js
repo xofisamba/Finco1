@@ -64,6 +64,7 @@
     document.addEventListener('click', _sync);
     document.addEventListener('fc:gridsScanned', _sync);
     document.addEventListener('fc:engineReady', _sync);
+    document.addEventListener('fc:activeCellChanged', _sync);
     document.addEventListener('input', _sync);
     return true;
   }

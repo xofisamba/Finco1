@@ -91,22 +91,28 @@
     <input type="hidden" name="row_version" value="{{ line.row_version }}">
     <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
     <span class="v2-capex-custom-code">{{ line.code }}</span>
-    <input class="v2-field-input v2-capex-custom-label"
-           type="text" name="label" value="{{ line.name }}"
-           placeholder="Description" aria-label="Custom row description"
-           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.label"
-           data-fc-editable="true" data-fc-kind="text">
-    <input class="v2-field-input v2-capex-custom-amount"
-           type="number" name="amount_keur"
-           value="{{ "%.0f"|format(line.amount_keur) }}"
-           step="1" aria-label="Amount kEUR"
-           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.amount"
-           data-fc-editable="true" data-fc-kind="amount">
-    <input class="v2-field-input v2-capex-custom-notes"
-           type="text" name="notes" value="{{ line.notes }}"
-           placeholder="Notes" aria-label="Notes"
-           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.notes"
-           data-fc-editable="true" data-fc-kind="text">
+    <span class="v2-fc-cell-wrap"
+          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.label"
+          data-fc-editable="true" data-fc-kind="text">
+      <input class="v2-field-input v2-capex-custom-label"
+             type="text" name="label" value="{{ line.name }}"
+             placeholder="Description" aria-label="Custom row description">
+    </span>
+    <span class="v2-fc-cell-wrap"
+          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.amount"
+          data-fc-editable="true" data-fc-kind="amount">
+      <input class="v2-field-input v2-capex-custom-amount"
+             type="number" name="amount_keur"
+             value="{{ "%.0f"|format(line.amount_keur) }}"
+             step="1" aria-label="Amount kEUR">
+    </span>
+    <span class="v2-fc-cell-wrap"
+          data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.notes"
+          data-fc-editable="true" data-fc-kind="text">
+      <input class="v2-field-input v2-capex-custom-notes"
+             type="text" name="notes" value="{{ line.notes }}"
+             placeholder="Notes" aria-label="Notes">
+    </span>
     <button type="submit" class="v2-field-save" aria-label="Save {{ line.code }}">Save</button>
   </form>
   <form class="v2-capex-deactivate-form"
@@ -205,8 +211,8 @@
   {# ── Column header ───────────────────────────────────────────────── #}
   <div class="v2-capex-col-header" aria-hidden="true">
     <span class="v2-capex-col-code">Code</span>
-    <span class="v2-capex-col-desc">Description</span>
-    <span class="v2-capex-col-amount">kEUR</span>
+    <span class="v2-capex-col-desc">Description<span class="fc-col-resize-handle" data-col="desc"></span></span>
+    <span class="v2-capex-col-amount">kEUR<span class="fc-col-resize-handle" data-col="amount"></span></span>
     <span class="v2-capex-col-permw">kEUR/MW</span>
     <span class="v2-capex-col-status">Status</span>
   </div>

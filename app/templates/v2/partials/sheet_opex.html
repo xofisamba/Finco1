@@ -95,33 +95,39 @@
       <input type="hidden" name="sub_line_id" value="{{ line.sub_line_id }}">
       <input type="hidden" name="row_version" value="{{ line.row_version }}">
       <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-      <input class="v2-opex-custom-label-input"
-             type="text"
-             name="label"
-             value="{{ line.name }}"
-             required
-             aria-label="Label"
-             data-testid="opex-custom-label-{{ line.sub_line_id }}"
-             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
-             data-fc-editable="true" data-fc-kind="text">
-      <input class="v2-opex-custom-amount-input v2-opex-amount-cell"
-             type="number"
-             name="amount_keur"
-             value="{{ "%.0f"|format(line.y1_keur) }}"
-             step="any"
-             aria-label="Y1 kEUR"
-             data-testid="opex-custom-amount-{{ line.sub_line_id }}"
-             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.amount"
-             data-fc-editable="true" data-fc-kind="amount">
-      <input class="v2-opex-custom-escl-input"
-             type="number"
-             name="inflation_pct"
-             value="{{ "%.2f"|format(line.inflation_pct) }}"
-             step="0.1"
-             aria-label="Escalation %"
-             data-testid="opex-custom-escl-{{ line.sub_line_id }}"
-             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.escl"
-             data-fc-editable="true" data-fc-kind="amount">
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
+            data-fc-editable="true" data-fc-kind="text">
+        <input class="v2-opex-custom-label-input"
+               type="text"
+               name="label"
+               value="{{ line.name }}"
+               required
+               aria-label="Label"
+               data-testid="opex-custom-label-{{ line.sub_line_id }}">
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.amount"
+            data-fc-editable="true" data-fc-kind="amount">
+        <input class="v2-opex-custom-amount-input v2-opex-amount-cell"
+               type="number"
+               name="amount_keur"
+               value="{{ "%.0f"|format(line.y1_keur) }}"
+               step="any"
+               aria-label="Y1 kEUR"
+               data-testid="opex-custom-amount-{{ line.sub_line_id }}">
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.escl"
+            data-fc-editable="true" data-fc-kind="amount">
+        <input class="v2-opex-custom-escl-input"
+               type="number"
+               name="inflation_pct"
+               value="{{ "%.2f"|format(line.inflation_pct) }}"
+               step="0.1"
+               aria-label="Escalation %"
+               data-testid="opex-custom-escl-{{ line.sub_line_id }}">
+      </span>
       <input class="v2-opex-custom-notes-input"
              type="text"
              name="notes"
@@ -274,8 +280,8 @@
   {# ── Column header ─────────────────────────────────────────────── #}
   <div class="v2-opex-col-header" aria-hidden="true">
     <span class="v2-opex-col-code">Code</span>
-    <span class="v2-opex-col-desc">Description</span>
-    <span class="v2-opex-col-y1">Y1 kEUR</span>
+    <span class="v2-opex-col-desc">Description<span class="fc-col-resize-handle" data-col="desc"></span></span>
+    <span class="v2-opex-col-y1">Y1 kEUR<span class="fc-col-resize-handle" data-col="y1"></span></span>
     <span class="v2-opex-col-escl">Escl %</span>
     <span class="v2-opex-col-status">Status</span>
   </div>

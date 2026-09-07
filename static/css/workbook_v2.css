@@ -1230,6 +1230,24 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   position: relative;
 }
 
+/* ── UI-2B: display:contents cell wrapper (CAPEX/OPEX custom rows) ─ */
+/* The wrapper carries data-fc-cell but has no layout box; the active  */
+/* ring and selection tint are painted on the descendant input instead. */
+.v2-fc-cell-wrap {
+  display: contents;
+}
+
+/* display:contents wrappers: paint active ring on descendant input */
+.v2-fc-cell-wrap.fc-active-cell .v2-field-input,
+[data-fc-cell].fc-active-cell .v2-field-input {
+  box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);
+  outline: none;
+}
+.v2-fc-cell-wrap.fc-selected-cell:not(.fc-active-cell) .v2-field-input,
+[data-fc-cell].fc-selected-cell:not(.fc-active-cell) .v2-field-input {
+  background: rgba(37, 99, 235, 0.06);
+}
+
 /* ── UI-2B: Selection tint on CAPEX/OPEX custom row cells ────────── */
 [data-fc-cell].fc-active-cell {
   box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);

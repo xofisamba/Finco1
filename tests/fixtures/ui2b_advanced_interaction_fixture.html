@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>UI-2B Advanced Spreadsheet Interaction Fixture</title>
+  <style>
+    [data-fc-grid] { display: block; padding: 8px; }
+    [data-fc-row]  { display: flex; gap: 4px; margin: 2px 0; }
+    /* Wrapper-span cells: display:contents (layout-transparent) */
+    .v2-fc-cell-wrap { display: contents; }
+    [data-fc-cell] { outline: 1px solid #ccc; }
+    [data-fc-cell].fc-active-cell { outline: 2px solid blue; }
+    [data-fc-cell].fc-selected-cell { background: rgba(0,0,200,0.08); }
+    .v2-field-input { width: 80px; }
+    .col-header { display: flex; gap: 4px; padding: 4px 0; font-weight: bold; }
+    .col-header span { position: relative; min-width: 80px; }
+    .fc-col-resize-handle {
+      position: absolute; right: 0; top: 0; bottom: 0; width: 4px;
+      cursor: col-resize; background: transparent;
+    }
+    .fc-col-resize-handle:hover { background: blue; opacity: 0.3; }
+    /* Value bar */
+    #fc-value-bar { display: flex; gap: 8px; padding: 4px; background: #f1f5f9; }
+    /* Standard V2 wrapper cell (non-CAPEX) */
+    .v2-fc-value-cell { display: contents; }
+    .v2-field-row { display: flex; gap: 4px; }
+  </style>
+</head>
+<body>
+
+  <!-- Value bar -->
+  <div id="fc-value-bar">
+    <span id="fc-value-bar-addr"></span>
+    <span>›</span>
+    <span id="fc-value-bar-value"></span>
+  </div>
+
+  <!-- Column resizer header -->
+  <div class="col-header" data-fc-grid="capex">
+    <span class="v2-capex-col-desc">Description
+      <span class="fc-col-resize-handle" data-col="desc"></span>
+    </span>
+    <span class="v2-capex-col-amount">kEUR
+      <span class="fc-col-resize-handle" data-col="amount"></span>
+    </span>
+  </div>
+
+  <!--
+    Grid 1: CAPEX-style — wrapper spans containing INPUT elements.
+    This is the corrected cell/editor contract for UI-2B-CorrA.
+  -->
+  <div data-fc-grid="capex">
+
+    <!-- Standard V2 label-style cell (direct data-fc-cell with no input) -->
+    <div data-fc-row>
+      <span data-fc-cell data-fc-addr="capex.r1.label" data-fc-kind="label"
+            class="fc-label-cell">EPC Cost</span>
+    </div>
+
+    <!-- Wrapper-span cell row: editable, input inside wrapper -->
+    <div data-fc-row>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="capex.custom-C01.label"
+            data-fc-editable="true" data-fc-kind="text">
+        <form class="v2-capex-custom-form" id="form-C01-label"
+              data-htmx-mock="true">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-field-input" type="text"
+                 name="label" value="Solar Panels"
+                 id="inp-C01-label">
+        </form>
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="capex.custom-C01.amount"
+            data-fc-editable="true" data-fc-kind="amount">
+        <form class="v2-capex-custom-form" id="form-C01-amount"
+              data-htmx-mock="true">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-field-input" type="number"
+                 name="amount_keur" value="1000"
+                 id="inp-C01-amount">
+        </form>
+      </span>
+    </div>
+
+    <!-- Second row for fill/selection testing -->
+    <div data-fc-row>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="capex.custom-C02.label"
+            data-fc-editable="true" data-fc-kind="text">
+        <form class="v2-capex-custom-form" id="form-C02-label"
+              data-htmx-mock="true">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-field-input" type="text"
+                 name="label" value="Inverters"
+                 id="inp-C02-label">
+        </form>
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="capex.custom-C02.amount"
+            data-fc-editable="true" data-fc-kind="amount">
+        <form class="v2-capex-custom-form" id="form-C02-amount"
+              data-htmx-mock="true">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-field-input" type="number"
+                 name="amount_keur" value="500"
+                 id="inp-C02-amount">
+        </form>
+      </span>
+    </div>
+
+    <!-- Protected (read-only) cell -->
+    <div data-fc-row>
+      <span data-fc-cell data-fc-addr="capex.total" data-fc-editable="false">
+        1500
+      </span>
+    </div>
+  </div>
+
+  <!--
+    Grid 2: Standard V2 value-cell pattern (non-CAPEX) for regression check.
+    data-fc-cell on a .v2-fc-value-cell wrapper (display:contents).
+  -->
+  <div data-fc-grid="inputs">
+    <div class="v2-field-row" data-fc-row>
+      <span class="v2-fc-value-cell"
+            data-fc-cell data-fc-addr="inputs.capacity_mw"
+            data-fc-editable="true" data-fc-kind="amount">
+        <form id="form-capacity">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-field-input" type="number"
+                 name="capacity_mw" value="50"
+                 id="inp-capacity">
+        </form>
+      </span>
+    </div>
+  </div>
+
+  <!-- Outside-grid input for native-control guard testing -->
+  <input id="outside-input" type="text" value="outside" />
+
+  <div id="test-log" style="display:none"></div>
+
+  <!--
+    HTMX mock: intercepts requestSubmit() on [data-htmx-mock] forms and
+    fires htmx:afterRequest with successful=true, simulating a save
+    without a real server.
+  -->
+  <script>
+    (function() {
+      var origRequestSubmit = HTMLFormElement.prototype.requestSubmit;
+      HTMLFormElement.prototype.requestSubmit = function(submitter) {
+        var form = this;
+        if (form.dataset.htmxMock === 'true') {
+          setTimeout(function() {
+            document.dispatchEvent(new CustomEvent('htmx:afterRequest', {
+              detail: {
+                elt: form,
+                successful: true,
+                xhr: { status: 200 }
+              }
+            }));
+          }, 10);
+          return;
+        }
+        return origRequestSubmit && origRequestSubmit.call(form, submitter);
+      };
+    })();
+  </script>
+
+  <!-- Load UI-2A + UI-2B interaction modules (file:// relative paths) -->
+  <script src="../../static/interaction/grid-registry.js"></script>
+  <script src="../../static/interaction/engine.js"></script>
+  <script src="../../static/interaction/active-cell.js"></script>
+  <script src="../../static/interaction/swap-lifecycle.js"></script>
+  <script src="../../static/interaction/focus-manager.js"></script>
+  <script src="../../static/interaction/keyboard-router.js"></script>
+  <script src="../../static/interaction/selection-manager.js"></script>
+  <script src="../../static/interaction/clipboard-manager.js"></script>
+  <script src="../../static/interaction/fill-manager.js"></script>
+  <script src="../../static/interaction/undo-manager.js"></script>
+  <script src="../../static/interaction/type-to-edit.js"></script>
+  <script src="../../static/interaction/value-bar.js"></script>
+  <script src="../../static/interaction/column-resizer.js"></script>
+</body>
+</html>
