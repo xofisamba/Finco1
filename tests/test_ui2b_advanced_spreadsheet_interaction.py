@@ -737,6 +737,20 @@ class TestUndoManagerCASRollback:
                'inp.closest("[data-fc-cell]")' in text, \
             "undo _onAfterRequest must use inp.closest('[data-fc-cell]') for wrapper contract."
 
+    def test_no_cellByAddr_in_undo_manager(self):
+        """STATIC B.1: undo-manager.js must not call reg.cellByAddr() anywhere.
+        The only valid registry lookup is reg.getAddr()."""
+        text = UNDO_JS.read_text(encoding="utf-8")
+        assert "cellByAddr" not in text, \
+            "undo-manager.js must not call reg.cellByAddr() — use reg.getAddr() for all lookups."
+
+    def test_getAddr_used_for_rollback_lookup(self):
+        """STATIC B.1: reg.getAddr must be used in both primary and rollback resolution paths."""
+        text = UNDO_JS.read_text(encoding="utf-8")
+        count = text.count("reg.getAddr(")
+        assert count >= 2, \
+            f"undo-manager.js must call reg.getAddr() in both primary and rollback paths; found {count} call(s)."
+
 
 # ── U. Add Row route contract ────────────────────────────────────────────────
 
@@ -1048,3 +1062,88 @@ class TestUI2BBrowser:
         final_w = hdr.bounding_box()["width"]
         assert final_w >= 58, \
             f"Column must not shrink below MIN_WIDTH (60px); got {final_w:.0f}px."
+
+    def test_undo_rejected_409_restores_local_value_and_stack(self, ui2b_page):
+        """BROWSER: A 409-rejected undo must not throw TypeError, must restore local value
+        and keep the stack pointer so the same undo remains available on retry."""
+        page, _ = ui2b_page
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+
+        # Reset input to known committed value via direct assignment + mock save
+        page.evaluate("""() => {
+            var inp = document.getElementById('inp-C01-label');
+            inp._fcUndoOldValue = undefined;
+            inp.value = 'Solar Panels';
+            window.FcUndoManager._reset && window.FcUndoManager._reset();
+        }""")
+
+        # Type a replacement and save so the undo manager records the entry
+        page.click("#inp-C01-label")
+        page.keyboard.press("Control+a")
+        page.keyboard.type("Grid Storage")
+        page.evaluate("document.getElementById('form-C01-label').requestSubmit()")
+        page.wait_for_timeout(50)
+
+        # Move focus out so undo shortcut routing works
+        page.click("#outside-input")
+
+        # Patch the HTMX mock to return failure (409) for the next request
+        page.evaluate("""() => {
+            window.__fc_mock_fail = true;
+            var orig = HTMLFormElement.prototype.requestSubmit;
+            HTMLFormElement.prototype.requestSubmit = function(submitter) {
+                var form = this;
+                if (form.dataset.htmxMock === 'true') {
+                    setTimeout(function() {
+                        document.dispatchEvent(new CustomEvent('htmx:afterRequest', {
+                            detail: {
+                                elt: form,
+                                successful: window.__fc_mock_fail ? false : true,
+                                xhr: { status: window.__fc_mock_fail ? 409 : 200 }
+                            }
+                        }));
+                        window.__fc_mock_fail = false;
+                    }, 10);
+                    return;
+                }
+                return orig && orig.call(form, submitter);
+            };
+        }""")
+
+        # Value before undo attempt
+        before_attempt = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert before_attempt == "Grid Storage"
+
+        # Execute undo — this will get the 409 rejection
+        page.evaluate("window.FcUndoManager.undo()")
+        page.wait_for_timeout(50)
+
+        # No TypeError must have occurred
+        assert not errors, f"pageerror on 409 rollback: {errors}"
+
+        # Local value must be restored to what it was before the rejected undo
+        after_rejected = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert after_rejected == "Grid Storage", \
+            f"After rejected undo, value must stay 'Grid Storage', got '{after_rejected}'."
+
+        # Stack pointer must be restored — undo is still available
+        stack_size = page.evaluate("""() => {
+            var u = window.FcUndoManager;
+            return u._stackSize ? u._stackSize() : -1;
+        }""")
+        # Stack must still have an entry (size > 0 or idx >= 0)
+        stack_available = page.evaluate("""() => {
+            var u = window.FcUndoManager;
+            if (u._stackIdx !== undefined) return u._stackIdx >= 0;
+            return false;
+        }""")
+        assert stack_available, "Undo stack pointer must be restored after rejected undo."
+
+        # Retry undo with a successful mock (already restored by __fc_mock_fail=false)
+        page.evaluate("window.FcUndoManager.undo()")
+        page.wait_for_timeout(50)
+
+        after_retry = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert after_retry == "Solar Panels", \
+            f"Retry undo must restore 'Solar Panels', got '{after_retry}'."

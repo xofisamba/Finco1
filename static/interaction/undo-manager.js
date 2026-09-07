@@ -86,7 +86,7 @@
         var status = evt.detail.xhr && evt.detail.xhr.status;
         console.warn('[FcUndo] Server rejected undo (status ' + status + ') — restoring local value');
         // Attempt to restore the input's pre-undo value
-        var cr2 = reg.cellByAddr(entry.gridId, entry.addr);
+        var cr2 = reg.getAddr(entry.gridId, entry.addr);
         var inp2 = cr2 ? _resolveEditor(cr2.el) : null;
         if (inp2) inp2.value = prevVal;
         onFail && onFail();
@@ -181,6 +181,11 @@
     return true;
   }
 
-  window.FcUndoManager = { init: init, record: record, undo: undo, redo: redo };
+  window.FcUndoManager = {
+    init: init, record: record, undo: undo, redo: redo,
+    // Test-only: expose stack state for browser assertions
+    get _stackIdx() { return _stackIdx; },
+    _reset: function () { _stack = []; _stackIdx = -1; }
+  };
   init();
 })();
