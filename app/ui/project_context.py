@@ -1442,9 +1442,9 @@ def _build_capex_detail_items(
                 },
             ],
         },
-        # C.12 Construction Management (Akuo)
+        # C.12 Construction Management
         {
-            "code": "C.12", "name": "Construction Mgmt (Akuo)",
+            "code": "C.12", "name": "Construction Mgmt",
             "amount_keur": 1742.25, "per_mw": 49.78,
             "cont_pct": None, "cont_cost": None,
             "vat_rate_pct": None, "vat_cost": None,
@@ -1453,7 +1453,7 @@ def _build_capex_detail_items(
             "comments": "Excel reference: 20260330_TUHO_BP CapEx",
             "children": [
                 {
-                    "code": "C.12.01", "name": "Akuo Construction Services",
+                    "code": "C.12.01", "name": "Construction Services",
                     "amount_keur": 1742.25, "per_mw": 49.78,
                     "cont_pct": 0.0, "cont_cost": 0.0,
                     "vat_rate_pct": 13.0, "vat_cost": 226.49,
@@ -1580,7 +1580,7 @@ def _build_capex_detail_items(
             "comments": "Excel reference: 20260330_TUHO_BP CapEx",
             "children": [
                 {
-                    "code": "C.16.01", "name": "Akuo Development Services",
+                    "code": "C.16.01", "name": "Development Services",
                     "amount_keur": 2739.15, "per_mw": 78.26,
                     "cont_pct": 0.0, "cont_cost": 0.0,
                     "vat_rate_pct": 0.0, "vat_cost": 0.0,
@@ -1821,7 +1821,7 @@ def _build_capex_detail_items(
         "C.11.01": ("audit_legal",   False),
         "C.11.02": ("audit_legal",   False),
         "C.11.03": ("audit_legal",   False),
-        # C.12 — Construction Mgmt (Akuo)
+        # C.12 — Construction Mgmt
         "C.12.01": ("construction_mgmt_b", False),
         # C.13 — Contingencies
         "C.13":     ("contingencies", True),  # used in capex total → affects debt sizing
@@ -1856,7 +1856,7 @@ def _build_capex_detail_items(
             "C.01.01": "no app production-unit field (Wind Turbines)",
             "C.02": "52,800 kEUR = 4-semester total EPC contract value",
             "C.03.01": "6,200 kEUR = full interconnection cost",
-            "C.16.01": "no app field for Akuo development services",
+            "C.16.01": "no app field for development services",
             "C.16.02": "no app field for development costs",
             "C.16.03": "no app field for project purchase cost",
         }
@@ -1973,7 +1973,7 @@ def _build_capex_detail_items(
                 "C.01.01",  # Production Unit: app 0 (no field) vs Excel 35,000
                 "C.02",     # EPC Contract: app 52,800 = 4-semester total; Excel 13,560 = per-batch reference
                 "C.03.01",  # Grid Connection Agreement: app 6,200 vs Excel 30 (GPA fee only)
-                "C.16.01",  # Akuo Development: app 0 vs Excel 2,739
+                "C.16.01",  # Development Services: app 0 vs Excel 2,739
                 "C.16.02",  # Development costs: app 0 vs Excel 2,000
                 "C.16.03",  # Project Purchase Cost: app 0 vs Excel 10,000
             }

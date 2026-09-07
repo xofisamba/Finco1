@@ -140,12 +140,12 @@ Enhanced `_build_capex_detail_items()`:
 | C.11.03 | Legal closing | `mismatch` | `app_input` | `capex.audit_legal` | 1 | 200 | 199 | |
 | C.11.04 | Accounting book-keeping | `excel_reference_only` | `excel_reference` | — | 5 | 0 | — | No app field |
 | C.11.05–06 | Bank book-keeping / Legal Formalities | `not_applicable` | `excel_reference` | — | 0 | 0 | — | |
-| C.12.01 | Akuo Construction Services | `mismatch` | `app_input` | `capex.construction_mgmt_b` | 1,742 | 0 | 1,742 | App=0 |
+| C.12.01 | Construction Services | `mismatch` | `app_input` | `capex.construction_mgmt_b` | 1,742 | 0 | 1,742 | App=0 |
 | C.12.02–07 | External Supervision / Geotech / HSE / Q&Q / Comm / Others | `not_applicable` | `excel_reference` | — | 0 | 0 | — | |
 | **C.13** | **Contingencies** | **`app_mapped`** | **`app_input`** | **`capex.contingencies`** | **2,992** | **2,992** | **—** | Within tolerance; used in capex total |
 | C.14.01–02 | Import Taxes / Taxes during construction | `not_applicable` | `excel_reference` | — | 0 | 0 | — | |
 | **C.15** | **Project Acquisition / Development** | **`mismatch`** | **`app_input`** | **`capex.project_acquisition`** | **0** | **1,000** | **1,000** | App has value, Excel=0 |
-| C.16.01 | Akuo Development Services | `mismatch` | `app_input` | `capex.project_rights` | 2,739 | 0 | 2,739 | |
+| C.16.01 | Development Services | `mismatch` | `app_input` | `capex.project_rights` | 2,739 | 0 | 2,739 | |
 | C.16.02 | Development costs | `mismatch` | `app_input` | `capex.project_rights` | 2,000 | 0 | 2,000 | |
 | C.16.03 | Project Purchase Cost | `mismatch` | `app_input` | `capex.project_rights` | 10,000 | 0 | 10,000 | |
 | **C.17.01** | **Bank Fees** | **`backend_authoritative`** | **`computed_runtime`** | **`capex.bank_fees_keur`** | **783** | **783** | **—** | Affects runtime (financing total) |

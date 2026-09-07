@@ -76,7 +76,7 @@ Extracted from: TUHO (20260330_TUHO_BP.xlsm) and Oborovo (20260414_BP_Oborovo_Se
 - **Editable:** Sub-line amounts
 
 ### C.12 — Construction Management (Sponsor)
-- TUHO: Akuo Construction Services 1,742.25 / Geotech / Quality Control
+- TUHO: Construction Services 1,742.25 / Geotech / Quality Control
 - Oborovo: Sponsor Construction Services 1,071.13 / Geotech / HSE / Q&Q Control / Communication
 - **Editable:** Sub-line amounts
 
@@ -94,7 +94,7 @@ Extracted from: TUHO (20260330_TUHO_BP.xlsm) and Oborovo (20260414_BP_Oborovo_Se
 - **Editable:** Sub-line amounts
 
 ### C.16 — Project Rights
-- TUHO: Akuo Development Services 2,739.15 / Development costs 2,000 / Project Purchase 10,000
+- TUHO: Development Services 2,739.15 / Development costs 2,000 / Project Purchase 10,000
 - Oborovo: Sponsor Development Services 2,024.48 / Market Services 0 / Project Purchase 6,500
 - **Editable:** Sub-line amounts
 

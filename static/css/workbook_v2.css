@@ -381,7 +381,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
 
 .v2-capex-col-header {
   display: grid;
-  grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+  grid-template-columns: 4rem var(--fc-capex-desc-width, 1fr) var(--fc-capex-amount-width, 7rem) 6rem 6rem;
   align-items: center;
   padding: 0.2rem 0.4rem;
   font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
@@ -401,7 +401,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
 
 .v2-capex-group-header {
   display: grid;
-  grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+  grid-template-columns: 4rem var(--fc-capex-desc-width, 1fr) var(--fc-capex-amount-width, 7rem) 6rem 6rem;
   align-items: center;
   cursor: pointer; list-style: none;
   font-weight: 600; font-size: 0.78rem;
@@ -516,7 +516,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 .v2-opex-kpi-value { font-weight: 600; font-variant-numeric: tabular-nums; color: #14532d; }
 
 .v2-opex-col-header {
-  display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+  display: grid; grid-template-columns: 4rem var(--fc-opex-desc-width, 1fr) var(--fc-opex-y1-width, 7rem) 5rem 7rem;
   align-items: center; padding: 0.2rem 0.4rem;
   font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.06em; color: #9ca3af; border-bottom: 2px solid #e5e7eb;
@@ -530,7 +530,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 .v2-opex-group { border-bottom: 1px solid #e5e7eb; }
 .v2-opex-group-contingency > summary .v2-opex-subtotal { color: #9ca3af; font-style: italic; }
 .v2-opex-group-header {
-  display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+  display: grid; grid-template-columns: 4rem var(--fc-opex-desc-width, 1fr) var(--fc-opex-y1-width, 7rem) 5rem 7rem;
   align-items: center; cursor: pointer; list-style: none;
   font-weight: 600; font-size: 0.78rem; padding: 0.35rem 0.4rem;
   background: #f9fafb; border-top: 1px solid #e5e7eb;
@@ -1167,4 +1167,92 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
    the input control that renders inside the value cell */
 .v2-field-row[data-fc-row] {
   cursor: default;
+}
+
+/* ── UI-2B: Value / formula bar ──────────────────────────────────── */
+.fc-value-bar {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .25rem .75rem;
+  background: var(--v2-toolbar-bg, #f1f5f9);
+  border-bottom: 1px solid var(--v2-border, #e2e8f0);
+  font-size: .8125rem;
+  font-family: ui-monospace, "Cascadia Code", Menlo, Monaco, monospace;
+  min-height: 1.75rem;
+  overflow: hidden;
+}
+
+.fc-value-bar-addr {
+  color: var(--v2-muted, #64748b);
+  min-width: 9ch;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.fc-value-bar-sep {
+  color: var(--v2-muted, #64748b);
+  flex-shrink: 0;
+}
+
+.fc-value-bar-value {
+  color: var(--v2-text, #1e293b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+/* ── UI-2B: Column resize handle ─────────────────────────────────── */
+.fc-col-resize-handle {
+  display: inline-block;
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 1;
+}
+
+.fc-col-resize-handle:hover {
+  background: var(--fo-focus, #2563eb);
+  opacity: .35;
+}
+
+/* Headers that support resizing need relative positioning */
+.v2-capex-col-header span,
+.v2-opex-col-header span {
+  position: relative;
+}
+
+/* ── UI-2B: display:contents cell wrapper (CAPEX/OPEX custom rows) ─ */
+/* The wrapper carries data-fc-cell but has no layout box; the active  */
+/* ring and selection tint are painted on the descendant input instead. */
+.v2-fc-cell-wrap {
+  display: contents;
+}
+
+/* display:contents wrappers: paint active ring on descendant input */
+.v2-fc-cell-wrap.fc-active-cell .v2-field-input,
+[data-fc-cell].fc-active-cell .v2-field-input {
+  box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);
+  outline: none;
+}
+.v2-fc-cell-wrap.fc-selected-cell:not(.fc-active-cell) .v2-field-input,
+[data-fc-cell].fc-selected-cell:not(.fc-active-cell) .v2-field-input {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+/* ── UI-2B: Selection tint on CAPEX/OPEX custom row cells ────────── */
+[data-fc-cell].fc-active-cell {
+  box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);
+}
+
+[data-fc-cell].fc-selected-cell:not(.fc-active-cell) {
+  background: rgba(37, 99, 235, 0.06);
 }
