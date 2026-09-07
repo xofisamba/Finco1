@@ -230,7 +230,7 @@ class TestKnownEmptyCategoriesRender:
             ("C.04", 3),  # Telecom, SCADA, EMS
             ("C.05", 6),  # O&M Building, Weather Station, etc.
             ("C.08", 10),  # Bank Due Diligence sub-lines
-            ("C.12", 7),  # Construction Mgmt (Akuo) sub-lines
+            ("C.12", 7),  # Construction Mgmt sub-lines
         ],
     )
     def test_known_empty_category_renders_sublines(

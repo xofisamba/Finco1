@@ -160,10 +160,10 @@ These are different models. The app uses a simplified construction profile.
 
 ---
 
-### C.12 — Construction Management (Akuo) — **1,742.25 kEUR** (Excel) | 0 kEUR (App)
+### C.12 — Construction Management — **1,742.25 kEUR** (Excel) | 0 kEUR (App)
 | Sub-line | Excel Amount | App Amount | Status | Notes |
 |---|---|---|---|---|
-| C.12.01 Akuo Construction Services | 1,742.25 | — | `unmapped` | |
+| C.12.01 Construction Services | 1,742.25 | — | `unmapped` | |
 | External Construction Supervision | 0 | — | `unmapped` | |
 | C.12.02 Geotechnical engineer | 0 | — | `unmapped` | |
 | HSE | 0 | — | `unmapped` | |
@@ -200,7 +200,7 @@ These are different models. The app uses a simplified construction profile.
 ### C.16 — Project Rights — **14,739.15 kEUR** (Excel) | 0 kEUR (App)
 | Sub-line | Excel Amount | App Amount | Status | Notes |
 |---|---|---|---|---|
-| Akuo Development Services | 2,739.15 | — | `unmapped` | |
+| Development Services | 2,739.15 | — | `unmapped` | |
 | Development costs | 2,000 | — | `unmapped` | |
 | Project Purchase Cost | 10,000 | — | `unmapped` | App `project_rights = 0` |
 
@@ -251,7 +251,7 @@ These are different models. The app uses a simplified construction profile.
 | C.09 Construction Mgmt | 40 | 5,400 | `model_mismatch` |
 | C.10 Commissioning | 0 | 300 | `partial` |
 | C.11 Audit&Accounting&Legal | 42 | 200 | `partial` |
-| C.12 Construction Mgmt (Akuo) | 1,742 | 0 | `unmapped` |
+| C.12 Construction Mgmt | 1,742 | 0 | `unmapped` |
 | C.13 Contingencies | 3,037 | 2,992 | `partial` |
 | C.14 Import Taxes | 0 | 0 | `unmapped` |
 | C.15 Project Acquisition | 0 | 1,000 | `model_mismatch` |

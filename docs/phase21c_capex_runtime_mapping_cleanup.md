@@ -87,13 +87,13 @@ Updated `VALID_STATUSES` to include `scope_mismatch` (1-line change)
 
 ### Project Rights (C.16) — `scope_mismatch` (all sub-rows)
 
-**Finding:** App's `project_rights.amount_keur = 0` for TUHO. Excel C.16 totals **14,739 kEUR** (Akuo Development 2,739 + Dev costs 2,000 + Project Purchase Cost 10,000). No app field stores the 14,739 kEUR project rights value in TUHO.
+**Finding:** App's `project_rights.amount_keur = 0` for TUHO. Excel C.16 totals **14,739 kEUR** (Development 2,739 + Dev costs 2,000 + Project Purchase Cost 10,000). No app field stores the 14,739 kEUR project rights value in TUHO.
 
 **Note:** Oborovo's factory DOES have `project_rights = 3,024.5 kEUR` (from `project_factories.py`), but TUHO's factory sets it to 0. The TUHO Excel has 14,739 kEUR for project rights; the app (TUHO template) has 0.
 
 **Conclusion:** `scope_mismatch` for C.16.01/02/03 — the app has no value for these rows while Excel shows material costs. This is a field-not-found scope difference, not just a value difference.
 
-**Mapping note format:** `"App 0.00 vs Excel 2,739.00 kEUR — scopes differ: no app field for Akuo development services, Excel is one-shot reference; diff 2,739.00 kEUR (inf%)"`
+**Mapping note format:** `"App 0.00 vs Excel 2,739.00 kEUR — scopes differ: no app field for development services, Excel is one-shot reference; diff 2,739.00 kEUR (inf%)"`
 
 ---
 

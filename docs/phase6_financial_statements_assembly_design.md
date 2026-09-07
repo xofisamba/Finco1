@@ -119,7 +119,7 @@ R21  Capital at Financial close    =    500.0  (constant)
 R22  Legal Reserve                 =      0.0
 R23  Retained Earnings (cumulative)= -4,938.4  (= construction-period loss + period 0 NI = -3,568.7 + -1,369.7)
 R24  Shareholder Loan              = 33,047.5  (FROM SHL ledger closing)
-R25  Akuo Carbon Fund              =      0.0
+R25  Carbon Fund              =      0.0
 R26  Senior Debt                   = 42,539.3  (FROM senior schedule closing)
 R27  Refinancing                   =      0.0
 R29  Short term loan               =      0.0
