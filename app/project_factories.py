@@ -949,7 +949,7 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
 
     info = ProjectInfo(
         name="TUHO Wind 1",
-        company="Akuo Energy Med",
+        company="Energy Developer",
         code="TUHO-WIND-1",
         country_iso="HR",
         financial_close=date(2029, 7, 1),  # COD = 2030-01-01 (Y1-H1 starts Jan 1, 2030)
