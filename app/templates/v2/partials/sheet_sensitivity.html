@@ -1,0 +1,71 @@
+{#
+  UI-3B — Workbook V2 Sensitivity sheet partial.
+
+  The sensitivity runner: user picks a driver and the 5-point range is
+  executed via the canonical engine (run_project() for each point).
+  Results are returned in sheet_sensitivity_results.html.
+
+  Context variables:
+    project_code   str
+    scenarios      list[ScenarioRecord]
+    active_scenario_id str | None
+#}
+<div id="v2-sheet-sensitivity" class="v2-sensitivity" data-sheet="sensitivity">
+
+  <div class="v2-overview-section-title" style="padding:1rem 1.5rem 0.5rem">
+    Sensitivity Analysis
+  </div>
+
+  <div class="v2-sensitivity-desc">
+    Each point is a full canonical engine run.  No approximation or interpolation.
+    Results are analytical only — not saved as scenarios.
+  </div>
+
+  {# ── Run form ──────────────────────────────────────────────────────── #}
+  <form class="v2-sensitivity-form"
+        hx-post="/v2/workbook/scenarios/sensitivity/run"
+        hx-target="#v2-sensitivity-results"
+        hx-swap="innerHTML"
+        hx-indicator="#v2-sensitivity-spinner">
+    <input type="hidden" name="project" value="{{ project_code }}">
+
+    <div class="v2-sensitivity-row">
+      <label class="v2-sensitivity-label" for="v2-sens-driver">Driver</label>
+      <select class="v2-sensitivity-select" id="v2-sens-driver" name="driver" required>
+        <option value="">— select driver —</option>
+        <option value="tariff">Tariff / Energy Price (±20%)</option>
+        <option value="capex_total">Total CAPEX (±20%)</option>
+        <option value="opex_total">Total OPEX (±20%)</option>
+        <option value="generation">Generation / P50 (±10%)</option>
+        <option value="interest_rate">Senior Interest Rate (±200 bps)</option>
+        <option value="gearing">Gearing (±10 pp)</option>
+      </select>
+    </div>
+
+    <div class="v2-sensitivity-row">
+      <label class="v2-sensitivity-label" for="v2-sens-scenario">Base scenario</label>
+      <select class="v2-sensitivity-select" id="v2-sens-scenario" name="scenario_id">
+        <option value="">Base Case (default)</option>
+        {% for sc in scenarios %}
+        {% if not sc.is_base_case %}
+        <option value="{{ sc.scenario_id }}"
+                {% if sc.scenario_id == active_scenario_id %}selected{% endif %}>
+          {{ sc.scenario_name }}
+        </option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </div>
+
+    <button class="v2-scenario-create-btn" type="submit">Run Sensitivity (5 points)</button>
+    <span id="v2-sensitivity-spinner" class="v2-sensitivity-spinner htmx-indicator">Running…</span>
+  </form>
+
+  {# ── Results placeholder ───────────────────────────────────────────── #}
+  <div id="v2-sensitivity-results" class="v2-sensitivity-results">
+    <div class="v2-sensitivity-empty">
+      Select a driver above and click Run Sensitivity to see results.
+    </div>
+  </div>
+
+</div>{# v2-sheet-sensitivity #}

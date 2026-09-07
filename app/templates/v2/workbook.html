@@ -54,6 +54,9 @@
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
   <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-scenarios"      id="tab-scenarios">Scenarios</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-compare"        id="tab-compare">Compare</button>
+    <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-sensitivity"    id="tab-sensitivity">Sensitivity</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-inputs"          id="tab-inputs">Inputs</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-revenue"         id="tab-revenue">Revenue</button>
@@ -79,6 +82,30 @@
     <div class="v2-sheet-panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
       <div class="v2-sheet-body">
         {% include "partials/sheet_overview.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-scenarios" aria-labelledby="tab-scenarios" hidden>
+      <div class="v2-sheet-body">
+        {% with active_scenario_id=active_scenario_id %}
+          {% include "partials/sheet_scenarios.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-compare" aria-labelledby="tab-compare" hidden>
+      <div class="v2-sheet-body">
+        {% with all_scenarios=scenarios, selected_scenarios=[], selected_ids=[], projections=[], compare_rows=[] %}
+          {% include "partials/sheet_compare.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-sensitivity" aria-labelledby="tab-sensitivity" hidden>
+      <div class="v2-sheet-body">
+        {% with active_scenario_id=active_scenario_id %}
+          {% include "partials/sheet_sensitivity.html" %}
+        {% endwith %}
       </div>
     </div>
 

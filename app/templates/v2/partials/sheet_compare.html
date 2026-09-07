@@ -1,0 +1,113 @@
+{#
+  UI-3B — Workbook V2 Compare sheet partial.
+
+  Displays a KPI comparison matrix across 2–3 scenarios.
+  All displayed values are sourced exclusively from authoritative RuntimeResult
+  kpis dicts persisted against each scenario.  Deltas are presentation
+  arithmetic between already-authoritative scalars.
+
+  Context variables:
+    project_code       str
+    all_scenarios      list[ScenarioRecord]
+    selected_scenarios list[ScenarioRecord]
+    selected_ids       list[str]
+    projections        list[ScenarioProjection]
+    compare_rows       list[ScenarioKpiRow]
+    request            Request
+#}
+<div id="v2-sheet-compare" class="v2-compare" data-sheet="compare">
+
+  <div class="v2-overview-section-title" style="padding:1rem 1.5rem 0.5rem">
+    Scenario Compare
+  </div>
+
+  {# ── Scenario picker ────────────────────────────────────────────────── #}
+  <form class="v2-compare-picker"
+        hx-get="/v2/workbook/scenarios/compare"
+        hx-target="#v2-sheet-compare"
+        hx-swap="outerHTML">
+    <input type="hidden" name="project" value="{{ project_code }}">
+    <label class="v2-compare-picker-label">Select up to 3 scenarios:</label>
+    {% for sc in all_scenarios %}
+    <label class="v2-compare-check">
+      <input type="checkbox" name="{{ 's1' if loop.index == 1 else ('s2' if loop.index == 2 else 's3') }}"
+             value="{{ sc.scenario_id }}"
+             {% if sc.scenario_id in selected_ids %}checked{% endif %}>
+      {{ sc.scenario_name }}{% if sc.is_base_case %} (Base){% endif %}
+    </label>
+    {% endfor %}
+    <button class="v2-scenario-create-btn" type="submit">Compare</button>
+  </form>
+
+  {# Picker does not support more than 3 cleanly via checkboxes; use hidden inputs for s1/s2/s3 #}
+  {# For MVP: first 3 checked become s1, s2, s3 (controlled by route) #}
+
+  {% if not selected_scenarios %}
+  <div class="v2-compare-empty">
+    Select 2 or 3 scenarios above to compare their authoritative KPI outputs.
+  </div>
+  {% elif selected_scenarios | length < 2 %}
+  <div class="v2-compare-empty">
+    Please select at least 2 scenarios to compare.
+  </div>
+  {% else %}
+
+  {# ── Scenario header row ───────────────────────────────────────────── #}
+  <div class="v2-compare-table-wrap">
+    <table class="v2-compare-table">
+      <thead>
+        <tr>
+          <th class="v2-compare-kpi-col">Metric</th>
+          {% for proj in projections %}
+          <th class="v2-compare-sc-col {% if loop.index == 1 %}v2-compare-base-col{% endif %}">
+            {{ proj.scenario_name }}
+            <div class="v2-compare-sc-state
+                        {% if proj.state == 'CLEAN' %}v2-compare-state-clean
+                        {% elif proj.state == 'STALE' %}v2-compare-state-stale
+                        {% else %}v2-compare-state-notrun{% endif %}">
+              {{ proj.state | replace("NOT_RUN", "Not Run") | replace("_", " ") }}
+            </div>
+            {% if proj.ran_at %}
+            <div class="v2-compare-sc-ts">{{ proj.ran_at }}</div>
+            {% endif %}
+          </th>
+          {% endfor %}
+          {% if projections | length >= 2 %}
+          <th class="v2-compare-delta-col" title="Delta vs first scenario">Δ vs {{ projections[0].scenario_name }}</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in compare_rows %}
+        <tr class="v2-compare-kpi-row">
+          <td class="v2-compare-kpi-label">{{ row.label }}</td>
+          {% for val in row.values %}
+          <td class="v2-compare-kpi-val {% if loop.index == 1 %}v2-compare-base-val{% endif %}
+                     {% if val == '—' %}v2-kpi-value--na{% endif %}">
+            {{ val }}
+          </td>
+          {% endfor %}
+          {% if row.deltas | length >= 2 %}
+          <td class="v2-compare-kpi-delta
+                     {% if row.deltas[-1].startswith('+') %}v2-delta-pos
+                     {% elif row.deltas[-1].startswith('-') %}v2-delta-neg
+                     {% else %}v2-delta-neutral{% endif %}">
+            {{ row.deltas[-1] }}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="v2-compare-footer">
+    <span class="v2-compare-authority-note">
+      All values are authoritative engine outputs.
+      Δ columns are display arithmetic between already-authoritative scalars.
+    </span>
+  </div>
+
+  {% endif %}{# selected_scenarios #}
+
+</div>{# v2-sheet-compare #}
