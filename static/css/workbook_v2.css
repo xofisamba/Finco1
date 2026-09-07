@@ -1256,3 +1256,151 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
 [data-fc-cell].fc-selected-cell:not(.fc-active-cell) {
   background: rgba(37, 99, 235, 0.06);
 }
+
+/* ── UI-3A Overview sheet ─────────────────────────────────────── */
+.v2-overview {
+  padding: 0.75rem 1rem;
+  font-size: 0.84rem;
+  max-width: 1100px;
+}
+
+/* ── Section wrapper ─────────────────────────────────────────── */
+.v2-overview-section {
+  margin-bottom: 1rem;
+}
+.v2-overview-section-title {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.2rem;
+  margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+/* ── KPI strip ───────────────────────────────────────────────── */
+.v2-overview-kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+.v2-kpi-tile--stale {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+.v2-kpi-tile--unavail {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  opacity: 0.65;
+}
+.v2-kpi-value--na {
+  color: #9ca3af;
+  font-weight: 400;
+}
+
+/* ── Two-column body ─────────────────────────────────────────── */
+.v2-overview-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 640px) {
+  .v2-overview-body { grid-template-columns: 1fr; }
+}
+
+/* ── Summary table (project context + decision status) ────────── */
+.v2-overview-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.v2-overview-summary-table tr:nth-child(even) td { background: #fafafa; }
+.v2-ov-sum-label {
+  color: #6b7280;
+  width: 40%;
+  padding: 0.15rem 0.4rem 0.15rem 0;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+.v2-ov-sum-value {
+  color: #111827;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0;
+}
+.v2-ov-timestamp { font-size: 0.78rem; color: #374151; }
+.v2-ov-mono      { font-family: monospace; font-size: 0.75rem; color: #374151; }
+
+/* ── Navigation links ────────────────────────────────────────── */
+.v2-overview-nav-links { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.v2-overview-nav-link  {
+  font-size: 0.75rem; color: #1d4ed8;
+  text-decoration: none;
+}
+.v2-overview-nav-link:hover { text-decoration: underline; }
+.v2-overview-section-link { font-weight: 400; }
+
+/* ── Charts ──────────────────────────────────────────────────── */
+.v2-overview-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+@media (max-width: 768px) {
+  .v2-overview-charts { grid-template-columns: 1fr; }
+}
+.v2-overview-chart-section { margin-bottom: 0; }
+.v2-overview-chart {
+  min-height: 120px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 3px;
+  padding: 0.4rem;
+  overflow-x: auto;
+}
+
+/* ── Stale banner ────────────────────────────────────────────── */
+.v2-overview-stale-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 3px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  color: #92400e;
+  margin-bottom: 0.75rem;
+}
+.v2-overview-stale-icon { font-size: 0.9rem; }
+
+/* ── No-run empty state ──────────────────────────────────────── */
+.v2-overview-no-run {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 1px dashed #d1d5db;
+  border-radius: 4px;
+  background: #fafafa;
+}
+.v2-overview-no-run-inner { text-align: center; color: #6b7280; }
+.v2-overview-no-run-title { font-weight: 600; margin: 0 0 0.3rem; }
+.v2-overview-no-run-sub   { margin: 0; font-size: 0.82rem; }
+
+/* ── Footer ──────────────────────────────────────────────────── */
+.v2-overview-footer {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  border-top: 1px solid #f3f4f6;
+  padding-top: 0.4rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+.v2-overview-footer-label { font-weight: 500; }
+.v2-overview-footer-value { font-variant-numeric: tabular-nums; color: #6b7280; }
+.v2-overview-footer-stale { color: #b45309; }

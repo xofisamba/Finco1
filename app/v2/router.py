@@ -907,6 +907,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context.update(_build_debt_ctx(pis, ws, projection=_projection))
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
     context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
+    from app.v2.overview_projection import build_overview_projection
+    context["overview"] = build_overview_projection(_rr, ws.dirty, pis)
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
