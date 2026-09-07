@@ -213,13 +213,29 @@
         </div>
       </div>
 
-      <a href="/scenarios" class="ps-workflow-item ps-workflow-item--l1 ps-workflow-item--link">
+      {# Correction A: Scenarios stays inside the canonical workspace
+         via switchTab('scenario') — does not leave the project workspace.
+         The /scenarios route remains available as a legacy deep-link. #}
+      <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+              data-workflow-area="scenarios"
+              onclick="switchTab('scenario'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active');">
         Scenarios
-      </a>
+      </button>
 
-      <a href="/download" class="ps-workflow-item ps-workflow-item--l1 ps-workflow-item--link">
-        Export / Audit
-      </a>
+      {# Correction A: Export / Audit is a collapsible group targeting existing
+         workspace panels — does NOT use href="/download" (an action endpoint). #}
+      <div class="ps-workflow-group" data-workflow-area="export-audit">
+        <button type="button" class="ps-workflow-item ps-workflow-item--l1"
+                data-workflow-area="export-audit"
+                onclick="switchTab('downloads'); document.querySelectorAll('.ps-workflow-item--l1').forEach(function(b){b.classList.remove('ps-workflow-item--active');}); this.classList.add('ps-workflow-item--active'); this.closest('.ps-workflow-group').classList.toggle('ps-workflow-group--open');">
+          Export / Audit
+          <span class="ps-workflow-chevron" aria-hidden="true">›</span>
+        </button>
+        <div class="ps-workflow-sub">
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('downloads');">Downloads</button>
+          <button type="button" class="ps-workflow-item ps-workflow-item--l2" onclick="switchTab('audit');">Audit / Reference</button>
+        </div>
+      </div>
     </nav>
 
     <div class="ps-section">

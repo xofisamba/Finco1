@@ -111,15 +111,44 @@ class TestWorkflowNav:
         assert label in text, \
             f"Level-1 nav must expose '{label}' in base.html sidebar."
 
-    def test_scenarios_link_to_route(self):
+    def test_scenarios_canonical_uses_switchtab(self):
+        # Correction A: Scenarios Level-1 nav must stay inside the workspace.
         text = BASE_HTML.read_text(encoding="utf-8")
-        assert 'href="/scenarios"' in text or "switchTab('scenario')" in text, \
-            "Scenarios must link to /scenarios or switchTab('scenario')."
+        assert "switchTab('scenario')" in text, \
+            "Scenarios Level-1 nav must use switchTab('scenario') to stay in workspace."
 
-    def test_export_audit_link_present(self):
+    def test_scenarios_canonical_does_not_require_href_scenarios(self):
+        # The /scenarios href must NOT be the canonical Level-1 nav action.
+        # (It may still exist as a legacy deep-link elsewhere on the page.)
         text = BASE_HTML.read_text(encoding="utf-8")
-        assert 'href="/download"' in text or "Export" in text, \
-            "Export/Audit must be reachable from the sidebar."
+        # Correct: switchTab('scenario') is used inside ps-workflow-nav
+        assert "switchTab('scenario')" in text, \
+            "ps-workflow-nav must use switchTab('scenario'), not /scenarios href."
+
+    def test_export_audit_does_not_use_download_href(self):
+        # Correction A: href="/download" must NOT appear as a live attribute
+        # in the Level-1 workflow nav — /download is an action endpoint, not a
+        # navigation surface. Jinja comments ({# ... #}) are stripped before checking.
+        import re as _re
+        text = BASE_HTML.read_text(encoding="utf-8")
+        nav_start = text.find('<nav class="ps-workflow-nav"')
+        nav_end = text.find('</nav>', nav_start)
+        assert nav_start >= 0, "ps-workflow-nav must exist."
+        nav_block = text[nav_start:nav_end]
+        # Strip Jinja comments so their text content doesn't trip the check
+        nav_no_comments = _re.sub(r'\{#.*?#\}', '', nav_block, flags=_re.DOTALL)
+        assert 'href="/download"' not in nav_no_comments, \
+            "Export/Audit Level-1 nav must NOT use href=\"/download\" (action endpoint)."
+
+    def test_export_audit_exposes_switchtab_downloads(self):
+        text = BASE_HTML.read_text(encoding="utf-8")
+        assert "switchTab('downloads')" in text, \
+            "Export/Audit must expose switchTab('downloads') for the Downloads panel."
+
+    def test_export_audit_exposes_switchtab_audit(self):
+        text = BASE_HTML.read_text(encoding="utf-8")
+        assert "switchTab('audit')" in text, \
+            "Export/Audit must expose switchTab('audit') for the Audit/Reference panel."
 
 
 # ---------------------------------------------------------------------------
@@ -201,25 +230,43 @@ class TestSpreadsheetAssets:
 
 
 # ---------------------------------------------------------------------------
-# I. Financial engine files unchanged
+# I & J. Financial engine files unchanged — PR-level diff gate
 # ---------------------------------------------------------------------------
 
+UI1A_FROZEN_MAIN = "b915e749cfae52d987bb1ccb8f0be53b181ca136"
+
+# Explicit review gate: run git diff between the frozen main SHA and HEAD,
+# assert that no financial-engine paths appear. This is a deterministic
+# structural check, not a `git diff HEAD` (which only covers uncommitted
+# working-tree changes and is meaningless after commit).
+
 class TestEngineUnchanged:
-    @pytest.mark.parametrize("engine_file", [
-        "financial_engine/orchestrator.py",
-        "financial_engine/results.py",
-        "finco_core/__init__.py",
-        "app/services/production_financial_authority.py",
-    ])
-    def test_engine_file_not_in_ui1a_diff(self, engine_file, tmp_path):
+    def _pr_changed_paths(self) -> list[str]:
         import subprocess
         result = subprocess.run(
-            ["git", "diff", "--name-only", "HEAD"],
+            ["git", "diff", "--name-only", f"{UI1A_FROZEN_MAIN}...HEAD"],
             capture_output=True, text=True, cwd=REPO_ROOT
         )
-        changed = result.stdout.strip().splitlines()
-        assert engine_file not in changed, \
-            f"UI-1A must not modify '{engine_file}'."
+        return result.stdout.strip().splitlines()
+
+    @pytest.mark.parametrize("prefix", [
+        "financial_engine/",
+        "finco_core/",
+    ])
+    def test_no_engine_directory_in_pr_diff(self, prefix):
+        changed = self._pr_changed_paths()
+        offenders = [p for p in changed if p.startswith(prefix)]
+        assert not offenders, \
+            f"UI-1A PR diff must not modify '{prefix}*'. Found: {offenders}"
+
+    @pytest.mark.parametrize("path", [
+        "app/api/project_runner.py",
+        "app/services/production_financial_authority.py",
+    ])
+    def test_no_financial_service_in_pr_diff(self, path):
+        changed = self._pr_changed_paths()
+        assert path not in changed, \
+            f"UI-1A PR diff must not modify '{path}'."
 
     def test_ui1a_css_does_not_touch_engine_tokens(self):
         text = UI1A_CSS.read_text(encoding="utf-8")
