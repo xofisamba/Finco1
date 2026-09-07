@@ -512,51 +512,89 @@ class TestCellNavigationLegacyIntact:
 # ---------------------------------------------------------------------------
 
 class TestActiveCellVisualRealBox:
-    """Prove that the active-cell CSS for V2 value cells targets a real
-    layout box (form or value span), not the display:contents wrapper.
+    """STATIC / STRUCTURAL TESTS.
+
+    Correction A.1: prove that the active-cell CSS for V2 value cells
+    targets .v2-field-input (the real native-control layout box), NOT
+    .v2-field-form (which is display:contents and has no layout box).
+
+    Both .v2-fc-value-cell and .v2-field-form use display:contents and
+    therefore cannot paint box-shadow.  The correct painted target is
+    .v2-field-input (INPUT/SELECT/TEXTAREA) for editable cells, and
+    .v2-field-value (span, a real box) for read-only cells.
     """
 
     def _css(self) -> str:
         return (REPO_ROOT / "static" / "css" / "workbook_v2.css").read_text(encoding="utf-8")
 
-    def test_value_cell_active_paints_on_field_form(self):
-        css = self._css()
-        assert ".v2-fc-value-cell.fc-active-cell .v2-field-form" in css, \
-            "workbook_v2.css must paint active border on .v2-field-form (real box) for value cells."
-
-    def test_value_cell_active_paints_on_field_value(self):
-        css = self._css()
-        assert ".v2-fc-value-cell.fc-active-cell .v2-field-value" in css, \
-            "workbook_v2.css must paint active border on .v2-field-value (real box) for read-only rows."
-
-    def test_value_cell_wrapper_itself_clears_boxshadow(self):
-        css = self._css()
-        # The wrapper overrides the generic rule with box-shadow: none
-        assert ".v2-fc-value-cell.fc-active-cell" in css, \
-            "workbook_v2.css must have .v2-fc-value-cell.fc-active-cell rule."
-        # The generic rule box-shadow must be overridden (none) for the wrapper
-        block_start = css.find(".v2-fc-value-cell.fc-active-cell {")
-        block_end = css.find("}", block_start)
-        if block_start != -1:
-            block = css[block_start:block_end]
-            assert "none" in block, \
-                ".v2-fc-value-cell.fc-active-cell must set box-shadow: none on the wrapper itself."
-
-    def test_selected_cell_paints_on_real_descendant(self):
-        css = self._css()
-        assert ".v2-fc-value-cell.fc-selected-cell" in css, \
-            "workbook_v2.css must handle selected state for value cells."
-        assert ".v2-field-form" in css or ".v2-field-value" in css, \
-            "Selected state must target a real form/value descendant."
-
+    # ── 1. .v2-fc-value-cell remains display:contents ──────────────────
     def test_value_cell_display_contents_preserved(self):
+        """STATIC: .v2-fc-value-cell must keep display:contents."""
         css = self._css()
         assert "display: contents" in css, \
             "display:contents must be preserved on .v2-fc-value-cell to maintain row layout."
 
-    def test_label_cell_still_receives_direct_box_shadow(self):
+    # ── 2. .v2-field-form remains display:contents ──────────────────────
+    def test_field_form_display_contents_preserved(self):
+        """STATIC: .v2-field-form must keep display:contents (pre-existing contract)."""
         css = self._css()
-        # Label span is a real box — its fc-active-cell rule should be direct
+        # The rule exists; confirm display:contents appears near .v2-field-form
+        form_idx = css.find(".v2-field-form")
+        assert form_idx != -1, ".v2-field-form rule must exist in workbook_v2.css."
+        block_end = css.find("}", form_idx)
+        block = css[form_idx:block_end]
+        assert "display: contents" in block or "display:contents" in block, \
+            ".v2-field-form must remain display:contents."
+
+    # ── 3. .v2-field-form is NOT the sole painted target for active state ─
+    def test_field_form_is_not_active_painted_target(self):
+        """STATIC: .v2-field-form must NOT appear as active-cell paint target."""
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-active-cell .v2-field-form" not in css, \
+            ("workbook_v2.css must NOT target .v2-field-form for active-cell paint — "
+             ".v2-field-form is display:contents and has no layout box.")
+
+    # ── 4. .v2-field-input IS the active editable painted target ──────────
+    def test_value_cell_active_paints_on_field_input(self):
+        """STATIC: active-cell border must paint on .v2-field-input (real INPUT/SELECT box)."""
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-active-cell .v2-field-input" in css, \
+            ("workbook_v2.css must paint active border on .v2-field-input "
+             "(real layout box — INPUT/SELECT/TEXTAREA) for editable value cells.")
+
+    # ── 5. .v2-field-input IS the selected editable painted target ────────
+    def test_value_cell_selected_paints_on_field_input(self):
+        """STATIC: selected-cell tint must target .v2-field-input."""
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-selected-cell" in css, \
+            "workbook_v2.css must handle selected state for value cells."
+        assert ".v2-fc-value-cell.fc-selected-cell:not(.fc-active-cell) .v2-field-input" in css, \
+            ("workbook_v2.css selected-cell rule must target .v2-field-input, "
+             "not .v2-field-form.")
+
+    # ── 6. .v2-field-value IS the read-only painted target ───────────────
+    def test_value_cell_active_paints_on_field_value(self):
+        """STATIC: active-cell border must also paint on .v2-field-value (read-only span)."""
+        css = self._css()
+        assert ".v2-fc-value-cell.fc-active-cell .v2-field-value" in css, \
+            "workbook_v2.css must paint active border on .v2-field-value for read-only rows."
+
+    # ── 7. Wrapper itself overrides box-shadow to none ───────────────────
+    def test_value_cell_wrapper_itself_clears_boxshadow(self):
+        """STATIC: .v2-fc-value-cell.fc-active-cell must set box-shadow:none on itself."""
+        css = self._css()
+        block_start = css.find(".v2-fc-value-cell.fc-active-cell {")
+        assert block_start != -1, \
+            "workbook_v2.css must have a .v2-fc-value-cell.fc-active-cell { ... } block."
+        block_end = css.find("}", block_start)
+        block = css[block_start:block_end]
+        assert "none" in block, \
+            ".v2-fc-value-cell.fc-active-cell must set box-shadow: none on the wrapper."
+
+    # ── 8. Generic label-cell rule still exists ───────────────────────────
+    def test_label_cell_still_receives_direct_box_shadow(self):
+        """STATIC: generic [data-fc-cell].fc-active-cell rule must exist for label cells."""
+        css = self._css()
         assert "[data-fc-cell].fc-active-cell" in css, \
             "Generic [data-fc-cell].fc-active-cell rule must still exist for label cells."
 

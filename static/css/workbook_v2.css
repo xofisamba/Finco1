@@ -1133,17 +1133,26 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   display: contents;
 }
 
-/* Active value cell: paint inset border on the real child box */
+/* Active value cell: paint inset border on the actual native control.
+   Both .v2-fc-value-cell and .v2-field-form use display:contents and
+   therefore have no principal layout box to paint box-shadow on.
+   .v2-field-input (INPUT/SELECT/TEXTAREA) and .v2-field-value (span)
+   ARE real layout boxes — paint on those. */
 .v2-fc-value-cell.fc-active-cell {
   box-shadow: none; /* no own layout box — override the generic rule */
 }
-.v2-fc-value-cell.fc-active-cell .v2-field-form,
+.v2-fc-value-cell.fc-active-cell .v2-field-input {
+  box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);
+  /* preserve existing focus-border override so native and active-cell
+     borders don't stack to 4 px when input is focused */
+  outline: none;
+}
 .v2-fc-value-cell.fc-active-cell .v2-field-value {
   box-shadow: inset 0 0 0 2px var(--fo-focus, #2563eb);
 }
 
-/* Selected value cell: tint on real child box */
-.v2-fc-value-cell.fc-selected-cell:not(.fc-active-cell) .v2-field-form,
+/* Selected value cell: tint on native control and read-only span */
+.v2-fc-value-cell.fc-selected-cell:not(.fc-active-cell) .v2-field-input,
 .v2-fc-value-cell.fc-selected-cell:not(.fc-active-cell) .v2-field-value {
   background: rgba(37, 99, 235, 0.06);
 }
