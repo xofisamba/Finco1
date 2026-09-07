@@ -912,14 +912,47 @@ class TestUI2BBrowser:
         assert count >= 2, f"At least 2 resize handles must be present; found {count}."
 
     def test_undo_manager_record_and_undo(self, ui2b_page):
-        """BROWSER: FcUndoManager must record a programmatic save and support undo."""
+        """BROWSER: FcUndoManager must record a user edit and undo it back to the committed value."""
         page, _ = ui2b_page
-        # Manually record an entry and call undo — verify the stack state
-        page.evaluate("""
-            window.FcUndoManager.record('capex', 'capex.custom-C01.label', 'Solar Panels', 'PV Array');
-        """)
-        stack_len = page.evaluate("window.FcUndoManager.undo === 'function' || true")
-        assert stack_len, "FcUndoManager.undo must be callable."
+        # A. Confirm starting value is "Solar Panels"
+        initial = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert initial == "Solar Panels", f"Expected 'Solar Panels', got '{initial}'."
+
+        # B. Focus the input
+        page.click("#inp-C01-label")
+
+        # C. Type multi-character replacement (NOT a single assignment)
+        page.keyboard.press("Control+a")
+        page.keyboard.type("PV Array")
+
+        # D. Execute the mocked save (requestSubmit fires htmx:afterRequest mock)
+        page.evaluate("document.getElementById('form-C01-label').requestSubmit()")
+        page.wait_for_timeout(50)  # let the mock 10ms timer fire
+
+        # Confirm the value changed
+        after_type = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert after_type == "PV Array", f"Expected 'PV Array' after typing, got '{after_type}'."
+
+        # E. Move focus out of the input
+        page.click("#outside-input")
+
+        # F. Execute undo
+        page.evaluate("window.FcUndoManager.undo()")
+        page.wait_for_timeout(50)  # let mock htmx fire
+
+        # H. Assert input value is EXACTLY "Solar Panels"
+        after_undo = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert after_undo == "Solar Panels", \
+            f"After undo, input must be 'Solar Panels', got '{after_undo}'."
+
+        # I. Execute redo
+        page.evaluate("window.FcUndoManager.redo()")
+        page.wait_for_timeout(50)
+
+        # J. Assert input value is EXACTLY the typed final value
+        after_redo = page.evaluate("document.getElementById('inp-C01-label').value")
+        assert after_redo == "PV Array", \
+            f"After redo, input must be 'PV Array', got '{after_redo}'."
 
     def test_type_to_edit_resolves_input_in_wrapper(self, ui2b_page):
         """BROWSER: type-to-edit must resolve the INPUT inside a wrapper-span cell."""
@@ -938,3 +971,80 @@ class TestUI2BBrowser:
             inp !== null
         """)
         assert has_input, "type-to-edit resolver must find INPUT inside wrapper-span cell."
+
+    def test_opex_active_visual_wrapper_class(self, ui2b_page):
+        """BROWSER: Clicking an OPEX custom input must set fc-active-cell on its wrapper."""
+        page, _ = ui2b_page
+        page.click("#inp-O01-label")
+        has_class = page.evaluate("""
+            var inp = document.getElementById('inp-O01-label');
+            var wrap = inp && inp.closest('[data-fc-cell]');
+            wrap && wrap.classList.contains('fc-active-cell')
+        """)
+        assert has_class, "OPEX custom input's wrapper span must receive fc-active-cell class on click."
+
+    def test_opex_active_visual_input_ring(self, ui2b_page):
+        """BROWSER: Active OPEX input must receive the active ring via computed style."""
+        page, _ = ui2b_page
+        page.click("#inp-O01-label")
+        box_shadow = page.evaluate("""
+            var inp = document.getElementById('inp-O01-label');
+            window.getComputedStyle(inp).boxShadow
+        """)
+        assert box_shadow and box_shadow != "none", \
+            f"Active OPEX input must have box-shadow ring; got '{box_shadow}'."
+
+    def _drag_resize_handle(self, page, handle_selector, delta_x):
+        """Helper: dispatch drag events on a resize handle using JS to bypass layout quirks."""
+        page.evaluate(f"""
+            (function() {{
+                var h = document.querySelector('{handle_selector}');
+                if (!h) return;
+                var r = h.getBoundingClientRect();
+                var sx = r.left + r.width / 2;
+                var sy = r.top + r.height / 2;
+                h.dispatchEvent(new MouseEvent('mousedown', {{
+                    bubbles: true, cancelable: true, clientX: sx, clientY: sy
+                }}));
+                document.dispatchEvent(new MouseEvent('mousemove', {{
+                    bubbles: true, cancelable: true, clientX: sx + {delta_x}, clientY: sy
+                }}));
+                document.dispatchEvent(new MouseEvent('mouseup', {{
+                    bubbles: true, cancelable: true
+                }}));
+            }})();
+        """)
+
+    def test_capex_column_resize_increases_width(self, ui2b_page):
+        """BROWSER: Dragging CAPEX desc resize handle +80px must increase header column width."""
+        page, _ = ui2b_page
+        hdr = page.locator("#capex-hdr-desc")
+        initial_w = hdr.bounding_box()["width"]
+
+        self._drag_resize_handle(page, "#capex-hdr-desc .fc-col-resize-handle", 80)
+
+        final_w = hdr.bounding_box()["width"]
+        assert final_w > initial_w + 50, \
+            f"Desc column must grow after drag; initial={initial_w:.0f} final={final_w:.0f}."
+
+    def test_capex_resize_propagates_to_data_row(self, ui2b_page):
+        """BROWSER: Resized CAPEX desc column must propagate to the data row same track."""
+        page, _ = ui2b_page
+        data_col = page.locator("#capex-data-row-1 .v2-capex-col-desc")
+        initial_w = data_col.bounding_box()["width"]
+
+        self._drag_resize_handle(page, "#capex-hdr-desc .fc-col-resize-handle", 80)
+
+        final_w = data_col.bounding_box()["width"]
+        assert final_w > initial_w + 50, \
+            f"Data row desc column must also grow; initial={initial_w:.0f} final={final_w:.0f}."
+
+    def test_capex_resize_respects_min_width(self, ui2b_page):
+        """BROWSER: Dragging CAPEX resize handle far left must be capped at MIN_WIDTH (60px)."""
+        page, _ = ui2b_page
+        self._drag_resize_handle(page, "#capex-hdr-desc .fc-col-resize-handle", -500)
+
+        hdr = page.locator("#capex-hdr-desc")
+        final_w = hdr.bounding_box()["width"]
+        assert final_w >= 58, \
+            f"Column must not shrink below MIN_WIDTH (60px); got {final_w:.0f}px."

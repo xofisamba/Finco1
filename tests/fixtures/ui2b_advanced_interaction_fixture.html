@@ -11,19 +11,38 @@
     [data-fc-cell] { outline: 1px solid #ccc; }
     [data-fc-cell].fc-active-cell { outline: 2px solid blue; }
     [data-fc-cell].fc-selected-cell { background: rgba(0,0,200,0.08); }
+    /* Active ring on v2-field-input inside display:contents wrappers */
+    .v2-fc-cell-wrap.fc-active-cell .v2-field-input,
+    [data-fc-cell].fc-active-cell .v2-field-input {
+      box-shadow: inset 0 0 0 2px #2563eb; outline: none;
+    }
     .v2-field-input { width: 80px; }
-    .col-header { display: flex; gap: 4px; padding: 4px 0; font-weight: bold; }
-    .col-header span { position: relative; min-width: 80px; }
+    .v2-field-row { display: flex; gap: 4px; }
+    /* Value bar */
+    #fc-value-bar { display: flex; gap: 8px; padding: 4px; background: #f1f5f9; }
+    /* Standard V2 wrapper cell (non-CAPEX) */
+    .v2-fc-value-cell { display: contents; }
+
+    /* ── CAPEX grid with resizable CSS-grid columns ── */
+    .v2-capex-col-header, .v2-capex-group-row {
+      display: grid;
+      grid-template-columns: var(--fc-capex-desc-width, 140px) var(--fc-capex-amount-width, 100px);
+      align-items: center; gap: 4px; padding: 4px; font-weight: bold;
+    }
+    .v2-capex-col-header span { position: relative; }
+    .v2-opex-col-header span { position: relative; }
     .fc-col-resize-handle {
       position: absolute; right: 0; top: 0; bottom: 0; width: 4px;
       cursor: col-resize; background: transparent;
     }
     .fc-col-resize-handle:hover { background: blue; opacity: 0.3; }
-    /* Value bar */
-    #fc-value-bar { display: flex; gap: 8px; padding: 4px; background: #f1f5f9; }
-    /* Standard V2 wrapper cell (non-CAPEX) */
-    .v2-fc-value-cell { display: contents; }
-    .v2-field-row { display: flex; gap: 4px; }
+
+    /* ── OPEX grid with resizable CSS-grid columns ── */
+    .v2-opex-col-header, .v2-opex-group-row {
+      display: grid;
+      grid-template-columns: var(--fc-opex-desc-width, 140px) var(--fc-opex-y1-width, 100px);
+      align-items: center; gap: 4px; padding: 4px; font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -35,21 +54,20 @@
     <span id="fc-value-bar-value"></span>
   </div>
 
-  <!-- Column resizer header -->
-  <div class="col-header" data-fc-grid="capex">
-    <span class="v2-capex-col-desc">Description
-      <span class="fc-col-resize-handle" data-col="desc"></span>
-    </span>
-    <span class="v2-capex-col-amount">kEUR
-      <span class="fc-col-resize-handle" data-col="amount"></span>
-    </span>
-  </div>
-
   <!--
     Grid 1: CAPEX-style — wrapper spans containing INPUT elements.
-    This is the corrected cell/editor contract for UI-2B-CorrA.
+    Column header with resize handles; grid-template-columns consumes CSS vars.
   -->
   <div data-fc-grid="capex">
+    <!-- Column header with resize handles -->
+    <div class="v2-capex-col-header">
+      <span class="v2-capex-col-desc" id="capex-hdr-desc">Description
+        <span class="fc-col-resize-handle" data-col="desc"></span>
+      </span>
+      <span class="v2-capex-col-amount" id="capex-hdr-amount">kEUR
+        <span class="fc-col-resize-handle" data-col="amount"></span>
+      </span>
+    </div>
 
     <!-- Standard V2 label-style cell (direct data-fc-cell with no input) -->
     <div data-fc-row>
@@ -118,6 +136,66 @@
       <span data-fc-cell data-fc-addr="capex.total" data-fc-editable="false">
         1500
       </span>
+    </div>
+
+    <!-- Data row using same grid layout for column-width consistency -->
+    <div class="v2-capex-group-row" id="capex-data-row-1" data-fc-row>
+      <span class="v2-capex-col-desc">Solar Panels (total)</span>
+      <span class="v2-capex-col-amount" id="capex-data-amount-1">1500</span>
+    </div>
+  </div>
+
+  <!--
+    Grid 3: OPEX-style — wrapper spans with v2-opex-custom-label-input class.
+    These inputs do NOT have v2-field-input class in this fixture to expose the
+    paint bug (ROOT CAUSE B). Production fix adds v2-field-input to the class.
+  -->
+  <div data-fc-grid="opex">
+    <!-- Column header -->
+    <div class="v2-opex-col-header">
+      <span class="v2-opex-col-desc" id="opex-hdr-desc">Description
+        <span class="fc-col-resize-handle" data-col="desc"></span>
+      </span>
+      <span class="v2-opex-col-y1" id="opex-hdr-y1">Y1 kEUR
+        <span class="fc-col-resize-handle" data-col="y1"></span>
+      </span>
+    </div>
+
+    <!-- OPEX custom row: inputs use v2-opex-custom-*-input class.
+         In production (after ROOT CAUSE B fix) they also carry v2-field-input. -->
+    <div data-fc-row>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-O01.label"
+            data-fc-editable="true" data-fc-kind="text">
+        <form class="v2-opex-custom-row-form" id="form-O01-label"
+              data-htmx-mock="true">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-opex-custom-label-input v2-field-input" type="text"
+                 name="label" value="Insurance"
+                 id="inp-O01-label"
+                 aria-label="Label">
+        </form>
+      </span>
+      <span class="v2-fc-cell-wrap"
+            data-fc-cell data-fc-addr="opex.custom-O01.amount"
+            data-fc-editable="true" data-fc-kind="amount">
+        <form class="v2-opex-custom-row-form" id="form-O01-amount"
+              data-htmx-mock="true">
+          <input type="hidden" name="workbook_version" value="wv-001">
+          <input type="hidden" name="content_hash" value="abc123">
+          <input class="v2-opex-custom-amount-input v2-field-input" type="number"
+                 name="amount_keur" value="200"
+                 id="inp-O01-amount"
+                 aria-label="Y1 kEUR">
+        </form>
+      </span>
+    </div>
+
+    <!-- Data row using same grid layout -->
+    <div class="v2-opex-group-row" id="opex-data-row-1" data-fc-row>
+      <span class="v2-opex-col-desc" id="opex-data-desc-1">Insurance (total)</span>
+      <span class="v2-opex-col-y1" id="opex-data-y1-1">200</span>
     </div>
   </div>
 

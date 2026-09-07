@@ -381,7 +381,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
 
 .v2-capex-col-header {
   display: grid;
-  grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+  grid-template-columns: 4rem var(--fc-capex-desc-width, 1fr) var(--fc-capex-amount-width, 7rem) 6rem 6rem;
   align-items: center;
   padding: 0.2rem 0.4rem;
   font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
@@ -401,7 +401,7 @@ details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
 
 .v2-capex-group-header {
   display: grid;
-  grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+  grid-template-columns: 4rem var(--fc-capex-desc-width, 1fr) var(--fc-capex-amount-width, 7rem) 6rem 6rem;
   align-items: center;
   cursor: pointer; list-style: none;
   font-weight: 600; font-size: 0.78rem;
@@ -516,7 +516,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 .v2-opex-kpi-value { font-weight: 600; font-variant-numeric: tabular-nums; color: #14532d; }
 
 .v2-opex-col-header {
-  display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+  display: grid; grid-template-columns: 4rem var(--fc-opex-desc-width, 1fr) var(--fc-opex-y1-width, 7rem) 5rem 7rem;
   align-items: center; padding: 0.2rem 0.4rem;
   font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
   letter-spacing: 0.06em; color: #9ca3af; border-bottom: 2px solid #e5e7eb;
@@ -530,7 +530,7 @@ details.v2-capex-group[open] > .v2-capex-group-header::before {
 .v2-opex-group { border-bottom: 1px solid #e5e7eb; }
 .v2-opex-group-contingency > summary .v2-opex-subtotal { color: #9ca3af; font-style: italic; }
 .v2-opex-group-header {
-  display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+  display: grid; grid-template-columns: 4rem var(--fc-opex-desc-width, 1fr) var(--fc-opex-y1-width, 7rem) 5rem 7rem;
   align-items: center; cursor: pointer; list-style: none;
   font-weight: 600; font-size: 0.78rem; padding: 0.35rem 0.4rem;
   background: #f9fafb; border-top: 1px solid #e5e7eb;

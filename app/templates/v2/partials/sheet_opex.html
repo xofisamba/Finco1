@@ -98,7 +98,7 @@
       <span class="v2-fc-cell-wrap"
             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
             data-fc-editable="true" data-fc-kind="text">
-        <input class="v2-opex-custom-label-input"
+        <input class="v2-opex-custom-label-input v2-field-input"
                type="text"
                name="label"
                value="{{ line.name }}"
@@ -109,7 +109,7 @@
       <span class="v2-fc-cell-wrap"
             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.amount"
             data-fc-editable="true" data-fc-kind="amount">
-        <input class="v2-opex-custom-amount-input v2-opex-amount-cell"
+        <input class="v2-opex-custom-amount-input v2-opex-amount-cell v2-field-input"
                type="number"
                name="amount_keur"
                value="{{ "%.0f"|format(line.y1_keur) }}"
@@ -120,7 +120,7 @@
       <span class="v2-fc-cell-wrap"
             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.escl"
             data-fc-editable="true" data-fc-kind="amount">
-        <input class="v2-opex-custom-escl-input"
+        <input class="v2-opex-custom-escl-input v2-field-input"
                type="number"
                name="inflation_pct"
                value="{{ "%.2f"|format(line.inflation_pct) }}"

@@ -22,21 +22,14 @@
 
   function _applyWidth(gridEl, col, width) {
     var px = width + 'px';
-    // CSS custom property (for any rule that consumes it)
+    var gridId = gridEl.dataset.fcGrid || '';
+    // Grid-specific CSS custom property consumed by grid-template-columns rules.
+    // e.g. --fc-capex-desc-width, --fc-opex-y1-width
+    if (gridId) {
+      gridEl.style.setProperty('--fc-' + gridId + '-' + col + '-width', px);
+    }
+    // Generic fallback for non-grid layouts or other consumers
     gridEl.style.setProperty('--fc-col-' + col + '-width', px);
-    // Direct style on matching column cells for immediate layout effect
-    var selector = [
-      '.v2-capex-col-' + col,
-      '.v2-opex-col-' + col,
-      '.v2-col-' + col
-    ].join(',');
-    var cols = gridEl.querySelectorAll(selector);
-    cols.forEach(function (el) {
-      el.style.width = px;
-      el.style.minWidth = px;
-      el.style.maxWidth = px;
-      el.style.flex = '0 0 ' + px;
-    });
   }
 
   function _onMouseMove(evt) {

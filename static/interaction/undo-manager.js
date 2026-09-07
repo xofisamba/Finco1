@@ -65,7 +65,7 @@
   function _apply(entry, targetValue, onSuccess, onFail) {
     var reg = _registry();
     if (!reg) { onFail && onFail(); return; }
-    var cr = reg.cellByAddr(entry.gridId, entry.addr);
+    var cr = reg.getAddr(entry.gridId, entry.addr);
     if (!cr) { onFail && onFail(); return; }
     var inp = _resolveEditor(cr.el);
     if (!inp) { onFail && onFail(); return; }
@@ -122,7 +122,12 @@
     if (!inp || !inp.closest) return;
     var cellEl = inp.closest('[data-fc-cell]');
     if (!cellEl) return;
-    inp._fcUndoOldValue = inp.value;
+    // Capture baseline only once per transaction (first keystroke).
+    // If _fcUndoOldValue is already set the user is mid-edit — do NOT
+    // overwrite it, or the committed baseline would be lost.
+    if (inp._fcUndoOldValue === undefined) {
+      inp._fcUndoOldValue = inp.value;
+    }
   }
 
   function _onAfterRequest(evt) {
