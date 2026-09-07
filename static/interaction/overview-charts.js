@@ -6,11 +6,16 @@
  * from the authoritative debt_schedule.periods payload); renders inline SVG.
  *
  * Chart types:
- *   debt-balance  — Senior balance (area) + annual DS (bar overlay)
+ *   debt-balance  — Senior balance (area) + period debt service (bar overlay)
  *   dscr          — DSCR polyline with optional target-DSCR reference line
  *
+ * Authority contract:
+ *   Period field values are used VERBATIM from the authoritative engine output.
+ *   No financial aggregation, summation, averaging, or series transformation
+ *   is performed. Only pure visual/coordinate operations are applied:
+ *   axis scaling, coordinate mapping, label thinning, toFixed() formatting.
+ *
  * No external dependencies. No financial computation.
- * Values are read verbatim from the authoritative engine output.
  */
 (function () {
   'use strict';
@@ -47,29 +52,7 @@
     });
   }
 
-  // ── Data helpers ────────────────────────────────────────────────────── //
-
-  /**
-   * Aggregate semestrial periods to annual by year string.
-   * Returns { years: string[], groups: Object[] } where each group is the
-   * last-period (for stock) or sum (for flow) of all periods in that year.
-   */
-  function toAnnual(periods) {
-    const map = new Map(); // year → { balanceLast, dsSum, dscrLast, count }
-    const yearOrder = [];
-    for (const p of periods) {
-      const yr = (p.date || '').slice(0, 4);
-      if (!yr) continue;
-      if (!map.has(yr)) { map.set(yr, { bal: null, ds: 0, dscr: null }); yearOrder.push(yr); }
-      const g = map.get(yr);
-      if (p.senior_balance_keur != null) g.bal = p.senior_balance_keur;
-      if (p.senior_ds_keur      != null) g.ds  += p.senior_ds_keur;
-      if (p.dscr                != null && p.is_operation) g.dscr = p.dscr;
-    }
-    return { years: yearOrder, groups: yearOrder.map(yr => map.get(yr)) };
-  }
-
-  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  // ── Pure visual helpers (no financial meaning) ──────────────────────── //
 
   function scaleY(v, vMin, vMax, top, bottom) {
     if (vMax === vMin) return (top + bottom) / 2;
@@ -83,79 +66,88 @@
     return t;
   }
 
-  // ── Debt Balance + DS chart ─────────────────────────────────────────── //
+  // ── Debt Balance + Debt Service chart ──────────────────────────────── //
+  //
+  // Renders each authoritative period as one visual point (balance) and one bar
+  // (debt service). No aggregation. Native debt_schedule period values used verbatim.
+  //
   function renderDebtBalance(container, periods) {
-    const { years, groups } = toAnnual(periods);
-    if (!years.length) { container.textContent = 'No debt schedule data.'; return; }
+    // Use all periods that have at least a date
+    const pts = periods.filter(p => p.date);
+    if (!pts.length) { container.textContent = 'No debt schedule data.'; return; }
 
     const W = 620, H = 160, PAD = { t: 12, r: 8, b: 28, l: 52 };
     const plotW = W - PAD.l - PAD.r;
     const plotH = H - PAD.t - PAD.b;
-    const n = years.length;
+    const n = pts.length;
 
-    const balVals = groups.map(g => g.bal ?? 0);
-    const dsVals  = groups.map(g => g.ds  ?? 0);
+    // Read authoritative values verbatim; null → 0 for visual axis scaling only
+    const balVals = pts.map(p => p.senior_balance_keur ?? 0);
+    const dsVals  = pts.map(p => p.senior_ds_keur ?? 0);
     const balMax  = Math.max(...balVals, 1);
     const dsMax   = Math.max(...dsVals, 1);
-    const scale   = Math.max(balMax, dsMax * 4);  // DS bars share axis, scaled up
+    // Shared visual axis: DS bars rendered at 25% of balance scale so they are
+    // visible alongside the taller balance area. Pure visual proportion.
+    const scale   = Math.max(balMax, dsMax * 4);
 
     const svg = svgRoot(W, H);
-    const barW = Math.max(2, (plotW / n) - 2);
+    const barW = Math.max(2, (plotW / n) - 1);
 
-    // Grid lines (3)
+    // Grid lines
     for (let i = 0; i <= 3; i++) {
       const y = PAD.t + (plotH / 3) * i;
-      const g = el('line', { x1: PAD.l, y1: y, x2: W - PAD.r, y2: y, stroke: C.gridLine, 'stroke-width': 1 });
-      svg.appendChild(g);
+      svg.appendChild(el('line', { x1: PAD.l, y1: y, x2: W - PAD.r, y2: y, stroke: C.gridLine, 'stroke-width': 1 }));
     }
 
-    // Balance area
-    const pts = groups.map((g, i) => {
+    // Balance area — each point maps directly to one authoritative period
+    const ptsCoords = pts.map((p, i) => {
       const x = PAD.l + (i / (n - 1 || 1)) * plotW;
-      const y = scaleY(g.bal ?? 0, 0, scale, PAD.t, PAD.t + plotH);
+      const y = scaleY(p.senior_balance_keur ?? 0, 0, scale, PAD.t, PAD.t + plotH);
       return `${x},${y}`;
     });
     const areaPath = [
       `M ${PAD.l},${PAD.t + plotH}`,
-      ...groups.map((g, i) => {
+      ...pts.map((p, i) => {
         const x = PAD.l + (i / (n - 1 || 1)) * plotW;
-        const y = scaleY(g.bal ?? 0, 0, scale, PAD.t, PAD.t + plotH);
+        const y = scaleY(p.senior_balance_keur ?? 0, 0, scale, PAD.t, PAD.t + plotH);
         return `L ${x},${y}`;
       }),
       `L ${W - PAD.r},${PAD.t + plotH} Z`,
     ].join(' ');
     svg.appendChild(el('path', { d: areaPath, fill: C.balanceFill, stroke: 'none' }));
-    svg.appendChild(el('polyline', { points: pts.join(' '), fill: 'none', stroke: C.balance, 'stroke-width': 1.5 }));
+    svg.appendChild(el('polyline', { points: ptsCoords.join(' '), fill: 'none', stroke: C.balance, 'stroke-width': 1.5 }));
 
-    // DS bars
-    groups.forEach((g, i) => {
-      const dsH = ((g.ds ?? 0) / scale) * plotH;
-      const x   = PAD.l + (i / (n - 1 || 1)) * plotW - barW / 2;
-      const y   = PAD.t + plotH - dsH;
-      const rect = el('rect', {
+    // Debt service bars — one bar per authoritative period
+    pts.forEach((p, i) => {
+      const dsVal = p.senior_ds_keur ?? 0;
+      const dsH   = (dsVal / scale) * plotH;
+      const x     = PAD.l + (i / (n - 1 || 1)) * plotW - barW / 2;
+      const y     = PAD.t + plotH - dsH;
+      const rect  = el('rect', {
         x, y, width: barW, height: Math.max(1, dsH),
         fill: C.ds, opacity: 0.65,
       });
-      rect.appendChild(makeTitle(`${years[i]}: DS = ${(g.ds ?? 0).toFixed(0)} kEUR`));
+      rect.appendChild(makeTitle(`${(p.date || '').slice(0, 10)}: Debt Service = ${dsVal.toFixed(0)} kEUR`));
       svg.appendChild(rect);
     });
 
-    // Balance line points with tooltips
-    groups.forEach((g, i) => {
-      const x = PAD.l + (i / (n - 1 || 1)) * plotW;
-      const y = scaleY(g.bal ?? 0, 0, scale, PAD.t, PAD.t + plotH);
-      const c = el('circle', { cx: x, cy: y, r: 2.5, fill: C.balance });
-      c.appendChild(makeTitle(`${years[i]}: Balance = ${(g.bal ?? 0).toFixed(0)} kEUR`));
+    // Balance circle per period — tooltip shows verbatim authoritative value
+    pts.forEach((p, i) => {
+      const x   = PAD.l + (i / (n - 1 || 1)) * plotW;
+      const y   = scaleY(p.senior_balance_keur ?? 0, 0, scale, PAD.t, PAD.t + plotH);
+      const c   = el('circle', { cx: x, cy: y, r: 2.5, fill: C.balance });
+      const bal = p.senior_balance_keur;
+      c.appendChild(makeTitle(`${(p.date || '').slice(0, 10)}: Balance = ${bal != null ? bal.toFixed(0) : '—'} kEUR`));
       svg.appendChild(c);
     });
 
-    // X-axis labels (every 5 years)
+    // X-axis labels — thinned for readability (purely visual, no data change)
     const step = Math.max(1, Math.floor(n / 8));
-    years.forEach((yr, i) => {
+    pts.forEach((p, i) => {
       if (i % step !== 0 && i !== n - 1) return;
       const x = PAD.l + (i / (n - 1 || 1)) * plotW;
       const t = el('text', { x, y: H - 6, 'text-anchor': 'middle', fill: C.label, 'font-size': 9 });
-      t.textContent = yr;
+      t.textContent = (p.date || '').slice(0, 7);  // YYYY-MM
       svg.appendChild(t);
     });
 
@@ -171,12 +163,16 @@
     svg.appendChild(el('rect', { x: lgx, y: lgy, width: 10, height: 4, fill: C.balanceFill, stroke: C.balance, 'stroke-width': 0.8 }));
     const lt1 = el('text', { x: lgx + 13, y: lgy + 4, fill: C.label, 'font-size': 8.5 }); lt1.textContent = 'Balance'; svg.appendChild(lt1);
     svg.appendChild(el('rect', { x: lgx + 58, y: lgy, width: 10, height: 4, fill: C.ds, opacity: 0.65 }));
-    const lt2 = el('text', { x: lgx + 71, y: lgy + 4, fill: C.label, 'font-size': 8.5 }); lt2.textContent = 'Annual DS'; svg.appendChild(lt2);
+    const lt2 = el('text', { x: lgx + 71, y: lgy + 4, fill: C.label, 'font-size': 8.5 }); lt2.textContent = 'Debt Service'; svg.appendChild(lt2);
 
     container.appendChild(svg);
   }
 
   // ── DSCR Profile chart ─────────────────────────────────────────────── //
+  //
+  // Each authoritative operation-period's dscr value maps to one visual point.
+  // No aggregation. Native values used verbatim.
+  //
   function renderDscr(container, periods, targetStr) {
     const opPeriods = periods.filter(p => p.is_operation && p.dscr != null);
     if (!opPeriods.length) { container.textContent = 'No DSCR data.'; return; }
@@ -209,7 +205,7 @@
       svg.appendChild(tl);
     }
 
-    // DSCR area fill
+    // DSCR area fill — each point is one authoritative operation period
     const ptsFill = [
       `${PAD.l},${PAD.t + plotH}`,
       ...opPeriods.map((p, i) => {
@@ -222,30 +218,30 @@
     svg.appendChild(el('polygon', { points: ptsFill, fill: '#ccfbf1', stroke: 'none', opacity: 0.7 }));
 
     // DSCR polyline
-    const pts = opPeriods.map((p, i) => {
+    const dscrPts = opPeriods.map((p, i) => {
       const x = PAD.l + (i / (n - 1 || 1)) * plotW;
       const y = scaleY(p.dscr, vMin, vMax, PAD.t, PAD.t + plotH);
       return `${x},${y}`;
     });
-    svg.appendChild(el('polyline', { points: pts.join(' '), fill: 'none', stroke: C.dscr, 'stroke-width': 1.5 }));
+    svg.appendChild(el('polyline', { points: dscrPts.join(' '), fill: 'none', stroke: C.dscr, 'stroke-width': 1.5 }));
 
-    // Point tooltips (every 4th)
+    // Point tooltips — verbatim authoritative period DSCR value shown
     opPeriods.forEach((p, i) => {
       if (i % 4 !== 0 && i !== n - 1) return;
       const x = PAD.l + (i / (n - 1 || 1)) * plotW;
       const y = scaleY(p.dscr, vMin, vMax, PAD.t, PAD.t + plotH);
       const c = el('circle', { cx: x, cy: y, r: 2.5, fill: C.dscr });
-      c.appendChild(makeTitle(`${(p.date || '').slice(0, 7)}: DSCR = ${p.dscr.toFixed(2)}x`));
+      c.appendChild(makeTitle(`${(p.date || '').slice(0, 10)}: DSCR = ${p.dscr.toFixed(2)}x`));
       svg.appendChild(c);
     });
 
-    // X-axis: operation years (by period index)
+    // X-axis labels — thinned for readability (visual only)
     const step = Math.max(1, Math.floor(n / 8));
     opPeriods.forEach((p, i) => {
       if (i % (step * 2) !== 0 && i !== n - 1) return;
       const x = PAD.l + (i / (n - 1 || 1)) * plotW;
       const t = el('text', { x, y: H - 6, 'text-anchor': 'middle', fill: C.label, 'font-size': 9 });
-      t.textContent = (p.date || '').slice(0, 4);
+      t.textContent = (p.date || '').slice(0, 7);  // YYYY-MM
       svg.appendChild(t);
     });
 

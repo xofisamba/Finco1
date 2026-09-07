@@ -211,6 +211,30 @@ class TestStructural:
         for forbidden in ["irr(", "npv(", "Math.pow", "pv("]:
             assert forbidden not in text, f"Financial formula {forbidden!r} found in charts JS"
 
+    def test_no_toannual_aggregation_in_js(self):
+        """toAnnual() and any annual financial grouping must be absent from charts JS."""
+        text = CHARTS_JS.read_text()
+        assert "function toAnnual" not in text, "toAnnual() must be removed from charts JS"
+        assert "toAnnual(" not in text, "toAnnual call must be removed from charts JS"
+        assert "g.ds +=" not in text, "Annual DS summation (g.ds +=) must not be present"
+        # No yearly map/grouping by year string
+        assert "yearOrder" not in text, "yearOrder annual grouping must not be present"
+        # Legend must not say 'Annual DS'
+        assert "Annual DS" not in text, "Legend must not refer to 'Annual DS' (aggregated label)"
+
+    def test_chart_renders_native_period_values_directly(self):
+        """Chart JS must read senior_balance_keur and senior_ds_keur directly from
+        authoritative period objects — no intermediate aggregation object."""
+        text = CHARTS_JS.read_text()
+        # Authoritative field names must appear directly in rendering code
+        assert "senior_balance_keur" in text, "senior_balance_keur must be read directly from period"
+        assert "senior_ds_keur" in text, "senior_ds_keur must be read directly from period"
+        assert "p.dscr" in text or "p.dscr " in text, "DSCR must be read directly from period p"
+        # Tooltip must include the authoritative field name directly (not via group object)
+        assert "p.senior_balance_keur" in text or "p.senior_ds_keur" in text, (
+            "Tooltips must reference authoritative period fields directly (p.senior_*)"
+        )
+
     def test_no_financial_formulas_in_template(self):
         text = OVERVIEW_TPL.read_text()
         for forbidden in ["* 100", "/ total", "+ interest", "Math.pow"]:
@@ -412,6 +436,45 @@ class TestViewModelProjection:
         })
         ov = build_overview_projection(rr, is_dirty=False, pis=self._make_pis())
         assert ov.state == RuntimeProjectionState.CLEAN
+
+    def test_chart_period_values_are_authoritative_verbatim(self):
+        """Prove that a specific period's senior_balance_keur, senior_ds_keur, and dscr
+        are embedded verbatim in chart_debt_periods — no aggregation transforms them."""
+        from app.v2.overview_projection import build_overview_projection
+        from unittest.mock import MagicMock
+        from types import MappingProxyType
+
+        periods = [
+            {"date": "2030-06-30", "is_operation": True,
+             "senior_balance_keur": 31234.56, "senior_ds_keur": 1876.44, "dscr": 1.47},
+            {"date": "2030-12-31", "is_operation": True,
+             "senior_balance_keur": 28888.88, "senior_ds_keur": 1950.12, "dscr": 1.38},
+        ]
+        rr = MagicMock()
+        rr.snapshot_id = "snap-authority"
+        rr.ran_at = "2026-09-07T18:00:00+00:00"
+        rr.runtime_summary = {}
+        rr.debt_schedule = MappingProxyType({
+            "periods": periods,
+            "summary": {"min_llcr": 1.40, "target_dscr": 1.30, "periods_in_lockup": 0},
+        })
+
+        ov = build_overview_projection(rr, False, self._make_pis())
+        assert ov.chart_debt_periods is not None
+        assert len(ov.chart_debt_periods) == 2
+        # Period 0 — all three authoritative fields must be verbatim
+        p0 = ov.chart_debt_periods[0]
+        assert p0["senior_balance_keur"] == 31234.56, (
+            f"Balance period 0 altered: {p0['senior_balance_keur']} != 31234.56")
+        assert p0["senior_ds_keur"] == 1876.44, (
+            f"DS period 0 altered: {p0['senior_ds_keur']} != 1876.44")
+        assert p0["dscr"] == 1.47, (
+            f"DSCR period 0 altered: {p0['dscr']} != 1.47")
+        # Period 1 — verify second period independently
+        p1 = ov.chart_debt_periods[1]
+        assert p1["senior_balance_keur"] == 28888.88
+        assert p1["senior_ds_keur"] == 1950.12
+        assert p1["dscr"] == 1.38
 
     def test_fmt_x_returns_not_available_for_none(self):
         from app.v2.overview_projection import _fmt_x, NOT_AVAILABLE
@@ -724,7 +787,7 @@ def _chromium_path() -> str:
     return candidates[0] if candidates else ""
 
 
-def _http(base_url, token, method, path, data=None, htmx=False):
+def _http(base_url, token, method, path, data=None, htmx=False, follow_redirects=True):
     url = base_url.rstrip("/") + path
     headers = {"Cookie": f"{COOKIE_NAME}={token}"}
     if htmx:
@@ -733,16 +796,20 @@ def _http(base_url, token, method, path, data=None, htmx=False):
     if body:
         headers["Content-Type"] = "application/x-www-form-urlencoded"
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
+    opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler() if follow_redirects
+                                         else urllib.request.BaseHandler())
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return r.status, dict(r.headers), r.read().decode("utf-8", errors="replace")
+        with opener.open(req, timeout=30) as r:
+            final_url = r.url if hasattr(r, 'url') else url
+            return r.status, dict(r.headers), r.read().decode("utf-8", errors="replace"), final_url
     except urllib.error.HTTPError as e:
-        return e.code, {}, e.read().decode("utf-8", errors="replace")
+        location = e.headers.get("Location", "") or e.headers.get("location", "")
+        return e.code, dict(e.headers), e.read().decode("utf-8", errors="replace"), location
 
 
 def _browser_create_project(base_url, token, suffix, project_type="Solar"):
     template = "generic_solar" if project_type == "Solar" else "generic_wind"
-    _, _, body = _http(base_url, token, "POST", "/projects/create", data={
+    status, headers, body, final_url = _http(base_url, token, "POST", "/projects/create", data={
         "project_name": f"UI3A-Browser-{suffix}",
         "project_type": project_type,
         "template_source": template,
@@ -761,14 +828,21 @@ def _browser_create_project(base_url, token, suffix, project_type="Solar"):
         "tenor_years": "15",
         "target_dscr": "1.30",
     })
-    m = re.search(r'project=([^&"\'\\s]+)', body)
+    # Extract from final URL (after redirect) or from body/redirect header
+    for src in [final_url, headers.get("location", ""), headers.get("Location", ""), body]:
+        m = re.search(r'[?&]project=([^&"\'>\s]+)', src or "")
+        if m:
+            return urllib.parse.unquote(m.group(1))
+    # Fallback: HX-Redirect header pattern
+    hx = headers.get("hx-redirect", "") or headers.get("HX-Redirect", "")
+    m = re.search(r'[?&]project=([^&"\'>\s]+)', hx)
     if m:
         return urllib.parse.unquote(m.group(1))
     return None
 
 
 def _browser_content_hash(base_url, token, project_code):
-    _, _, body = _http(base_url, token, "GET", f"/v2/workbook?project={project_code}")
+    _, _, body, _ = _http(base_url, token, "GET", f"/v2/workbook?project={project_code}")
     m = re.search(r'data-content-hash="([^"]+)"', body)
     wv_m = re.search(r'data-workbook-version="([^"]+)"', body)
     return (m.group(1) if m else "", wv_m.group(1) if wv_m else "")
@@ -776,7 +850,7 @@ def _browser_content_hash(base_url, token, project_code):
 
 def _browser_run(base_url, token, project_code):
     ch, wv = _browser_content_hash(base_url, token, project_code)
-    status, _, body = _http(base_url, token, "POST", "/v2/workbook/run", data={
+    status, _, body, _ = _http(base_url, token, "POST", "/v2/workbook/run", data={
         "project": project_code, "content_hash": ch, "workbook_version": wv,
     }, htmx=True)
     return status, body
@@ -791,8 +865,10 @@ def live_server(tmp_path_factory):
     tmp_db = tmp_path_factory.mktemp("v2_browser_ui3a") / "test.db"
     env = os.environ.copy()
     env["FINCO_WORKBOOK_V2"] = "1"
-    env["FINCO_SECRET_KEY"] = "browser-accept-secret-ui3a"
-    env["DATABASE_URL"] = f"sqlite:///{tmp_db}"
+    # Use same secret key as the test process so create_session_token() produces
+    # valid tokens for the live server.
+    env["FINCO_SECRET_KEY"] = os.environ["FINCO_SECRET_KEY"]
+    env["FINCO_DB_PATH"] = str(tmp_db)
     port = 9127
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main_web:app",
@@ -928,15 +1004,21 @@ class TestBrowser:
             pytest.skip("No runtime_summary in DB")
         rs = json.loads(rows[0][0])
         stored_irr = rs.get("project_irr", "")
-        if not stored_irr or stored_irr == "NOT_AVAILABLE":
+        if stored_irr is None or stored_irr == "" or stored_irr == "NOT_AVAILABLE":
             pytest.skip("project_irr not available in stored summary")
+        # Normalise raw float → formatted percentage (mirrors overview_projection._get)
+        if isinstance(stored_irr, float):
+            expected_irr = f"{stored_irr * 100:.2f}%"
+        else:
+            expected_irr = str(stored_irr)
 
         page = authed_page
         page.goto(f"{live_server['base_url']}/v2/workbook?project={browser_project}")
         tile = page.locator("[data-testid='kpi-project-irr'] .v2-kpi-value")
         rendered = tile.inner_text().strip()
-        assert rendered == stored_irr, (
-            f"Rendered IRR '{rendered}' != stored authoritative '{stored_irr}'"
+        assert rendered == expected_irr, (
+            f"Rendered IRR '{rendered}' != authoritative formatted '{expected_irr}' "
+            f"(raw stored: {stored_irr!r})"
         )
 
     def test_charts_rendered_after_run(self, authed_page, live_server, browser_project):
