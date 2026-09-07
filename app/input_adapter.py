@@ -78,7 +78,40 @@ def _set_financing_interest_rate(proj: "ProjectInputs", value: float) -> "Projec
 
 
 def _set_financing_tenor(proj: "ProjectInputs", value: int) -> "ProjectInputs":
-    return dc_replace(proj, financing=dc_replace(proj.financing, senior_tenor_years=value))
+    # Update the tenor year count AND resize the explicit-all-in rate schedule to match.
+    # The generic project factories create a rate vector sized for the factory's default
+    # tenor (e.g. 15y × 2 = 30 entries for SEMESTRIAL).  When the user changes tenor via
+    # the workbook form the engine validation requires len(explicit_all_in_rates) >= tenor_periods.
+    # We resize here — in the UI adapter — so that no financial vector mismatch reaches the engine.
+    # Resizing strategy: extend by repeating the last rate; trim if shortening.
+    financing = proj.financing
+    new_financing = dc_replace(financing, senior_tenor_years=value)
+
+    try:
+        from finco_core.inputs.senior_rate_schedule import SeniorRateMode
+        cfg = financing.senior_debt_interest_config
+        if (cfg is not None and cfg.enabled and
+                cfg.rate_schedule.mode == SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE):
+            # Determine periods_per_year from project info (SEMESTRIAL = 2).
+            freq_value = getattr(proj.info.period_frequency, "value", 2)
+            periods_per_year = int(freq_value) if isinstance(freq_value, int) else 2
+            target_len = value * periods_per_year
+            current_rates = cfg.rate_schedule.explicit_all_in_rates
+            if len(current_rates) != target_len:
+                if len(current_rates) == 0:
+                    resized = ()
+                elif target_len <= len(current_rates):
+                    resized = current_rates[:target_len]
+                else:
+                    last = current_rates[-1]
+                    resized = current_rates + (last,) * (target_len - len(current_rates))
+                new_schedule = dc_replace(cfg.rate_schedule, explicit_all_in_rates=resized)
+                new_cfg = dc_replace(cfg, rate_schedule=new_schedule)
+                new_financing = dc_replace(new_financing, senior_debt_interest_config=new_cfg)
+    except Exception:
+        pass  # If introspection fails, fall through with only the tenor year change.
+
+    return dc_replace(proj, financing=new_financing)
 
 
 def _set_financing_target_dscr(proj: "ProjectInputs", value: float) -> "ProjectInputs":

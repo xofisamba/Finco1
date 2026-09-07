@@ -1427,6 +1427,17 @@ async def v2_workbook_run(
         )
         return HTMLResponse(content=stale_banner_oob + "\n" + stale_controls_oob)
 
+    # ── Step 5b: protected reference guard ─────────────────────────────────── #
+    # Protected reference models are immutable.  Run is a persistence operation
+    # (v2_atomic_run_commit), so it must be blocked here — before engine execution
+    # and before any persistence — consistent with the edit guard on /workbook/update.
+    if is_protected_reference(project_record):
+        msg = (
+            "This is a protected reference model and cannot be run. "
+            "Create a working copy to run the model."
+        )
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
     # ── Step 6: project type validation ───────────────────────────────────── #
     project_type_raw = (project_record.project_type or "").strip().lower()
     if project_type_raw == "solar":
