@@ -1,8 +1,12 @@
 /*
  * Finco One — Spreadsheet Interaction Layer
- * C1-PR6: SelectionManager (selection model foundation only — no
- * clipboard, copy/paste, undo, fill, formula editing, or
- * recalculation)
+ * C1-PR6 + UI-2B: SelectionManager — selection model with mouse drag
+ * selection and Shift+click range extension.
+ *
+ * UI-2B additions:
+ *   - mousedown on a cell starts a drag; mousemove extends selection
+ *   - Shift+click on a different cell extends the range from anchor
+ *   - drag selection does not interfere with native INPUT/SELECT focus
  *
  * Reference: docs/C1_INTERACTION_LAYER_DESIGN.md,
  *            docs/C1_PR1_IMPLEMENTATION_NOTE.md,
@@ -129,11 +133,63 @@
     };
   }
 
+  /* ── drag selection ───────────────────────────────────────────── */
+
+  var _drag = null;
+
+  function _isNativeControl(el) {
+    if (!el) return false;
+    var t = el.tagName;
+    return t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA' ||
+           t === 'BUTTON' || t === 'A' || el.isContentEditable;
+  }
+
+  function _cellFromEl(el) {
+    var cellEl = el && el.closest ? el.closest('[data-fc-cell]') : null;
+    if (!cellEl) return null;
+    var gridEl = cellEl.closest('[data-fc-grid]');
+    if (!gridEl) return null;
+    var gridId = gridEl.dataset.fcGrid;
+    var addr = cellEl.dataset.fcAddr;
+    if (!addr) return null;
+    var reg = window.FcGridRegistry;
+    var cr = reg && reg.cellByAddr ? reg.cellByAddr(gridId, addr) : null;
+    return cr ? { gridId: gridId, cell: cr } : null;
+  }
+
+  function _onMouseDown(evt) {
+    var target = evt.target;
+    // Don't intercept native control interactions
+    if (_isNativeControl(target)) return;
+    var hit = _cellFromEl(target);
+    if (!hit) return;
+
+    _drag = { gridId: hit.gridId, anchor: hit.cell };
+
+    if (evt.shiftKey && _selection && _selection.gridId === hit.gridId) {
+      // Shift+click: extend from existing anchor
+      _applySelection(hit.gridId, _selection.anchor, hit.cell);
+      evt.preventDefault();
+    }
+  }
+
+  function _onMouseMove(evt) {
+    if (!_drag) return;
+    var hit = _cellFromEl(evt.target);
+    if (!hit || hit.gridId !== _drag.gridId) return;
+    _applySelection(_drag.gridId, _drag.anchor, hit.cell);
+  }
+
+  function _onMouseUp() {
+    _drag = null;
+  }
+
   function _onClick(evt) {
     var cellEl = evt.target && evt.target.closest
       ? evt.target.closest('[data-fc-cell]')
       : null;
     if (!cellEl) return;
+    if (evt.shiftKey) return; // handled by mousedown
     collapseToActive();
   }
 
@@ -183,6 +239,9 @@
     _initialized = true;
 
     document.addEventListener('click', _onClick);
+    document.addEventListener('mousedown', _onMouseDown);
+    document.addEventListener('mousemove', _onMouseMove);
+    document.addEventListener('mouseup', _onMouseUp);
     document.addEventListener('fc:gridsScanned', _reconcileAfterScan);
     document.addEventListener('fc:engineReady', _reconcileAfterScan);
 

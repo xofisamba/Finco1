@@ -83,7 +83,8 @@
 
 {# Macro: custom user-added row #}
 {% macro opex_custom_row(line, project_code, workbook_version, project_editable) %}
-<div class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}">
+<div class="v2-opex-custom-row" data-testid="opex-custom-row-{{ line.sub_line_id }}"
+     data-fc-row>
   {%- if project_editable %}
     {# Inline update form #}
     <form class="v2-opex-custom-row-form"
@@ -100,21 +101,27 @@
              value="{{ line.name }}"
              required
              aria-label="Label"
-             data-testid="opex-custom-label-{{ line.sub_line_id }}">
+             data-testid="opex-custom-label-{{ line.sub_line_id }}"
+             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.label"
+             data-fc-editable="true" data-fc-kind="text">
       <input class="v2-opex-custom-amount-input v2-opex-amount-cell"
              type="number"
              name="amount_keur"
              value="{{ "%.0f"|format(line.y1_keur) }}"
              step="any"
              aria-label="Y1 kEUR"
-             data-testid="opex-custom-amount-{{ line.sub_line_id }}">
+             data-testid="opex-custom-amount-{{ line.sub_line_id }}"
+             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.amount"
+             data-fc-editable="true" data-fc-kind="amount">
       <input class="v2-opex-custom-escl-input"
              type="number"
              name="inflation_pct"
              value="{{ "%.2f"|format(line.inflation_pct) }}"
              step="0.1"
              aria-label="Escalation %"
-             data-testid="opex-custom-escl-{{ line.sub_line_id }}">
+             data-testid="opex-custom-escl-{{ line.sub_line_id }}"
+             data-fc-cell data-fc-addr="opex.custom-{{ line.sub_line_id }}.escl"
+             data-fc-editable="true" data-fc-kind="amount">
       <input class="v2-opex-custom-notes-input"
              type="text"
              name="notes"
@@ -149,7 +156,7 @@
 {% endmacro %}
 
 {# Macro: Add Row form #}
-{% macro opex_add_row_form(group_code, project_code, workbook_version) %}
+{% macro opex_add_row_form(group_code, project_code, workbook_version, content_hash) %}
 <form class="v2-opex-add-row-form"
       hx-post="/v2/opex/line/add"
       hx-target="#v2-sheet-opex"
@@ -157,6 +164,7 @@
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="parent_group_code" value="{{ group_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
   <input class="v2-opex-add-label-input"
          type="text"
          name="label"
@@ -183,7 +191,8 @@
 </form>
 {% endmacro %}
 
-<div id="v2-sheet-opex" data-sheet="opex">
+<div id="v2-sheet-opex" data-sheet="opex"
+     data-fc-grid="opex" data-fc-scroll-container>
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -369,7 +378,7 @@
 
           {# Add Row form — only for editable projects #}
           {%- if project_editable -%}
-            {{ opex_add_row_form(sg.code, project_code, workbook_version) }}
+            {{ opex_add_row_form(sg.code, project_code, workbook_version, content_hash) }}
           {%- endif -%}
         {%- endif -%}
 

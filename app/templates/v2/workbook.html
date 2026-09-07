@@ -44,6 +44,13 @@
     </div>
   </div>
 
+  {# ── Formula / value bar (UI-2B) ──────────────────────────────────── #}
+  <div class="fc-value-bar" id="fc-value-bar" role="status" aria-label="Active cell address and value">
+    <span class="fc-value-bar-addr" id="fc-value-bar-addr" aria-label="Cell address"></span>
+    <span class="fc-value-bar-sep" aria-hidden="true">›</span>
+    <span class="fc-value-bar-value" id="fc-value-bar-value" aria-label="Cell value"></span>
+  </div>
+
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
   <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
@@ -130,5 +137,13 @@
   <script src="/static/interaction/focus-manager.js"></script>
   <script src="/static/interaction/keyboard-router.js"></script>
   <script src="/static/interaction/selection-manager.js"></script>
+
+  {# UI-2B: Advanced spreadsheet interaction — load after UI-2A foundation. #}
+  <script src="/static/interaction/clipboard-manager.js"></script>
+  <script src="/static/interaction/fill-manager.js"></script>
+  <script src="/static/interaction/undo-manager.js"></script>
+  <script src="/static/interaction/type-to-edit.js"></script>
+  <script src="/static/interaction/value-bar.js"></script>
+  <script src="/static/interaction/column-resizer.js"></script>
 </body>
 </html>

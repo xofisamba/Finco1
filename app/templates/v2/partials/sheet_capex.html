@@ -79,7 +79,8 @@
 {# Macro: user-added custom row with edit/deactivate controls #}
 {% macro custom_row(line, project_code, workbook_version, project_editable) %}
 <div class="v2-capex-custom-row" data-sub-line-id="{{ line.sub_line_id }}"
-     data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}">
+     data-row-version="{{ line.row_version }}" data-testid="custom-row-{{ line.code }}"
+     data-fc-row>
   {% if project_editable %}
   <form class="v2-field-form v2-capex-custom-form"
         hx-post="/v2/capex/line/update"
@@ -92,14 +93,20 @@
     <span class="v2-capex-custom-code">{{ line.code }}</span>
     <input class="v2-field-input v2-capex-custom-label"
            type="text" name="label" value="{{ line.name }}"
-           placeholder="Description" aria-label="Custom row description">
+           placeholder="Description" aria-label="Custom row description"
+           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.label"
+           data-fc-editable="true" data-fc-kind="text">
     <input class="v2-field-input v2-capex-custom-amount"
            type="number" name="amount_keur"
            value="{{ "%.0f"|format(line.amount_keur) }}"
-           step="1" aria-label="Amount kEUR">
+           step="1" aria-label="Amount kEUR"
+           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.amount"
+           data-fc-editable="true" data-fc-kind="amount">
     <input class="v2-field-input v2-capex-custom-notes"
            type="text" name="notes" value="{{ line.notes }}"
-           placeholder="Notes" aria-label="Notes">
+           placeholder="Notes" aria-label="Notes"
+           data-fc-cell data-fc-addr="capex.custom-{{ line.code }}.notes"
+           data-fc-editable="true" data-fc-kind="text">
     <button type="submit" class="v2-field-save" aria-label="Save {{ line.code }}">Save</button>
   </form>
   <form class="v2-capex-deactivate-form"
@@ -125,7 +132,7 @@
 {% endmacro %}
 
 {# Macro: Add Row form for eligible groups #}
-{% macro add_row_form(group_code, project_code, workbook_version) %}
+{% macro add_row_form(group_code, project_code, workbook_version, content_hash) %}
 <form class="v2-capex-add-row-form"
       hx-post="/v2/capex/line/add"
       hx-target="#v2-sheet-capex"
@@ -134,6 +141,7 @@
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="parent_category_code" value="{{ group_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+  <input type="hidden" name="content_hash" value="{{ content_hash }}">
   <input class="v2-field-input v2-capex-add-label"
          type="text" name="label" placeholder="Row description"
          required aria-label="New row description for {{ group_code }}">
@@ -145,7 +153,8 @@
 </form>
 {% endmacro %}
 
-<div id="v2-sheet-capex" data-sheet="capex">
+<div id="v2-sheet-capex" data-sheet="capex"
+     data-fc-grid="capex" data-fc-scroll-container>
 
   {% if not project_editable %}
     <div class="v2-protected-notice" role="status">
@@ -295,7 +304,7 @@
         {# Add Row control — eligible groups only, no controls on protected references #}
         {% if is_eligible %}
           <div class="v2-capex-add-row-container">
-            {{ add_row_form(group.code, project_code, workbook_version) }}
+            {{ add_row_form(group.code, project_code, workbook_version, content_hash) }}
           </div>
         {% endif %}
 
