@@ -2297,13 +2297,13 @@ async def v2_scenario_sensitivity_run(
             )
             kpis_raw = eng_result.get("kpis", {})
             formatted_kpis = {}
-            for item in KPI_CATALOG:
-                formatted_kpis[item["key"]] = _fmt(kpis_raw.get(item["key"]), item["fmt"])
+            for _key, _label, _unit, _fmt_code, _src in KPI_CATALOG:
+                formatted_kpis[_key] = _fmt(kpis_raw.get(_key), _fmt_code)
             results.append({
                 "label": step_label,
                 "status": "OK",
                 "kpis": formatted_kpis,
-                "kpis_raw": {k: kpis_raw.get(k) for item in KPI_CATALOG for k in [item["key"]]},
+                "kpis_raw": {_key: kpis_raw.get(_key) for _key, *_ in KPI_CATALOG},
             })
 
         except Exception as exc:
@@ -2321,13 +2321,19 @@ async def v2_scenario_sensitivity_run(
             "driver=%s project=%s", driver, project
         )
 
+    # Build kpi_catalog as list of dicts for the template
+    kpi_catalog_dicts = [
+        {"key": k, "label": lbl, "unit": unit, "fmt": fmt_code, "source": src}
+        for k, lbl, unit, fmt_code, src in KPI_CATALOG
+    ]
+
     ctx = {
         "project_code": project,
         "driver": driver,
         "driver_label": spec["label"],
         "scenario_display": scenario_display,
         "results": results,
-        "kpi_catalog": KPI_CATALOG,
+        "kpi_catalog": kpi_catalog_dicts,
         "request": request,
     }
     return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))
