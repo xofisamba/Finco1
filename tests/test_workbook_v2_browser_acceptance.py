@@ -145,13 +145,16 @@ def _create_project(base_url: str, token: str, name: str,
 
 
 def _get_content_hash(base_url: str, token: str, project_code: str) -> str:
-    from bs4 import BeautifulSoup
+    import re
     status, _, body = _http(base_url, token, "GET", f"/v2/workbook?project={project_code}")
     assert status == 200, f"GET /v2/workbook failed: {status}"
-    soup = BeautifulSoup(body, "html.parser")
-    shell = soup.find(id="v2-workbook-shell")
-    assert shell, "#v2-workbook-shell not found"
-    return shell.get("data-content-hash", "")
+    # Find the v2-workbook-shell element and extract data-content-hash without
+    # an external HTML parser (no bs4 dependency in the test environment).
+    m = re.search(r'id=["\']v2-workbook-shell["\'][^>]*data-content-hash=["\']([^"\']+)["\']', body)
+    if not m:
+        m = re.search(r'data-content-hash=["\']([^"\']+)["\'][^>]*id=["\']v2-workbook-shell["\']', body)
+    assert m, "#v2-workbook-shell with data-content-hash not found in /v2/workbook response"
+    return m.group(1)
 
 
 def _field_update_api(base_url: str, token: str, project_code: str,
