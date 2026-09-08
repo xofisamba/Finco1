@@ -6,20 +6,28 @@ def test_solar_status_full():
     result = run_demo_project("Solar")
     assert result.integration_status == "full"
 
-def test_bess_status_full():
-    # BESS removed from PROJECT_CONFIGS — returns "full" with Unknown project type message
+def test_bess_removed_returns_unknown_message():
+    # BESS removed from PROJECT_CONFIGS in this product line.
+    # Meaningful assertion: no exception leak, result.result is None, message says Unknown.
     result = run_demo_project("BESS")
-    assert result.integration_status == "full"
+    assert result.result is None, "Removed project type must return result=None"
+    assert any("Unknown project type" in m for m in result.messages), (
+        f"Expected 'Unknown project type' in messages, got: {result.messages}"
+    )
+    # integration_status is a DemoResult container default — not BESS support
+    assert result.integration_status in ("full", "partial", "experimental"), (
+        "integration_status must be a valid DemoResult default"
+    )
 
-def test_solar_bess_status_full():
-    # Solar+BESS removed from PROJECT_CONFIGS — returns "full" with Unknown project type message
+def test_solar_bess_removed_returns_unknown_message():
     result = run_demo_project("Solar+BESS")
-    assert result.integration_status == "full"
+    assert result.result is None
+    assert any("Unknown project type" in m for m in result.messages)
 
-def test_wind_bess_status_full():
-    # Wind+BESS removed from PROJECT_CONFIGS — returns "full" with Unknown project type message
+def test_wind_bess_removed_returns_unknown_message():
     result = run_demo_project("Wind+BESS")
-    assert result.integration_status == "full"
+    assert result.result is None
+    assert any("Unknown project type" in m for m in result.messages)
 
 def test_portfolio_status_experimental():
     result = run_demo_project("Portfolio")
@@ -91,11 +99,21 @@ def test_ui_runner_reraises_when_env_flag_set():
                 os.environ["FINCOGPT_RAISE_UI_ERRORS"] = old_val
 
 
-def test_ui_output_labels_bess_hybrid_full():
-    """BESS/hybrid projects removed from PROJECT_CONFIGS — returns 'full' with error message."""
+def test_ui_output_bess_hybrid_removed_no_exception():
+    """BESS/hybrid removed from PROJECT_CONFIGS — must not raise, result=None, unknown message."""
     from app.ui_runner import run_demo_project
 
     for project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
         result = run_demo_project(project_type)
-        assert result.integration_status == "full", \
-            f"{project_type} integration_status should be 'full' (unknown project type), got {result.integration_status}"
+        # No exception raised — legacy funnel is fail-safe
+        assert result is not None, f"{project_type} must return a DemoResult, not raise"
+        # result.result is None because no engine run completed
+        assert result.result is None, (
+            f"{project_type} result.result should be None (not a BESS support assertion); "
+            f"got {result.result}"
+        )
+        # Messages contain the unknown-type notice
+        assert any("Unknown project type" in m for m in result.messages), (
+            f"{project_type} messages should contain 'Unknown project type'; "
+            f"got {result.messages}"
+        )

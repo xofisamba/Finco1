@@ -81,16 +81,22 @@ class TestIndex:
         assert "Finco" in r.text or "Project Library" in r.text
 
 
+BOUNDARY_MSG = "Current form state no longer matches the last saved runtime boundary"
+
+
 class TestValidate:
     def test_validate_returns_200(self, client):
         r = client.post("/validate", data={"project_type": "Solar", "scenario": "Base"})
         assert r.status_code == 200
 
-    def test_validate_fail_closed_without_workspace(self, client):
-        # Without a valid workspace snapshot the route returns a boundary mismatch error
+    def test_validate_fail_closed_boundary_message(self, client):
+        # Current fail-closed contract: without a valid workspace snapshot the
+        # route returns the canonical boundary-mismatch fragment.
         r = client.post("/validate", data={"project_type": "Solar", "scenario": "Base"})
         assert r.status_code == 200
-        # Current contract: returns error fragment (no traceback)
+        assert BOUNDARY_MSG in r.text, (
+            f"Expected boundary mismatch message; got: {r.text[:300]}"
+        )
         assert "Traceback" not in r.text
         assert "AttributeError" not in r.text
 
@@ -129,11 +135,14 @@ class TestRun:
         r = client.post("/run", data={"project_type": "Solar", "scenario": "Base"})
         assert r.status_code == 200
 
-    def test_run_fail_closed_without_workspace(self, client):
-        # Without a valid workspace snapshot the route returns boundary mismatch error (fail-closed)
+    def test_run_fail_closed_boundary_message(self, client):
+        # Current fail-closed contract: without a valid workspace snapshot the
+        # route returns the canonical boundary-mismatch fragment.
         r = client.post("/run", data={"project_type": "Solar", "scenario": "Base"})
         assert r.status_code == 200
-        # Current contract: error fragment, no traceback
+        assert BOUNDARY_MSG in r.text, (
+            f"Expected boundary mismatch message; got: {r.text[:300]}"
+        )
         assert "Traceback" not in r.text
         assert "AttributeError" not in r.text
 

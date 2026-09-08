@@ -1,16 +1,19 @@
-"""UI-1 — Finco One Design Tokens — smoke tests.
+"""UI-1 — Finco One Design Tokens — hermetic smoke tests.
 
-Verifies the additive introduction of `static/tokens.css`:
+Verifies the structural invariants of `static/tokens.css`:
   - tokens.css exists at static/tokens.css
   - the file declares the key --fo-* design-token variables
   - tokens.css is loaded BEFORE styles.css in app/templates/base.html
-  - no financial / engine / persistence files changed
-  - no template redesign (additive only)
-  - no class renames in legacy styles.css
+  - required stylesheet links are reachable in the template
+  - no invalid unprefixed token declarations
 
-All tests are read-only: they inspect the repository's on-disk state.
-No test starts the application, hits the database, or imports runtime
-modules. This keeps the smoke suite hermetic and fast.
+These tests are read-only: they inspect the repository's on-disk state.
+No test starts the application, hits the database, runs git, or imports
+runtime modules.  Tests are hermetic on:
+  - local checkout
+  - PR merge checkout
+  - shallow CI checkout (no origin/main required)
+  - main branch
 """
 
 from __future__ import annotations
@@ -73,9 +76,6 @@ class TestTokensCssExists:
 # ---------------------------------------------------------------------------
 
 # Each tuple is (category, variable, expected to be present).
-# These cover every category the Fable token sheet declares. If a future
-# token-sheet revision drops one of these, this test fails immediately so
-# downstream code that consumes the variable does not silently break.
 REQUIRED_FO_VARIABLES = [
     # brand scale
     ("brand", "--fo-brand-600"),
@@ -162,8 +162,6 @@ class TestKeyFoVariablesExist:
             # variable declarations
             if ":" in stripped and not stripped.startswith((".", "#", "[", ":", "@")):
                 var_name = stripped.split(":", 1)[0].strip()
-                # ignore selectors with ":" pseudo-classes — the
-                # .startswith filter above already excludes them
                 if var_name.startswith("--") and not var_name.startswith("--fo-"):
                     bad.append((line_no, var_name))
         assert not bad, (
@@ -206,8 +204,6 @@ class TestLoadOrderInBaseHtml:
         )
 
     def test_tokens_css_uses_cache_busting_version(self):
-        # Same ?v={{ asset_version }} query as styles.css — ensures both
-        # bust the cache together when asset_version changes.
         text = BASE_HTML.read_text(encoding="utf-8")
         assert re.search(
             r'<link\s+rel="stylesheet"\s+href="/static/tokens\.css\?v=\{\{\s*asset_version\s*\}\}"',
@@ -216,74 +212,16 @@ class TestLoadOrderInBaseHtml:
 
 
 # ---------------------------------------------------------------------------
-# 4. No financial / engine / persistence / template logic changes
+# 4. base.html structural invariants (hermetic — no git diff)
 # ---------------------------------------------------------------------------
 
-# Forbidden paths — any commit that touches these is a non-UI-1 change.
-# The list is conservative; UI-1 is tokens + base.html link only.
-FORBIDDEN_PATHS = [
-    "app/waterfall_core.py",
-    "app/waterfall_runner.py",
-    "app/input_adapter.py",
-    "app/project_factories.py",
-    "app/capex_engine.py",
-    "app/opex_engine.py",
-    "app/depreciation_engine.py",
-    "app/excel_export.py",
-    "app/services/save_run_service.py",
-    "app/services/run_service.py",
-    "app/services/compare_service.py",
-    "app/services/download_service.py",
-    "app/services/projs_create_service.py",
-    "app/services/preview_context.py",
-    "app/services/previews/",
-    "app/persistence/",
-    "domain/",
-    "main_web.py",
-    "main_api.py",
-    "static/app.js",
-    "static/modelling/",
-    "static/interaction/",
-    "static/styles.css",  # must NOT be touched
-]
+class TestBaseHtmlStructural:
+    """base.html must carry the required stylesheet links in the correct order.
 
-
-class TestForbiddenPathsUntouched:
-    """UI-1 is additive only — no domain / engine / persistence / JS / styles.css touch."""
-
-    @pytest.mark.parametrize("relpath", FORBIDDEN_PATHS)
-    def test_path_does_not_exist_or_unchanged(self, relpath, repo_diff):
-        # repo_diff is a session-scoped fixture that lists files changed
-        # relative to origin/main. If the file is in the changed set AND
-        # it actually exists in the working tree, the test fails. If the
-        # path does not exist in the repo (e.g. app/services/previews/
-        # does not apply here), the test passes — it's a structural
-        # guarantee, not an "every project must have this folder" rule.
-        if not (REPO_ROOT / relpath).exists():
-            pytest.skip(f"{relpath} does not exist in repo")
-        assert relpath not in repo_diff.changed_paths, (
-            f"UI-1 must not modify {relpath}; this is a tokens-only PR. "
-            f"Changed files: {sorted(repo_diff.changed_paths)}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# 5. No template redesign — additive only
-# ---------------------------------------------------------------------------
-
-class TestBaseHtmlAdditiveOnly:
-    """base.html must continue to load tokens.css; the style additions
-    on the file must follow the additive contract established by UI-1.
-
-    This test enforces:
-    - The tokens.css <link> line is still present in base.html.
-    - The styles.css <link> line is still present in base.html.
-    - tokens.css is loaded BEFORE styles.css.
-    - The diff against origin/main ONLY contains:
-        - <link rel="stylesheet" ...> tags (one per added stylesheet)
-        - {% include "partials/..." %} directives
-        - Jinja {# ... #} comment blocks
-    No other categories of edits may slip in.
+    These are perpetual structural invariants valid on any checkout — no git
+    comparison required.  (Historical UI-1 PR-diff assertions that required
+    origin/main are removed: they are not valid permanent fast-ring invariants
+    for future UI PRs running in shallow CI checkouts.)
     """
 
     def test_base_html_has_tokens_and_styles(self):
@@ -294,136 +232,34 @@ class TestBaseHtmlAdditiveOnly:
         assert "/static/styles.css" in text, (
             "styles.css link missing from base.html."
         )
-        # tokens.css MUST come before styles.css.
         assert text.find("/static/tokens.css") < text.find(
             "/static/styles.css"
         ), "tokens.css must load BEFORE styles.css in base.html."
 
-    def test_base_html_diff_is_minimal(self, repo_diff):
-        # Cross-arc invariant: base.html is allowed to be modified by
-        # any UI-N PR (UI-2/3/4/5/6/7 added a <link> per layer), but a
-        # *fix* PR that only patches existing partials is also valid.
-        # Skip the assertion when base.html wasn't touched (the rest
-        # of the diff contract is enforced by TestForbiddenPathsUntouched
-        # + TestStylesheetBaseHtmlReachable etc.).
-        if "app/templates/base.html" not in repo_diff.changed_paths:
-            pytest.skip(
-                "base.html not modified — fix PR that only patches "
-                "existing partials. The additive-only contract is "
-                "enforced by the forbidden-path guards below."
-            )
-        # Inspect the diff hunks. Each added line must fall into one
-        # of these allowed buckets:
-        #   - <link rel="stylesheet" ...> tag (any stylesheet)
-        #   - {% include "partials/_*.html" %} directive
-        #   - Jinja {# ... #} comment (single or multi-line)
-        # Anything else is a non-additive edit.
-        hunks = repo_diff.hunks_for("app/templates/base.html")
-        added_lines = [h["content"] for h in hunks if h["op"] == "+"]
-        removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-        # Forbidden: any removal that affects an existing chrome link
-        # or template marker.
-        for needle in ("/static/styles.css", "/static/tokens.css",
-                        '<header class="top-header">'):
-            assert not any(needle in line for line in removed_lines), (
-                f"base.html diff must not remove existing line "
-                f"containing {needle!r}."
-            )
-        # Walk the added lines; track whether we're inside a Jinja
-        # comment block ({# ... #}). Lines inside such a block are
-        # allowed.
-        inside_jinja_comment = False
-        for line in added_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if inside_jinja_comment:
-                if "#}" in stripped:
-                    inside_jinja_comment = False
-                continue
-            if stripped.startswith("{#"):
-                # Single-line or first-line of multi-line comment.
-                if "#}" not in stripped:
-                    inside_jinja_comment = True
-                continue
-            allowed = (
-                stripped.startswith("<link")
-                or stripped.startswith('{% include')
-            )
-            assert allowed, (
-                f"base.html diff contains an unexpected added line: {line!r}"
-            )
+    def test_styles_css_exists_on_disk(self):
+        """static/styles.css must exist in the working tree."""
+        assert STYLES_CSS.is_file(), (
+            f"static/styles.css not found at {STYLES_CSS}"
+        )
 
-
-# ---------------------------------------------------------------------------
-# 6. styles.css must be byte-identical (UI-1 does not touch it)
-# ---------------------------------------------------------------------------
-
-class TestLegacyStylesCssUnchanged:
-    """legacy styles.css must remain byte-identical after UI-1."""
-
-    def test_styles_css_unchanged(self, repo_diff):
-        assert "static/styles.css" not in repo_diff.changed_paths, (
-            "UI-1 must NOT modify static/styles.css; "
-            "tokens.css layers alongside it."
+    def test_tokens_css_and_styles_css_both_linked(self):
+        """Both stylesheets must be explicitly linked in base.html."""
+        text = BASE_HTML.read_text(encoding="utf-8")
+        assert re.search(r'href=["\'][^"\']*tokens\.css', text), (
+            "No <link> to tokens.css found in base.html"
+        )
+        assert re.search(r'href=["\'][^"\']*styles\.css', text), (
+            "No <link> to styles.css found in base.html"
         )
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# 5. No Streamlit in main entry point
 # ---------------------------------------------------------------------------
 
-class _RepoDiff:
-    """Minimal representation of `git diff origin/main --name-only` plus
-    per-file unified-diff hunks. Built once per test session."""
-
-    def __init__(self) -> None:
-        import subprocess
-        # name-only list
-        out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main", "--"],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        self.changed_paths = {
-            line.strip()
-            for line in out.stdout.splitlines()
-            if line.strip()
-        }
-        # per-file hunks
-        self._hunks: dict[str, list[dict]] = {}
-        for path in sorted(self.changed_paths):
-            self._hunks[path] = self._parse_hunks(path)
-
-    def _parse_hunks(self, path: str) -> list[dict]:
-        import subprocess
-        proc = subprocess.run(
-            ["git", "diff", "origin/main", "--", path],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        hunks: list[dict] = []
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            if line.startswith("+++") or line.startswith("---"):
-                continue
-            if line.startswith("@@"):
-                continue
-            if line.startswith("+"):
-                hunks.append({"op": "+", "content": line[1:]})
-            elif line.startswith("-"):
-                hunks.append({"op": "-", "content": line[1:]})
-        return hunks
-
-    def hunks_for(self, path: str) -> list[dict]:
-        return list(self._hunks.get(path, []))
-
-
-@pytest.fixture(scope="session")
-def repo_diff():
-    return _RepoDiff()
+class TestNoStreamlit:
+    def test_no_streamlit_import_in_main_web(self):
+        """main_web.py must not import Streamlit."""
+        src = (REPO_ROOT / "main_web.py").read_text(encoding="utf-8")
+        assert "import streamlit" not in src
+        assert "from streamlit" not in src

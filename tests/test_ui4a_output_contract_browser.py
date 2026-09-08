@@ -460,3 +460,160 @@ class TestWindOutputContractBrowser:
                 assert "Internal Server Error" not in body
             finally:
                 await browser.close()
+
+# ─────────────────────────────────────────────────────────────────────────── #
+# Section 14/15: Real browser — Create Project + Run button (no fetch bypass) #
+# ─────────────────────────────────────────────────────────────────────────── #
+
+@pytest.fixture(scope="module")
+def pilot_server(tmp_path_factory):
+    tmp = tmp_path_factory.mktemp("ui4a_pilot")
+    proc, base_url, db_path = _start_server(tmp)
+    token = _make_token()
+    yield {"base_url": base_url, "token": token, "db_path": db_path}
+    proc.terminate()
+    proc.wait(timeout=10)
+
+
+async def _real_create_project(page, base_url: str, project_name: str, project_type: str) -> str:
+    """Navigate Library → New Project → fill form → click Create.
+    Returns project_code from the resulting workbook URL.
+    No fetch/HTTP bypass: uses actual visible-browser navigation.
+    """
+    import urllib.parse
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+
+    # Navigate to library
+    await page.goto(f"{base_url}/library", wait_until="networkidle")
+
+    # Click the New Project link
+    new_btn = page.locator("a[href='/projects/new'], a:text('+ New Project'), a:text('New Project')")
+    await new_btn.first.wait_for(state="visible", timeout=10000)
+    await new_btn.first.click()
+    await page.wait_for_url(f"{base_url}/projects/new*", timeout=10000)
+
+    # Fill the form
+    await page.fill("#npm-project_name", project_name)
+    # Select project type
+    await page.select_option("#npm-project_type", project_type)
+    await page.fill("#npm-country_market", "Spain")
+    await page.fill("#npm-capacity_mw", "80")
+
+    # Click Create project button
+    await page.click("button[type='submit']:has-text('Create project')")
+
+    # Wait for HTMX redirect → workbook page
+    await page.wait_for_url(f"{base_url}/v2/workbook*", timeout=15000)
+    parsed = urllib.parse.urlparse(page.url)
+    code = dict(urllib.parse.parse_qsl(parsed.query)).get("project", "")
+    assert code, f"No project code in URL after create: {page.url}"
+    return code, errors
+
+
+async def _real_click_run(page, base_url: str, project_code: str) -> list:
+    """Navigate to workbook, click Run button in browser, wait for completion.
+    Returns list of page errors observed.
+    No HTTP bypass: the run fires through the browser's HTMX mechanism.
+    """
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+
+    await page.goto(f"{base_url}/v2/workbook?project={project_code}", wait_until="networkidle")
+    run_btn = page.locator("[data-testid='v2-run-btn']")
+    await run_btn.wait_for(state="visible", timeout=10000)
+    await run_btn.click()
+
+    # Wait for HTMX to complete: button re-enables or loading spinner disappears
+    # The run may take up to 60s for a real engine pass
+    await page.wait_for_function(
+        "() => !document.querySelector('.v2-run-btn[disabled]')",
+        timeout=60000,
+    )
+    return errors
+
+
+class TestRealBrowserCreateProject:
+    """Section 14: Real Playwright create-project flow — no fetch bypass."""
+
+    @pytest.mark.asyncio
+    async def test_solar_create_via_browser_navigation(self, pilot_server):
+        """Library → New Project → fill → Create → workbook opens (Solar)."""
+        base_url, token = pilot_server["base_url"], pilot_server["token"]
+        async with async_playwright() as pw:
+            browser, page = await _new_page(pw, token, base_url)
+            try:
+                code, errors = await _real_create_project(
+                    page, base_url, "Pilot Solar Real Nav", "Solar"
+                )
+                # Workbook page should be visible
+                body = await page.content()
+                assert "Traceback" not in body
+                assert "Internal Server Error" not in body
+                assert code, "project_code must be non-empty after browser create"
+                # No page-level JS errors
+                assert not errors, f"Browser pageerrors during create: {errors}"
+            finally:
+                await browser.close()
+
+    @pytest.mark.asyncio
+    async def test_wind_create_via_browser_navigation(self, pilot_server):
+        """Library → New Project → fill → Create → workbook opens (Wind)."""
+        base_url, token = pilot_server["base_url"], pilot_server["token"]
+        async with async_playwright() as pw:
+            browser, page = await _new_page(pw, token, base_url)
+            try:
+                code, errors = await _real_create_project(
+                    page, base_url, "Pilot Wind Real Nav", "Wind"
+                )
+                body = await page.content()
+                assert "Traceback" not in body
+                assert code, "project_code must be non-empty after browser create"
+            finally:
+                await browser.close()
+
+
+class TestRealBrowserRunButton:
+    """Section 15: Real Playwright run-button click — no HTTP POST bypass."""
+
+    @pytest.mark.asyncio
+    async def test_click_run_base_case_solar(self, pilot_server):
+        """Create solar project, CLICK Run Base Case, verify CURRENT state + KPIs."""
+        base_url, token = pilot_server["base_url"], pilot_server["token"]
+        async with async_playwright() as pw:
+            browser, page = await _new_page(pw, token, base_url)
+            try:
+                # Arrange: create via fetch (already accepted as backend helper)
+                code = await _arrange_project(page, base_url, _SOLAR_CREATE_FORM)
+
+                # Act: real browser click on Run button
+                run_errors = await _real_click_run(page, base_url, code)
+
+                # Assert: workbook page after run
+                body = await page.content()
+                import re
+                pct_vals = re.findall(r'\d+\.\d{2}%', body)
+                assert len(pct_vals) > 0, "No percentage KPI values after browser run click"
+                assert "NOT_AVAILABLE" not in body
+                assert "Traceback" not in body
+                assert not run_errors, f"Browser pageerrors during run: {run_errors}"
+            finally:
+                await browser.close()
+
+    @pytest.mark.asyncio
+    async def test_click_run_base_case_wind(self, pilot_server):
+        """Create wind project, CLICK Run Base Case, verify CURRENT state + KPIs."""
+        base_url, token = pilot_server["base_url"], pilot_server["token"]
+        async with async_playwright() as pw:
+            browser, page = await _new_page(pw, token, base_url)
+            try:
+                code = await _arrange_project(page, base_url, _WIND_CREATE_FORM)
+                run_errors = await _real_click_run(page, base_url, code)
+                body = await page.content()
+                import re
+                pct_vals = re.findall(r'\d+\.\d{2}%', body)
+                assert len(pct_vals) > 0, "No percentage KPI values after browser run click (wind)"
+                assert "NOT_AVAILABLE" not in body
+                assert "Traceback" not in body
+            finally:
+                await browser.close()

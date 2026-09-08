@@ -28,9 +28,10 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 
-{# Macro: ENGINE / DERIVED read-only row #}
+{# Macro: Calculated / read-only row (engine-computed or derived value) #}
 {% macro engine_row(label, value, badge="ENGINE", unit="kEUR") %}
-<div class="v2-field-row v2-field-readonly v2-capex-engine-row">
+<div class="v2-field-row v2-field-readonly v2-capex-engine-row"
+     data-binding="{{ badge | lower }}">
   <span class="v2-field-label">{{ label }}</span>
   <span class="v2-field-value">
     {%- if value is not none and value != "" -%}
@@ -38,13 +39,13 @@
     {%- else -%}
       <span class="v2-field-empty">—</span>
     {%- endif -%}
-    <span class="v2-binding-badge v2-capex-badge-{{ badge | lower }}">{{ badge }}</span>
+    <span class="v2-binding-badge v2-capex-badge-calc">Calculated</span>
   </span>
   {%- if unit %}<span class="v2-unit">{{ unit }}</span>{% endif %}
 </div>
 {% endmacro %}
 
-{# Macro: read-only alias row for groups sharing a registry field (e.g. C.11 → C.08) #}
+{# Macro: read-only row for groups sharing a registry field with another group #}
 {% macro shared_field_row(label, value, owner_group_code) %}
 <div class="v2-field-row v2-field-readonly v2-capex-shared-row"
      data-shared-field="true"
@@ -56,16 +57,13 @@
     {%- else -%}
       <span class="v2-field-empty">—</span>
     {%- endif -%}
-    <span class="v2-binding-badge v2-capex-badge-shared">SHARED FIELD</span>
+    <span class="v2-binding-badge v2-capex-badge-inherited">Inherited</span>
   </span>
   <span class="v2-unit">kEUR</span>
-  <span class="v2-capex-shared-note">
-    Editable in group <strong>{{ owner_group_code }}</strong>
-  </span>
 </div>
 {% endmacro %}
 
-{# Macro: sub-line detail row (read-only Excel reference rows) #}
+{# Macro: sub-line detail row #}
 {% macro subline_row(line) %}
 <div class="v2-capex-subline{% if not line.is_active %} v2-capex-inactive{% endif %}">
   <span class="v2-capex-subline-code">{{ line.code }}</span>
@@ -238,13 +236,13 @@
         </span>
         <span class="v2-capex-col-status">
           {%- if group.is_readonly -%}
-            <span class="v2-binding-badge v2-capex-badge-engine">ENGINE</span>
+            <span class="v2-binding-badge v2-capex-badge-calc" data-binding="engine">Calculated</span>
           {%- elif group.is_contingency -%}
-            <span class="v2-binding-badge v2-binding-display-only">DERIVED</span>
+            <span class="v2-binding-badge v2-capex-badge-calc" data-binding="derived">Calculated</span>
           {%- elif alias -%}
-            <span class="v2-binding-badge v2-capex-badge-shared">SHARED FIELD</span>
+            <span class="v2-binding-badge v2-capex-badge-inherited" data-binding="shared">Inherited</span>
           {%- elif gf and gf.binding_label == "bound" -%}
-            <span class="v2-binding-badge v2-capex-badge-bound">BOUND</span>
+            <span class="v2-binding-badge v2-capex-badge-edit" data-binding="bound">Editable</span>
           {%- endif -%}
         </span>
       </summary>

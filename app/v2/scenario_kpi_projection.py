@@ -87,18 +87,18 @@ def build_scenario_projection(
     else:
         state = "CLEAN"
 
-    kpis: dict[str, str] = {}
-    kpis_raw: dict[str, Optional[float]] = {}
     metrics: dict[str, OutputMetricProjection] = {}
     freshness = "not_run" if state == "NOT_RUN" else "stale" if state == "STALE" else "current"
     for entry in KPI_CATALOG:
         key, _label, _unit, fmt, _source = entry
         v = rs.get(key)
-        kpis[key] = _fmt(v, fmt)
-        kpis_raw[key] = _raw(v)
         metrics[key] = build_output_metric_projection(
             key, v, freshness=freshness, run_timestamp=ran_at
         )
+
+    # kpis / kpis_raw derived from metrics — not independent authority
+    kpis: dict[str, str] = {k: m.display_value for k, m in metrics.items()}
+    kpis_raw: dict[str, Optional[float]] = {k: m.raw_value for k, m in metrics.items()}
 
     return ScenarioProjection(
         scenario_id=None,
@@ -114,15 +114,29 @@ def build_scenario_projection(
 def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKpiRow]:
     """Build KPI comparison rows from a list of ScenarioProjection objects.
 
-    Deltas are presentation arithmetic only: (raw_i - raw_0) formatted.
-    Never used to construct a new financial output.
+    Sources display_value and raw_value exclusively from p.metrics[key]
+    (OutputMetricProjection).  No string parsing.  No separate kpis/kpis_raw
+    dictionaries consulted.
+
     Delta rule: raw float delta, formatted with sign — never string parsing.
+    0.085 vs 0.070 → raw delta -0.015 → display "-1.50%".
     """
     rows: list[ScenarioKpiRow] = []
     for entry in KPI_CATALOG:
         key, label, _unit, fmt, _source = entry
-        vals = [p.kpis.get(key, _NA) for p in projections]
-        raw_vals = [p.kpis_raw.get(key) for p in projections]
+        # Source exclusively from metrics (OutputMetricProjection)
+        metrics_per_proj = [
+            (p.metrics or {}).get(key)
+            for p in projections
+        ]
+        vals = [
+            m.display_value if m is not None else _NA
+            for m in metrics_per_proj
+        ]
+        raw_vals = [
+            m.raw_value if m is not None else None
+            for m in metrics_per_proj
+        ]
         base_raw = raw_vals[0] if raw_vals else None
 
         deltas: list[str] = []
