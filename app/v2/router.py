@@ -275,6 +275,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "field_error": field_error,
+        "active_scenario_name": getattr(ws, "active_scenario_name", None) or "",
     }
 
 
