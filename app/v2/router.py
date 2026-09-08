@@ -1628,6 +1628,37 @@ async def v2_workbook_run(
         msg = "Run completed but could not be saved — please try again."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # ── Step 12b: persist KPIs to ScenarioRecord.last_run_summary ────────── #
+    # This is the UI-3B per-scenario runtime isolation contract.
+    # The workspace-level runtime evidence (last_runtime_summary_json) is
+    # cleared on scenario switch, so Compare reads from each ScenarioRecord's
+    # own last_run_summary_json instead.  We persist the run KPIs + provenance
+    # here so that switching scenarios never corrupts another scenario's evidence.
+    if active_scenario_id:
+        try:
+            from app.persistence.repository import update_scenario_last_run_summary
+            _sc_run_summary = {
+                "kpis": dict(result["kpis"]),
+                "snapshot_id": runtime_snapshot_id,
+                "ran_at": ran_at.isoformat(),
+                "scenario_id": active_scenario_id,
+                "scenario_name": active_scenario_name or "",
+            }
+            update_scenario_last_run_summary(
+                user_id=workspace_owner,
+                scenario_id=active_scenario_id,
+                last_run_summary=_sc_run_summary,
+                replay_metadata={"v2_run": True, "project": project},
+            )
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "v2_workbook_run: could not persist scenario last_run_summary "
+                "scenario=%s project=%s", active_scenario_id, project
+            )
+            # Non-fatal: workspace run committed; Compare will show NOT_RUN until
+            # user re-runs this scenario.
+
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(
         user_id=workspace_owner, project_id=project_record.project_id
@@ -1838,7 +1869,8 @@ async def v2_scenario_select(
         from app.v2.overview_projection import build_overview_projection
         pis = WorkbookService.build_draft_input_set_from_workspace(ws)
         _rr = WorkbookService.get_runtime_result(ws)
-        ov = build_overview_projection(_rr, ws.dirty, pis)
+        _active_sc_name = ws.active_scenario_name or "" if ws else ""
+        ov = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=_active_sc_name)
         ov_ctx = {
             "overview": ov,
             "project_code": project,
@@ -1983,12 +2015,32 @@ async def v2_scenario_compare(
     projections = []
     for sc in selected_scenarios:
         rs = sc.last_run_summary or {}
-        ran_at = (rs.get("ran_at") or "") if rs else ""
-        is_stale = not bool(rs)
+        ran_at_str = (rs.get("ran_at") or "") if rs else ""
+        has_result = bool(rs and rs.get("kpis"))
+        if not has_result:
+            is_stale = False  # will show as NOT_RUN
+        else:
+            # A scenario is STALE if its overrides were updated after the last run.
+            # Compare scenario.updated_at vs ran_at from last_run_summary.
+            try:
+                from datetime import datetime, timezone
+                _ran_at_dt = datetime.fromisoformat(ran_at_str.replace("Z", "+00:00")) if ran_at_str else None
+                _sc_updated = sc.updated_at
+                if _ran_at_dt and _sc_updated:
+                    # Normalise to UTC for comparison
+                    if _sc_updated.tzinfo is None:
+                        _sc_updated = _sc_updated.replace(tzinfo=timezone.utc)
+                    if _ran_at_dt.tzinfo is None:
+                        _ran_at_dt = _ran_at_dt.replace(tzinfo=timezone.utc)
+                    is_stale = _sc_updated > _ran_at_dt
+                else:
+                    is_stale = False
+            except Exception:
+                is_stale = False
         proj = build_scenario_projection(
             scenario_name=sc.scenario_name,
-            runtime_summary=rs.get("kpis") if rs else None,
-            ran_at=ran_at,
+            runtime_summary=rs.get("kpis") if has_result else None,
+            ran_at=ran_at_str,
             is_stale=is_stale,
         )
         # Patch in scenario_id
@@ -2066,46 +2118,49 @@ async def v2_scenario_sensitivity_run(
             scenario_overrides = dict(sc.overrides or {})
             scenario_display = sc.scenario_name
 
-    # Sensitivity driver definitions
+    # Sensitivity driver definitions.
+    # "field" must be a snapshot_key present in pis.values (the V2 flat PIS dict).
+    # These keys match SCENARIO_INPUT_FIELDS and WorkbookSpec snapshot_key values.
     DRIVER_SPECS: dict[str, dict] = {
         "tariff": {
             "label": "Tariff / Energy Price",
-            "field": "revenue.tariff_eur_mwh",
+            "field": "tariff_eur_mwh",         # snapshot_key → ppa tariff (legacy key)
+            "field_alt": "rev_ppa_base_tariff", # newer projects use this key
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
         },
         "capex_total": {
             "label": "Total CAPEX",
-            "field": "capex.total_capex_keur",
+            "field": "total_capex_keur",        # snapshot_key for capex.summary.total
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
         },
         "opex_total": {
-            "label": "Total OPEX",
-            "field": "opex.total_opex_keur",
+            "label": "Total OPEX (Y1)",
+            "field": "opex_y1_keur",            # snapshot_key for opex.summary.total_y1
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
         },
         "generation": {
-            "label": "Generation (P50)",
-            "field": "technical.annual_generation_gwh",
+            "label": "P50 Operating Hours",
+            "field": "p50_hours",               # snapshot_key for technical.p50_hours
             "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
             "step_labels": ["-10%", "-5%", "Base", "+5%", "+10%"],
             "mode": "pct_multiplier",
         },
         "interest_rate": {
             "label": "Senior Interest Rate",
-            "field": "debt.senior.interest_rate",
+            "field": "interest_rate_pct",       # snapshot_key for debt.senior.interest_rate_pct
             "steps": [-0.02, -0.01, 0.0, +0.01, +0.02],
             "step_labels": ["-200 bps", "-100 bps", "Base", "+100 bps", "+200 bps"],
             "mode": "absolute_add",
         },
         "gearing": {
             "label": "Gearing",
-            "field": "debt.senior.gearing_pct",
+            "field": "gearing_pct",             # snapshot_key for debt.senior.gearing_pct
             "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
             "step_labels": ["-10 pp", "-5 pp", "Base", "+5 pp", "+10 pp"],
             "mode": "absolute_add",
@@ -2118,55 +2173,60 @@ async def v2_scenario_sensitivity_run(
     spec = DRIVER_SPECS[driver]
     pis_base = WorkbookService.build_draft_input_set_from_workspace(ws)
 
+    # Snapshot of pis_base values before any sensitivity run (for non-destructive check)
+    _pis_base_values_snapshot = dict(pis_base.values)
+
     results: list[dict] = []
     for step, step_label in zip(spec["steps"], spec["step_labels"]):
-        # Build override: apply scenario overrides first, then driver override
-        override_values = dict(scenario_overrides)
+        # Each iteration works from a fresh copy of scenario overrides — never accumulates.
+        # We do NOT mutate pis_base or scenario_overrides.
         field = spec["field"]
+        field_alt = spec.get("field_alt")  # tariff has a legacy/modern key split
 
         try:
-            # Get base value for this field from pis
+            # Resolve base value: try primary field, then alt key for tariff
             base_val = pis_base.values.get(field)
-            if base_val is None:
-                # Try to get from to_projectinputs via field traversal
-                base_val = None
+            if base_val is None and field_alt:
+                base_val = pis_base.values.get(field_alt)
+                if base_val is not None:
+                    field = field_alt  # use the key that actually exists in this project's PIS
 
             if spec["mode"] == "pct_multiplier":
                 if base_val is not None:
                     try:
-                        override_values[field] = float(base_val) * (1.0 + step)
+                        new_val = float(base_val) * (1.0 + step)
                     except (TypeError, ValueError):
                         results.append({"label": step_label, "status": "FAILED", "error": f"Cannot apply multiplier to {field}", "kpis": {}})
                         continue
                 else:
-                    # field not directly in PIS values — run Base without override for Base step
                     if step == 0.0:
-                        pass  # use scenario overrides only
+                        new_val = None  # run with scenario overrides only (Base step)
                     else:
-                        results.append({"label": step_label, "status": "FAILED", "error": f"Base value for {field} not resolvable", "kpis": {}})
+                        results.append({"label": step_label, "status": "FAILED", "error": f"Base value for {field!r} not in workspace inputs", "kpis": {}})
                         continue
             else:  # absolute_add
                 if base_val is not None:
                     try:
-                        override_values[field] = float(base_val) + step
+                        new_val = float(base_val) + step
                     except (TypeError, ValueError):
                         results.append({"label": step_label, "status": "FAILED", "error": f"Cannot apply offset to {field}", "kpis": {}})
                         continue
                 else:
                     if step == 0.0:
-                        pass
+                        new_val = None
                     else:
-                        results.append({"label": step_label, "status": "FAILED", "error": f"Base value for {field} not resolvable", "kpis": {}})
+                        results.append({"label": step_label, "status": "FAILED", "error": f"Base value for {field!r} not in workspace inputs", "kpis": {}})
                         continue
 
-            # Build ProjectInputs with the driver override applied to PIS
-            from app.workbook.update_service import WorkbookUpdateService
+            # Build a fresh sensitivity PIS from the read-only pis_base.
+            # We never modify pis_base or persist anything.
             pis_sens = pis_base
-            if field in override_values and override_values[field] != pis_base.values.get(field):
+            if new_val is not None:
                 try:
-                    pis_sens = pis_sens.with_value(field, str(override_values[field]))
+                    pis_sens = pis_sens.with_value(field, str(new_val))
                 except Exception:
-                    pass  # Best effort — if field isn't directly settable, use base
+                    # Field not settable via with_value; skip override (run base point)
+                    pass
 
             pi_override = WorkbookService.to_projectinputs(pis_sens)
 
@@ -2179,13 +2239,27 @@ async def v2_scenario_sensitivity_run(
             formatted_kpis = {}
             for item in KPI_CATALOG:
                 formatted_kpis[item["key"]] = _fmt(kpis_raw.get(item["key"]), item["fmt"])
-            results.append({"label": step_label, "status": "OK", "kpis": formatted_kpis})
+            results.append({
+                "label": step_label,
+                "status": "OK",
+                "kpis": formatted_kpis,
+                "kpis_raw": {k: kpis_raw.get(k) for item in KPI_CATALOG for k in [item["key"]]},
+            })
 
         except Exception as exc:
             _logging.getLogger(__name__).exception(
                 "sensitivity_run: driver=%s step=%s project=%s", driver, step, project
             )
             results.append({"label": step_label, "status": "FAILED", "error": str(exc)[:120], "kpis": {}})
+
+    # Non-destructive proof: pis_base.values must be unchanged by sensitivity execution.
+    # If sensitivity accidentally mutated shared state, this will catch it at runtime.
+    _pis_after_values = dict(pis_base.values)
+    if _pis_after_values != _pis_base_values_snapshot:
+        _logging.getLogger(__name__).error(
+            "sensitivity_run: NON-DESTRUCTIVE VIOLATION — pis_base mutated during sensitivity "
+            "driver=%s project=%s", driver, project
+        )
 
     ctx = {
         "project_code": project,

@@ -1662,3 +1662,35 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   padding: 0.05rem 0.25rem;
   margin-left: 0.3rem;
 }
+
+/* ── UI-3B corrections ─────────────────────────────────────────── */
+/* Scenario stale state badge */
+.v2-scenario-state--stale { color: #b45309; font-weight: 600; }
+
+/* Compare chip selector */
+.v2-compare-picker-hint { font-size: 0.72rem; font-weight: 400; color: #9ca3af; margin-left: 0.4rem; }
+.v2-compare-scenario-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0; }
+.v2-compare-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid #d1d5db; border-radius: 16px;
+  background: #f9fafb; font-size: 0.82rem; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.v2-compare-chip:hover { background: #eff6ff; border-color: #93c5fd; }
+.v2-compare-chip--selected {
+  background: #dbeafe; border-color: #3b82f6; color: #1d4ed8; font-weight: 600;
+}
+.v2-compare-chip-slot {
+  font-size: 0.65rem; font-weight: 700;
+  background: #3b82f6; color: #fff;
+  border-radius: 8px; padding: 0.05rem 0.35rem; margin-left: 0.1rem;
+}
+.v2-compare-sc-name { font-weight: 600; }
+
+/* Dark-theme adjustments */
+@media (prefers-color-scheme: dark) {
+  .v2-compare-chip { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+  .v2-compare-chip:hover { background: #1e3a5f; border-color: #60a5fa; }
+  .v2-compare-chip--selected { background: #1e3a5f; border-color: #60a5fa; color: #93c5fd; }
+}
