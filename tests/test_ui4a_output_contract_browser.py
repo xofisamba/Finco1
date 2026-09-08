@@ -660,8 +660,10 @@ class TestOborovoWorkingCopyBrowserFlow:
                     pass
 
                 if not clone_visible:
-                    # Oborovo may not be seeded in this test DB — skip gracefully
-                    pytest.skip("Oborovo reference not found in library — not seeded in this environment")
+                    pytest.fail(
+                        "Oborovo reference not found in library — not seeded in this environment. "
+                        "OBOROVO_BROWSER_ACCEPTANCE_FAIL_CLOSED requires Oborovo to be present."
+                    )
 
                 # Step 3: click Create working copy — real browser click triggers POST /library/clone/{id}
                 async with page.expect_navigation(wait_until="networkidle", timeout=30000):
@@ -699,22 +701,12 @@ class TestOborovoWorkingCopyBrowserFlow:
                         f"OBOROVO_WORKING_COPY_RUN: traceback in page after run. "
                         f"project_code={wc_code}"
                     )
-                    # Report outcome
-                    if has_kpis:
-                        pass  # OBOROVO_WORKING_COPY_RUN = PASS
-                    else:
-                        # Engine ran but produced no KPI values — could be a known P0
-                        # We do not fail the test here; document the evidence
-                        import warnings
-                        warnings.warn(
-                            f"OBOROVO_WORKING_COPY_RUN: run completed but no percentage KPIs "
-                            f"visible. project_code={wc_code}. "
-                            f"http500s={http500s}. page_errors={page_errors}."
-                        )
+                    assert has_kpis, (
+                        f"OBOROVO_WORKING_COPY_RUN: run completed but no percentage KPIs visible. "
+                        f"project_code={wc_code}. http500s={http500s}. page_errors={page_errors}."
+                    )
                 except Exception as exc:
-                    # Run failed — document P0 blocker, do not re-raise
-                    import warnings
-                    warnings.warn(
+                    pytest.fail(
                         f"P0_REFERENCE_WORKING_COPY_RUN_BLOCKER: "
                         f"project_code={wc_code}, error={exc!r}, "
                         f"page_errors={page_errors}, http500s={http500s}"

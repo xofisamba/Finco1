@@ -147,7 +147,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
-          pip install --no-cache-dir -c constraints.txt pytest
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio
       - name: Route render smoke
         run: |
           python3 -m pytest -q --tb=short \
@@ -220,6 +220,13 @@ jobs:
             tests/test_workbook_v2_capex_row_lifecycle.py \
             tests/test_workbook_v2_opex_row_lifecycle.py \
             tests/test_workbook_v2_ux_completion.py
+      - name: UI-4D cross-surface KPI contract and calibration guard
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui4d \
+            tests/test_ui4d_cross_surface_kpi_contract.py \
+            tests/test_ui4d_calibration_copy_guard.py \
+            tests/test_workbook_v2_raw_kpi_authority.py
 
   # ── 4. Browser gate ─────────────────────────────────────────────────────────
   browser-gate:
@@ -237,7 +244,9 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
-          pip install --no-cache-dir -c constraints.txt pytest
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio
+          pip install playwright
+          python3 -m playwright install chromium
       - name: UI-3B browser acceptance
         run: |
           python3 -m pytest -q --tb=short \
@@ -249,6 +258,29 @@ jobs:
             --basetemp=.pytest-tmp-workbook-browser \
             tests/test_workbook_v2_browser_acceptance.py \
             tests/test_workbook_v2_product_acceptance.py
+
+  # ── 4b. UI-4A output contract browser gate ──────────────────────────────────
+  ui-4a-browser-gate:
+    name: UI-4A output contract browser gate
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.ui_only == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio
+          pip install playwright
+          python3 -m playwright install chromium
+      - name: UI-4A output contract browser acceptance
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui4a-browser \
+            tests/test_ui4a_output_contract_browser.py
 
   # ── 5. Docs path ────────────────────────────────────────────────────────────
   docs-hygiene:

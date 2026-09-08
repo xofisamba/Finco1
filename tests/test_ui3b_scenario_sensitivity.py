@@ -343,18 +343,20 @@ class TestSensitivityProductionHandler:
     @classmethod
     def setup_class(cls):
         """Start a live server and create a Solar project once for the class."""
+        import tempfile
         cls.port = _pick_free_port()
         cls.base_url = f"http://127.0.0.1:{cls.port}"
         env = os.environ.copy()
+        cls._stderr_file = tempfile.TemporaryFile(mode="w+", suffix=".log")
         cls.proc = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "main_web:app",
              "--host", "127.0.0.1", "--port", str(cls.port)],
             cwd=BASE_DIR,
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=cls._stderr_file,
         )
-        _wait_for_health(cls.base_url)
+        _wait_for_health(cls.base_url, stderr_file=cls._stderr_file)
         cls.token = create_session_token()
         cls.project_code = _create_solar_project(cls.base_url, cls.token)
 
@@ -584,7 +586,7 @@ def _pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
+def _wait_for_health(base_url: str, timeout: float = 60.0, stderr_file=None) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -593,7 +595,18 @@ def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
                     return
         except Exception:
             time.sleep(0.3)
-    raise RuntimeError(f"Server at {base_url} did not become healthy within {timeout}s")
+    stderr_content = ""
+    if stderr_file is not None:
+        try:
+            stderr_file.flush()
+            stderr_file.seek(0)
+            stderr_content = stderr_file.read()
+        except Exception:
+            pass
+    raise RuntimeError(
+        f"Server at {base_url} did not become healthy within {timeout}s"
+        + (f"\nServer stderr:\n{stderr_content}" if stderr_content else "")
+    )
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -693,16 +706,18 @@ class TestSelectedScenarioResolution:
 
     @classmethod
     def setup_class(cls):
+        import tempfile
         cls.port = _pick_free_port()
         cls.base_url = f"http://127.0.0.1:{cls.port}"
         env = os.environ.copy()
+        cls._stderr_file = tempfile.TemporaryFile(mode="w+", suffix=".log")
         cls.proc = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "main_web:app",
              "--host", "127.0.0.1", "--port", str(cls.port)],
             cwd=BASE_DIR, env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=cls._stderr_file,
         )
-        _wait_for_health(cls.base_url)
+        _wait_for_health(cls.base_url, stderr_file=cls._stderr_file)
         cls.token = create_session_token()
         cls.project_code = _create_solar_project(cls.base_url, cls.token, name="ScenResolution Solar")
 

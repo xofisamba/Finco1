@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import inspect
 import re
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
@@ -380,7 +381,7 @@ class TestNoFormatParseFormat:
 
     def _check_module(self, path: str):
         import os
-        full = os.path.join("/home/user/Finco1", path)
+        full = os.path.join(str(Path(__file__).resolve().parents[1]), path)
         with open(full) as f:
             src = f.read()
         for pattern in self._FORBIDDEN_PATTERNS:
