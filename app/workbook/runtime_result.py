@@ -126,12 +126,8 @@ class RuntimeResult:
         Run provenance: "saved_state" | "workspace_base" | form-origin value.
 
     runtime_summary : dict[str, Any]
-        Raw numeric KPI dict from result["kpis"], enriched with revenue_derivation.
-        In the v2 path, this stores raw engine floats (project_irr=0.085, etc.) —
-        NOT pre-formatted strings.  Legacy comment saying "RuntimeSummary.to_dict()"
-        was inaccurate; the v2 run commits result["kpis"] directly to
-        WorkspaceStateRecord.last_runtime_summary and reconstructs from there.
-        Use .raw_kpis for the numeric-only subset (excludes revenue_derivation).
+        RuntimeSummary.to_dict() — KPI dict (project_irr, equity_irr, avg_dscr,
+        total_revenue_keur, …).  Always present on a successful run.
 
     financial_statements : dict[str, Any] | None
         Payload from assemble_financial_statements().  None when not produced.
@@ -309,37 +305,6 @@ class RuntimeResult:
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
     # ------------------------------------------------------------------ #
-
-    # ─────────────────────────────────────────────────────────────────── #
-    # Raw KPI authority (UI-4A)                                           #
-    # ─────────────────────────────────────────────────────────────────── #
-
-    # Keys added to runtime_summary that are NOT engine numeric outputs
-    _NON_KPI_KEYS: frozenset = frozenset({"revenue_derivation"})
-
-    @property
-    def raw_kpis(self) -> dict:
-        """Raw numeric KPI dict from engine result["kpis"].
-
-        Subset of runtime_summary with derivation/metadata keys excluded.
-        Values are raw floats (project_irr=0.085, min_dscr=1.32, etc.).
-        Never contains pre-formatted strings.
-
-        This is the authoritative source for OutputMetricProjection construction.
-        """
-        if not self.runtime_summary:
-            return {}
-        rs = (
-            dict(self.runtime_summary)
-            if not isinstance(self.runtime_summary, dict)
-            else self.runtime_summary
-        )
-        # MappingProxyType: iterate items directly
-        try:
-            items = rs.items()
-        except AttributeError:
-            return {}
-        return {k: v for k, v in items if k not in self._NON_KPI_KEYS}
 
     def has_schedules(self) -> bool:
         """Return True if at least one schedule payload is present."""
