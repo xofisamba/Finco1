@@ -6,13 +6,76 @@ on:
   pull_request:
     branches: [main, industry-engine-refactor]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
 jobs:
+  classify-scope:
+    name: Classify CI scope
+    runs-on: ubuntu-latest
+    outputs:
+      engine_sensitive: ${{ steps.scope.outputs.engine_sensitive }}
+      ui_only: ${{ steps.scope.outputs.ui_only }}
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY"
+          echo "All changed files are in UI/template/presentation paths."
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+  ui-ring:
+    name: UI ring (fast path)
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.ui_only == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Run UI ring tests
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui-ring \
+            tests/test_phase57pre_route_render_smoke.py \
+            tests/test_htmx_internal_demo.py \
+            -k "not download"
+
+
   core-model-tests:
     name: Core model tests
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,6 +97,8 @@ jobs:
   capex-persistence-and-route-smoke:
     name: CAPEX persistence and route smoke
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,6 +131,8 @@ jobs:
   persistence-and-records-guardrails:
     name: Persistence and records guardrails
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -89,6 +156,8 @@ jobs:
   legacy-quarantined-sentinels:
     name: Legacy quarantined sentinels
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

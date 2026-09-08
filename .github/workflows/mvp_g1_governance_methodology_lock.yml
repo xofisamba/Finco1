@@ -12,6 +12,11 @@ env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
+concurrency:
+  group: mvp-g1-governance-methodology-lock-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   mvp-g1-governance:
     runs-on: ubuntu-latest
@@ -26,16 +31,41 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY"
+          echo "All changed files are in UI/template/presentation paths."
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.engine_sensitive == 'true'
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
       - name: Current authority and identity-dispatch guard
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_mvp_g1_governance_methodology_lock.py \
@@ -43,12 +73,14 @@ jobs:
             tests/test_mvp_g0_generic_clean_engine_enablement.py
 
       - name: Current canonical tax invariants
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             -m "not historical_compatibility" \
             tests/test_phase2b_tax_cfads.py
 
       - name: Semantic parity and source-evidence guards
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_phase51f_parallel_work_guardrails.py

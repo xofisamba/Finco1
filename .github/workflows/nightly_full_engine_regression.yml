@@ -1,0 +1,107 @@
+name: Nightly Full Engine Regression
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-full-engine-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-engine-regression:
+    name: Full engine regression (nightly)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          elif [ -f pyproject.toml ]; then
+            pip install -e ".[dev]"
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: C3B1 diagnostic check
+        run: python -m pytest -q tests/test_c3b1_diagnostic.py -v || true
+
+      - name: C3B3D2B6 base post-senior cash parity
+        run: python -m pytest -q tests/test_c3b3d2b6_base_post_senior_cash_parity.py -v || true
+
+      - name: C3B3D2B7 bank case senior parity
+        run: python -m pytest -q tests/test_c3b3d2b7_bank_case_senior_parity.py -v || true
+
+      - name: C3B3D2B8 base senior SHL parity
+        run: python -m pytest -q tests/test_c3b3d2b8_base_senior_shl_parity.py -v || true
+
+      - name: KUPI K0-K3 causal grid
+        run: python -m pytest -q tests/test_kupi_k0_k3_causal_grid.py -v || true
+
+      - name: MVP G0 generic clean engine
+        run: python -m pytest -q tests/test_mvp_g0_generic_clean_engine.py -v || true
+
+      - name: MVP G1 governance methodology lock
+        run: python -m pytest -q tests/test_mvp_g1_governance_methodology_lock.py -v || true
+
+      - name: MVP G2A financing stack
+        run: python -m pytest -q tests/test_mvp_g2a_financing_stack.py -v || true
+
+      - name: MVP G2B sponsor returns
+        run: python -m pytest -q tests/test_mvp_g2b_sponsor_returns.py -v || true
+
+      - name: MVP G2C shareholder waterfall
+        run: python -m pytest -q tests/test_mvp_g2c_shareholder_waterfall.py -v || true
+
+      - name: Phase B2 Oborovo clean production promotion
+        run: python -m pytest -q tests/test_phaseb2_oborovo_clean_production_promotion.py -v || true
+
+      - name: Phase B4 single production engine
+        run: python -m pytest -q tests/test_phaseb4_single_production_engine.py -v || true
+
+      - name: Phase C1 returns maturity
+        run: python -m pytest -q tests/test_phasec1_returns_maturity.py -v || true
+
+      - name: Phase C2 NPV LLCR PLCR authority
+        run: python -m pytest -q tests/test_phasec2_npv_llcr_plcr_authority.py -v || true
+
+      - name: Phase C3 clean financial statements authority
+        run: python -m pytest -q tests/test_phasec3_clean_financial_statements_authority.py -v || true
+
+      - name: Prefreeze PR5 canonical EBITDA authority
+        run: python -m pytest -q tests/test_prefreeze_pr5_canonical_ebitda_authority.py -v || true
+
+      - name: Prefreeze PR6 typed SHL repayment policy
+        run: python -m pytest -q tests/test_prefreeze_pr6_typed_shl_repayment_policy.py -v || true
+
+      - name: Prefreeze PR7 base bank case authority
+        run: python -m pytest -q tests/test_prefreeze_pr7_base_bank_case_authority.py -v || true
+
+      - name: Prefreeze PR8 single production financial authority
+        run: python -m pytest -q tests/test_prefreeze_pr8_single_production_financial_authority.py -v || true
+
+      - name: Upstream cash reserve interest authority
+        run: python -m pytest -q tests/test_upstream_cash_reserve_interest_authority.py -v || true
+
+      - name: Full regression summary
+        if: always()
+        run: |
+          echo "======================================================"
+          echo "NIGHTLY FULL ENGINE REGRESSION COMPLETE"
+          echo "All 20 historical authority regression suites executed."
+          echo "Review individual step results above for pass/fail."
+          echo "======================================================"

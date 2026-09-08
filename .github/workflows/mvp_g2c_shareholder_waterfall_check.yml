@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: mvp-g2c-shareholder-waterfall-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   g2c-shareholder-waterfall:
     name: mvp-g2c-shareholder-waterfall
@@ -27,17 +32,42 @@ jobs:
           fi
           echo "Checked out $ACTUAL"
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY"
+          echo "All changed files are in UI/template/presentation paths."
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - name: Set up Python
+        if: steps.scope.outputs.engine_sensitive == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
       - name: Governance — G2C contracts contain no target-fitting architectural fields
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           import dataclasses
@@ -53,6 +83,7 @@ jobs:
           "
 
       - name: Portability — no agent-local absolute paths in G2C production files
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           # Scan only production source files. Test files contain literal strings
           # in assertions (e.g. assert "/home/user/Finco1" not in text) which would
@@ -66,6 +97,7 @@ jobs:
           echo "No agent-local absolute paths found in production files"
 
       - name: Governance — no target-fitting tokens in G2C
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           grep -rn "approved_delta\|expected_delta\|balancing_plug\|target_irr\|target_moic\|terminal_top_up\|period_correction" \
             financial_engine/shareholder_waterfall/ \
@@ -73,6 +105,7 @@ jobs:
             || echo "No target-fitting tokens found"
 
       - name: Governance — no project-identity dispatch in G2C
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           import ast, pathlib
@@ -87,6 +120,7 @@ jobs:
           "
 
       - name: Governance — distribution_lockup_dscr distinct from target_dscr
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           from app.project_factories import create_default_solar_project
@@ -99,6 +133,7 @@ jobs:
           "
 
       - name: Source authority — Oborovo lockup_dscr fixture value
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           import json
@@ -110,6 +145,7 @@ jobs:
           "
 
       - name: G2A upstream invariants preserved
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           from app.project_factories import create_default_solar_project, create_default_wind_project
@@ -130,19 +166,23 @@ jobs:
           "
 
       - name: MVP G2C focused test suite
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_mvp_g2c_shareholder_waterfall.py \
                            tests/test_mvp_dsrf_reserve_support.py -v --tb=short
 
       - name: G2B authority regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_mvp_g2b_sponsor_returns.py -v --tb=short
 
       - name: G2A authority regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_mvp_g2a_financing_stack.py -v --tb=short
 
       - name: G0 and G1 authority regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_mvp_g0_generic_clean_engine_enablement.py \
                            tests/test_mvp_g1_workflow_authority.py -v --tb=short

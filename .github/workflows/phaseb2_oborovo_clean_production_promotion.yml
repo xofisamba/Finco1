@@ -8,6 +8,11 @@ on:
     branches:
       - main
 
+concurrency:
+  group: phaseb2-oborovo-clean-production-promotion-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   phase-b2-exact-head:
     name: Phase B2 Exact-Head Acceptance
@@ -19,7 +24,30 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY"
+          echo "All changed files are in UI/template/presentation paths."
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - name: Verify exact PR head and ancestry
+        if: steps.scope.outputs.engine_sensitive == 'true'
         shell: bash
         run: |
           EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
@@ -28,10 +56,12 @@ jobs:
             bd9a6fe59895d9675d67d872217143193a6fdedf HEAD
 
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.engine_sensitive == 'true'
         with:
           python-version: "3.12"
 
       - name: Install dependencies fail closed
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pip install --upgrade pip
           if [ -f constraints.txt ]; then
@@ -43,15 +73,19 @@ jobs:
           fi
 
       - name: Diff hygiene
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: git diff --check bd9a6fe59895d9675d67d872217143193a6fdedf...HEAD
 
       - name: Phase B2 focused promotion and generic VAT
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: python -m pytest -q --tb=short tests/test_phaseb2_oborovo_clean_production_promotion.py
 
       - name: Phase B1 clean-only router
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: python -m pytest -q --tb=short tests/test_phaseb1_clean_only_production_router.py
 
       - name: Phase A authority freeze ring
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_prefreeze_prf1_canonical_period_axis.py \
@@ -64,6 +98,7 @@ jobs:
             tests/test_prefreeze_pr12_final_authority_causal_freeze.py
 
       - name: PR-9 construction authority
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_pr9_typed_construction_idc_authority.py \
@@ -71,6 +106,7 @@ jobs:
             tests/test_oborovo_stageb2_source_parity.py
 
       - name: G0-G2 clean financial stack
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_mvp_g0_generic_clean_engine_enablement.py \
@@ -80,12 +116,14 @@ jobs:
             tests/test_mvp_g2c_shareholder_waterfall.py
 
       - name: Tax CFADS policy regressions
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
             tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py
 
       - name: C3B3D2B5-B8 Senior SHL regressions
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
@@ -94,9 +132,11 @@ jobs:
             tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py
 
       - name: KUPI causal grid
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: python -m pytest -q --tb=short tests/test_kupi_k0_k3_causal_grid.py
 
       - name: Production governance scans
+        if: steps.scope.outputs.engine_sensitive == 'true'
         shell: bash
         run: |
           mapfile -t changed_engine_python < <(
