@@ -275,24 +275,32 @@ class TestSolarBrowserAcceptance:
             body = resp.read().decode()
         assert "v2-compare" in body, f"Compare sheet not in response. Body: {body[:300]}"
 
-    def test_10_sensitivity_endpoint_returns_200(self, solar_page):
-        """Sensitivity endpoint returns 200 when available."""
+    def test_10_sensitivity_run_five_points(self, solar_page):
+        """POST to actual sensitivity run endpoint; verify 5 result rows render."""
         page, base_url, code, errs = solar_page
         token = create_session_token()
+        form = urllib.parse.urlencode({
+            "project": code,
+            "driver": "tariff",
+        }).encode("utf-8")
         req = urllib.request.Request(
-            f"{base_url}/v2/workbook/sensitivity?project={code}",
-            headers={"Cookie": f"{COOKIE_NAME}={token}", "HX-Request": "true"},
+            f"{base_url}/v2/workbook/scenarios/sensitivity/run",
+            data=form,
+            method="POST",
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Cookie": f"{COOKIE_NAME}={token}",
+                "HX-Request": "true",
+            },
         )
-        try:
-            with urllib.request.urlopen(req, timeout=10.0) as resp:
-                assert resp.status == 200
-                body = resp.read().decode()
-            assert "sensitivity" in body.lower() or "v2-sensitivity" in body, \
-                f"Sensitivity sheet not in response. Body: {body[:300]}"
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                pytest.skip("Sensitivity endpoint not yet routed; skip this step")
-            raise
+        with urllib.request.urlopen(req, timeout=60.0) as resp:
+            assert resp.status == 200, f"Sensitivity run returned {resp.status}"
+            body = resp.read().decode()
+        # Five step labels must appear
+        for label in ("-20%", "-10%", "Base", "+10%", "+20%"):
+            assert label in body, f"Step label {label!r} not found in sensitivity response. Body[:500]: {body[:500]}"
+        # No FAILED status in any row
+        assert "FAILED" not in body, f"Sensitivity row shows FAILED. Body[:800]: {body[:800]}"
 
     def test_11_no_critical_browser_errors_overall(self, solar_page):
         """No uncaught TypeError/ReferenceError over the full Solar flow."""

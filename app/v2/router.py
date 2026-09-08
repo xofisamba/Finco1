@@ -2034,23 +2034,8 @@ async def v2_scenario_compare(
         if not has_result:
             is_stale = False  # will show as NOT_RUN
         else:
-            # A scenario is STALE if its overrides were updated after the last run.
-            # Compare scenario.updated_at vs ran_at from last_run_summary.
-            try:
-                from datetime import datetime, timezone
-                _ran_at_dt = datetime.fromisoformat(ran_at_str.replace("Z", "+00:00")) if ran_at_str else None
-                _sc_updated = sc.updated_at
-                if _ran_at_dt and _sc_updated:
-                    # Normalise to UTC for comparison
-                    if _sc_updated.tzinfo is None:
-                        _sc_updated = _sc_updated.replace(tzinfo=timezone.utc)
-                    if _ran_at_dt.tzinfo is None:
-                        _ran_at_dt = _ran_at_dt.replace(tzinfo=timezone.utc)
-                    is_stale = _sc_updated > _ran_at_dt
-                else:
-                    is_stale = False
-            except Exception:
-                is_stale = False
+            from app.v2.scenario_presentation import _is_stale as _snap_is_stale
+            is_stale = _snap_is_stale(sc)
         proj = build_scenario_projection(
             scenario_name=sc.scenario_name,
             runtime_summary=rs.get("kpis") if has_result else None,
@@ -2133,49 +2118,49 @@ async def v2_scenario_sensitivity_run(
             scenario_display = sc.scenario_name
 
     # Sensitivity driver definitions.
-    # "field" must be a snapshot_key present in pis.values (the V2 flat PIS dict).
-    # These keys match SCENARIO_INPUT_FIELDS and WorkbookSpec snapshot_key values.
+    # "field_id" is the canonical semantic field_id accepted by ProjectInputSet.with_value().
+    # "snapshot_key" is retained as provenance metadata only — never passed to with_value().
+    #
+    # PCT fields (interest_rate_pct, gearing_pct) are stored as percentages (0-100 scale,
+    # e.g. 4.5 = 4.5%, 70 = 70%).  Absolute steps are in percentage-point units.
     DRIVER_SPECS: dict[str, dict] = {
         "tariff": {
             "label": "Tariff / Energy Price",
-            "field": "tariff_eur_mwh",         # snapshot_key → ppa tariff (legacy key)
-            "field_alt": "rev_ppa_base_tariff", # newer projects use this key
+            "field_id": "revenue.ppa.base_tariff",
+            # Legacy projects populate revenue.ppa.tariff_legacy instead
+            "field_id_fallback": "revenue.ppa.tariff_legacy",
+            "snapshot_key": "rev_ppa_base_tariff",
             "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
             "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
             "mode": "pct_multiplier",
         },
-        "capex_total": {
-            "label": "Total CAPEX",
-            "field": "total_capex_keur",        # snapshot_key for capex.summary.total
-            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
-            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
-            "mode": "pct_multiplier",
-        },
-        "opex_total": {
-            "label": "Total OPEX (Y1)",
-            "field": "opex_y1_keur",            # snapshot_key for opex.summary.total_y1
-            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
-            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
-            "mode": "pct_multiplier",
-        },
+        # capex_total (capex.summary.total) and opex_total (opex.summary.total_y1) are
+        # derived_display / source_of_truth=derived_ui — not writable via with_value().
+        # Removed from MVP sensitivity catalog per spec: "do not fake support".
+
         "generation": {
             "label": "P50 Operating Hours",
-            "field": "p50_hours",               # snapshot_key for technical.p50_hours
+            "field_id": "project_setup.technical.p50_hours",
+            "snapshot_key": "p50_hours",
             "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
             "step_labels": ["-10%", "-5%", "Base", "+5%", "+10%"],
             "mode": "pct_multiplier",
         },
         "interest_rate": {
             "label": "Senior Interest Rate",
-            "field": "interest_rate_pct",       # snapshot_key for debt.senior.interest_rate_pct
-            "steps": [-0.02, -0.01, 0.0, +0.01, +0.02],
+            "field_id": "debt.senior.interest_rate_pct",
+            "snapshot_key": "interest_rate_pct",
+            # Stored as percentage (e.g. 4.5).  ±200 bps = ±2.0 percentage points.
+            "steps": [-2.0, -1.0, 0.0, +1.0, +2.0],
             "step_labels": ["-200 bps", "-100 bps", "Base", "+100 bps", "+200 bps"],
             "mode": "absolute_add",
         },
         "gearing": {
             "label": "Gearing",
-            "field": "gearing_pct",             # snapshot_key for debt.senior.gearing_pct
-            "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
+            "field_id": "debt.senior.gearing_pct",
+            "snapshot_key": "gearing_pct",
+            # Stored as percentage (e.g. 70).  ±10 pp = ±10.0 percentage points.
+            "steps": [-10.0, -5.0, 0.0, +5.0, +10.0],
             "step_labels": ["-10 pp", "-5 pp", "Base", "+5 pp", "+10 pp"],
             "mode": "absolute_add",
         },
@@ -2185,64 +2170,97 @@ async def v2_scenario_sensitivity_run(
         return HTMLResponse(content=f"<p>Unknown driver: {driver!r}.</p>", status_code=422)
 
     spec = DRIVER_SPECS[driver]
+    field_id = spec["field_id"]
+    field_id_fallback = spec.get("field_id_fallback")
+
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base as _apply_capex
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex as _apply_opex
+    from dataclasses import replace as _dc_replace
+    from app.persistence.scenarios_repository import get_scenario as _get_sc_rec
+
+    # Resolve full scenario record (needed for CAPEX/OPEX fold with scenario overrides)
+    _scenario_rec = None
+    if scenario_id:
+        _scenario_rec = _get_sc_rec(scenario_id=scenario_id, user_id=workspace_owner)
+        if _scenario_rec and (
+            _scenario_rec.project_id != project_record.project_id or _scenario_rec.archived
+        ):
+            _scenario_rec = None
+        if _scenario_rec:
+            scenario_display = _scenario_rec.scenario_name
+
+    _scenario_overrides_for_fold = _scenario_rec.overrides if _scenario_rec else None
+
     pis_base = WorkbookService.build_draft_input_set_from_workspace(ws)
 
     # Snapshot of pis_base values before any sensitivity run (for non-destructive check)
     _pis_base_values_snapshot = dict(pis_base.values)
 
+    # Resolve base value from the canonical field_id in pis_base.values.
+    # For tariff, fall back to the legacy field_id if the canonical one is absent.
+    base_val = pis_base.values.get(field_id)
+    if base_val is None and field_id_fallback:
+        base_val = pis_base.values.get(field_id_fallback)
+        if base_val is not None:
+            field_id = field_id_fallback  # use whichever field_id is populated
+
     results: list[dict] = []
     for step, step_label in zip(spec["steps"], spec["step_labels"]):
-        # Each iteration works from a fresh copy of scenario overrides — never accumulates.
-        # We do NOT mutate pis_base or scenario_overrides.
-        field = spec["field"]
-        field_alt = spec.get("field_alt")  # tariff has a legacy/modern key split
-
+        # Each iteration works from a fresh pis_base — never accumulates, never mutates.
         try:
-            # Resolve base value: try primary field, then alt key for tariff
-            base_val = pis_base.values.get(field)
-            if base_val is None and field_alt:
-                base_val = pis_base.values.get(field_alt)
-                if base_val is not None:
-                    field = field_alt  # use the key that actually exists in this project's PIS
-
             if spec["mode"] == "pct_multiplier":
                 if base_val is not None:
                     try:
-                        new_val = float(base_val) * (1.0 + step)
+                        new_val: object = float(base_val) * (1.0 + step)
                     except (TypeError, ValueError):
-                        results.append({"label": step_label, "status": "FAILED", "error": f"Cannot apply multiplier to {field}", "kpis": {}})
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Cannot apply multiplier to {field_id!r}", "kpis": {}})
                         continue
                 else:
                     if step == 0.0:
-                        new_val = None  # run with scenario overrides only (Base step)
+                        new_val = None  # Base step: run scenario overrides only, no driver override
                     else:
-                        results.append({"label": step_label, "status": "FAILED", "error": f"Base value for {field!r} not in workspace inputs", "kpis": {}})
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Base value for {field_id!r} not in workspace inputs", "kpis": {}})
                         continue
             else:  # absolute_add
                 if base_val is not None:
                     try:
                         new_val = float(base_val) + step
                     except (TypeError, ValueError):
-                        results.append({"label": step_label, "status": "FAILED", "error": f"Cannot apply offset to {field}", "kpis": {}})
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Cannot apply offset to {field_id!r}", "kpis": {}})
                         continue
                 else:
                     if step == 0.0:
                         new_val = None
                     else:
-                        results.append({"label": step_label, "status": "FAILED", "error": f"Base value for {field!r} not in workspace inputs", "kpis": {}})
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Base value for {field_id!r} not in workspace inputs", "kpis": {}})
                         continue
 
-            # Build a fresh sensitivity PIS from the read-only pis_base.
-            # We never modify pis_base or persist anything.
+            # Apply driver override to fresh PIS.  Fail-closed: if with_value() raises,
+            # this point FAILS — we never silently run unchanged base inputs.
             pis_sens = pis_base
             if new_val is not None:
-                try:
-                    pis_sens = pis_sens.with_value(field, str(new_val))
-                except Exception:
-                    # Field not settable via with_value; skip override (run base point)
-                    pass
+                pis_sens = pis_sens.with_value(field_id, str(new_val))  # raises on bad field_id
 
+            # Causal chain: base PIS → driver override → ProjectInputs → CAPEX/OPEX scenario fold → engine
             pi_override = WorkbookService.to_projectinputs(pis_sens)
+            folded_capex = _apply_capex(
+                pi_override.capex,
+                project_id=project_record.project_id,
+                scenario_overrides=_scenario_overrides_for_fold,
+            )
+            if folded_capex is not pi_override.capex:
+                pi_override = _dc_replace(pi_override, capex=folded_capex)
+            folded_opex = _apply_opex(
+                pi_override.opex,
+                project_id=project_record.project_id,
+                scenario_overrides=_scenario_overrides_for_fold,
+            )
+            if folded_opex is not pi_override.opex:
+                pi_override = _dc_replace(pi_override, opex=folded_opex)
 
             eng_result = run_project(
                 runtime_key,

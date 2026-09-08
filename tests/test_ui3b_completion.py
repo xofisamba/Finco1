@@ -397,40 +397,35 @@ class TestSensitivityDriverSpecs:
         m = re.search(r'DRIVER_SPECS: dict\[str, dict\] = \{(.+?)^\s*\}', src, re.DOTALL | re.MULTILINE)
         return m.group(0) if m else src
 
-    def test_tariff_uses_snapshot_key(self):
+    def test_tariff_uses_semantic_field_id(self):
+        """Tariff driver must use semantic field_id (Correction C)."""
         src = open("app/v2/router.py").read()
-        assert '"tariff_eur_mwh"' in src or "'tariff_eur_mwh'" in src
+        # Must use canonical field_id, not legacy snapshot key as field_id
+        assert '"field_id": "revenue.ppa.base_tariff"' in src
 
-    def test_capex_uses_snapshot_key(self):
+    def test_generation_uses_semantic_field_id(self):
         src = open("app/v2/router.py").read()
-        assert '"total_capex_keur"' in src
+        assert '"field_id": "project_setup.technical.p50_hours"' in src
 
-    def test_opex_uses_snapshot_key(self):
+    def test_interest_rate_uses_semantic_field_id(self):
         src = open("app/v2/router.py").read()
-        assert '"opex_y1_keur"' in src
+        assert '"field_id": "debt.senior.interest_rate_pct"' in src
 
-    def test_generation_uses_p50_hours(self):
+    def test_gearing_uses_semantic_field_id(self):
         src = open("app/v2/router.py").read()
-        assert '"p50_hours"' in src
+        assert '"field_id": "debt.senior.gearing_pct"' in src
 
-    def test_interest_rate_uses_snapshot_key(self):
+    def test_capex_opex_removed_from_mvp_catalog(self):
+        """capex_total and opex_total must be removed (not writable via with_value)."""
         src = open("app/v2/router.py").read()
-        assert '"interest_rate_pct"' in src
+        # These snapshot keys must no longer appear as field_id values in DRIVER_SPECS
+        assert '"field_id": "total_capex_keur"' not in src
+        assert '"field_id": "opex_y1_keur"' not in src
 
-    def test_gearing_uses_snapshot_key(self):
+    def test_snapshot_keys_kept_as_provenance_only(self):
+        """snapshot_key must be present as metadata, not as field_id."""
         src = open("app/v2/router.py").read()
-        assert '"gearing_pct"' in src
-
-    def test_no_dotted_paths_in_driver_fields(self):
-        """Driver fields must be flat snapshot keys, not dotted engine paths."""
-        import re
-        src = open("app/v2/router.py").read()
-        # Find DRIVER_SPECS block
-        start = src.find("DRIVER_SPECS: dict[str, dict]")
-        block = src[start:start+2000]
-        # Look for "field": "something.something" patterns (dotted engine paths are wrong)
-        wrong = re.findall(r'"field":\s*"[a-z]+\.[a-z]', block)
-        assert wrong == [], f"Dotted engine paths found in DRIVER_SPECS fields: {wrong}"
+        assert '"snapshot_key"' in src
 
     def test_sensitivity_non_destructive_guard_present(self):
         """The non-destructive runtime guard must be in the sensitivity handler."""
@@ -438,9 +433,10 @@ class TestSensitivityDriverSpecs:
         assert "_pis_base_values_snapshot" in src
         assert "NON-DESTRUCTIVE VIOLATION" in src
 
-    def test_tariff_field_alt_present_for_newer_projects(self):
+    def test_tariff_legacy_fallback_present(self):
+        """Tariff driver must have field_id_fallback for legacy projects."""
         src = open("app/v2/router.py").read()
-        assert '"field_alt"' in src or "'field_alt'" in src
+        assert '"field_id_fallback"' in src or "field_id_fallback" in src
 
 
 # ── Scenario select clears runtime evidence ──────────────────────────────── #
