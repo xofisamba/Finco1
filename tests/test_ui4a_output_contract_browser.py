@@ -524,12 +524,10 @@ async def _real_click_run(page, base_url: str, project_code: str) -> list:
     await run_btn.wait_for(state="visible", timeout=10000)
     await run_btn.click()
 
-    # Wait for HTMX to complete: button re-enables or loading spinner disappears
-    # The run may take up to 60s for a real engine pass
-    await page.wait_for_function(
-        "() => !document.querySelector('.v2-run-btn[disabled]')",
-        timeout=60000,
-    )
+    # Wait for HTMX run to complete (network goes idle after all partials loaded)
+    await page.wait_for_load_state("networkidle", timeout=60000)
+    # Reload to get full page with updated KPI state
+    await page.reload(wait_until="networkidle")
     return errors
 
 
