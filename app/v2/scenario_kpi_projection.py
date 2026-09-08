@@ -5,62 +5,41 @@ and Sensitivity output surfaces.
 Authority contract:
   Every scalar displayed in Scenario Compare or Sensitivity is sourced exclusively
   from an authoritative RuntimeResult / run_project() kpis dict.  This module
-  formats those raw floats into display strings using the same rules as
-  OverviewProjection, and produces nothing else.
+  formats those raw floats into display strings using the canonical KPI_CATALOG
+  defined in output_metric_projection — one catalog for the whole application.
 
 No financial computation. No interpolation. No independent calculation.
+No separate KPI catalog — imports from output_metric_projection.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Optional
 
-_NA = "—"
+from app.v2.output_metric_projection import (
+    KPI_CATALOG,
+    _safe_float,
+    _apply_fmt,
+)
 
-# KPI display order and metadata
-KPI_CATALOG: list[dict] = [
-    {"key": "project_irr",       "label": "Project IRR",   "fmt": "pct"},
-    {"key": "equity_irr",        "label": "Equity IRR",    "fmt": "pct"},
-    {"key": "min_dscr",          "label": "Min DSCR",      "fmt": "ratio"},
-    {"key": "avg_dscr",          "label": "Avg DSCR",      "fmt": "ratio"},
-    {"key": "min_llcr",          "label": "Min LLCR",      "fmt": "ratio"},
-    {"key": "senior_debt_keur",  "label": "Senior Debt",   "fmt": "keur"},
-    {"key": "total_capex_keur",  "label": "Total CAPEX",   "fmt": "keur"},
-    {"key": "total_revenue_keur","label": "Total Revenue", "fmt": "keur"},
-    {"key": "total_ebitda_keur", "label": "Total EBITDA",  "fmt": "keur"},
-    {"key": "total_cfads_keur",  "label": "Total CFADS",   "fmt": "keur"},
-]
+_NA = "—"
 
 
 def _fmt(v: Any, fmt: str) -> str:
-    if v is None or v == "" or v == _NA:
+    """Format raw numeric value using canonical formatter.
+
+    Delegates to output_metric_projection._safe_float() and _apply_fmt()
+    so there is exactly one formatting definition for all surfaces.
+    """
+    f = _safe_float(v)
+    if f is None:
         return _NA
-    try:
-        f = float(v)
-        if f != f or abs(f) == float("inf"):
-            return _NA
-        if fmt == "pct":
-            return f"{f * 100:.2f}%"
-        if fmt == "ratio":
-            return f"{f:.2f}x"
-        if fmt == "keur":
-            return f"{f:,.0f} kEUR"
-        return str(v)
-    except (TypeError, ValueError):
-        return str(v)
+    return _apply_fmt(f, fmt)
 
 
-def _raw(v: Any, fmt: str) -> Optional[float]:
+def _raw(v: Any, fmt: str = "") -> Optional[float]:
     """Return raw float for delta arithmetic, or None if unavailable."""
-    if v is None or v == "" or v == _NA:
-        return None
-    try:
-        f = float(v)
-        if f != f or abs(f) == float("inf"):
-            return None
-        return f
-    except (TypeError, ValueError):
-        return None
+    return _safe_float(v)
 
 
 @dataclass(frozen=True)
@@ -94,7 +73,8 @@ def build_scenario_projection(
     """Build a ScenarioProjection from a persisted runtime_summary dict.
 
     runtime_summary must be the raw engine kpis dict (raw floats).
-    No financial computation performed here — only formatting.
+    No financial computation performed here — only formatting via the
+    canonical KPI_CATALOG from output_metric_projection.
     """
     rs = runtime_summary or {}
     if not rs:
@@ -106,10 +86,11 @@ def build_scenario_projection(
 
     kpis: dict[str, str] = {}
     kpis_raw: dict[str, Optional[float]] = {}
-    for item in KPI_CATALOG:
-        v = rs.get(item["key"])
-        kpis[item["key"]] = _fmt(v, item["fmt"])
-        kpis_raw[item["key"]] = _raw(v, item["fmt"])
+    for entry in KPI_CATALOG:
+        key, _label, _unit, fmt, _source = entry
+        v = rs.get(key)
+        kpis[key] = _fmt(v, fmt)
+        kpis_raw[key] = _raw(v)
 
     return ScenarioProjection(
         scenario_id=None,
@@ -124,13 +105,13 @@ def build_scenario_projection(
 def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKpiRow]:
     """Build KPI comparison rows from a list of ScenarioProjection objects.
 
-    Deltas are presentation arithmetic only: (value_i - value_0) formatted.
+    Deltas are presentation arithmetic only: (raw_i - raw_0) formatted.
     Never used to construct a new financial output.
+    Delta rule: raw float delta, formatted with sign — never string parsing.
     """
     rows: list[ScenarioKpiRow] = []
-    for item in KPI_CATALOG:
-        key = item["key"]
-        fmt = item["fmt"]
+    for entry in KPI_CATALOG:
+        key, label, _unit, fmt, _source = entry
         vals = [p.kpis.get(key, _NA) for p in projections]
         raw_vals = [p.kpis_raw.get(key) for p in projections]
         base_raw = raw_vals[0] if raw_vals else None
@@ -154,7 +135,7 @@ def build_compare_rows(projections: list[ScenarioProjection]) -> list[ScenarioKp
 
         rows.append(ScenarioKpiRow(
             key=key,
-            label=item["label"],
+            label=label,
             fmt=fmt,
             values=vals,
             deltas=deltas,

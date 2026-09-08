@@ -49,7 +49,7 @@
     <span class="v2-state-strip-label">CURRENT</span>
     <span class="v2-state-strip-detail">
       Outputs reflect the current inputs.
-      {% if ov.ran_at %} Last run {{ ov.ran_at[:16] | replace("T", " ") }} UTC.{% endif %}
+      {% if ov.run_timestamp_display %} Last run {{ ov.run_timestamp_display }}.{% endif %}
     </span>
   {% elif is_stale %}
     <span class="v2-state-strip-dot" aria-hidden="true">●</span>
@@ -195,7 +195,7 @@
               </td></tr>
           <tr><td class="v2-ov-sum-label">Last Run</td>
               <td class="v2-ov-sum-value v2-ov-timestamp" data-testid="overview-run-at">
-                {% if ov.ran_at %}{{ ov.ran_at[:16] | replace("T", " ") }} UTC{% else %}—{% endif %}
+                {{ ov.run_timestamp_display or "—" }}
               </td></tr>
           <tr><td class="v2-ov-sum-label">Snapshot</td>
               <td class="v2-ov-sum-value v2-ov-mono" data-testid="overview-snapshot-id">{{ ov.snapshot_id or "—" }}</td></tr>
@@ -281,7 +281,7 @@
   <div class="v2-overview-footer">
     <span class="v2-overview-footer-label">Last model run:</span>
     <span class="v2-overview-footer-value" data-testid="overview-footer-timestamp">
-      {% if ov.ran_at %}{{ ov.ran_at[:16] | replace("T", " ") }} UTC{% else %}—{% endif %}
+      {{ ov.run_timestamp_display or "—" }}
     </span>
     {% if is_stale %}
       <span class="v2-overview-footer-stale"> · Prior run — inputs changed since then</span>

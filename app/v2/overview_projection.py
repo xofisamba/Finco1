@@ -104,6 +104,9 @@ class OverviewProjection:
     # ── UI-3B: active scenario identity ──────────────────────────────────── #
     active_scenario_name: str = ""         # "Base Case" | scenario display name
 
+    # ── UI-4B: normalized timestamp display (avoids Jinja slice) ─────────── #
+    run_timestamp_display: str = ""        # "2026-09-08 14:32 UTC" | ""
+
     # ── UI-4A: canonical OutputMetricProjection objects (OUTPUT_METRIC_CONTRACT_ACTUALLY_WIRED) #
     # Templates render metric.display_value directly — no sentinel repair needed.
     output_metrics: Dict[str, OutputMetricProjection] = field(default_factory=dict)
@@ -144,9 +147,16 @@ def build_overview_projection(
         str(rr.ran_at) if _has_runtime and getattr(rr, "ran_at", None) else None
     )
 
-    # ── KPIs from runtime_summary ─────────────────────────────────────── #
-    _rs_raw = getattr(rr, "runtime_summary", None) if rr else None
-    rs: Dict[str, Any] = thaw_runtime_payload(_rs_raw) if _rs_raw else {}
+    # ── KPIs: use raw_kpis (numeric authority) ───────────────────────── #
+    # rr.raw_kpis returns result["kpis"] raw floats (excludes revenue_derivation).
+    # In v2, runtime_summary IS the raw kpis dict — rr.raw_kpis is the clean subset.
+    # Fallback to thawed runtime_summary for test mocks that lack .raw_kpis.
+    _raw_kpis = getattr(rr, "raw_kpis", None) if rr is not None else None
+    if _raw_kpis is not None:
+        rs: Dict[str, Any] = _raw_kpis
+    else:
+        _rs_raw = getattr(rr, "runtime_summary", None) if rr is not None else None
+        rs = thaw_runtime_payload(_rs_raw) if _rs_raw else {}
 
     _PCT_KEYS  = {"project_irr", "equity_irr"}
     _RATIO_KEYS = {"avg_dscr", "min_dscr"}
@@ -227,6 +237,14 @@ def build_overview_projection(
     except Exception:
         pass
 
+    # ── UI-4B: normalize timestamp display in Python, not Jinja ─────────── #
+    _run_ts_display = ""
+    if _ran_at:
+        try:
+            _run_ts_display = _ran_at[:16].replace("T", " ") + " UTC"
+        except Exception:
+            _run_ts_display = ""
+
     # ── UI-4A: build canonical OutputMetricProjection objects from raw floats ── #
     _freshness = (
         "not_run" if state in (RuntimeProjectionState.NOT_RUN, RuntimeProjectionState.UNAVAILABLE)
@@ -269,4 +287,5 @@ def build_overview_projection(
         input_target_dscr=_input_target_dscr,
         active_scenario_name=active_scenario_name or "",
         output_metrics=_output_metrics,
+        run_timestamp_display=_run_ts_display,
     )
