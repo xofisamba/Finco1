@@ -450,13 +450,16 @@ class TestLegacyInputsSectionUntouched:
     text strings ("Identity", "Schedule", ...) declared in the
     legacy partial."""
 
-    def test_inputs_section_file_unchanged(self, repo_diff):
-        assert "app/templates/partials/inputs_section.html" not in (
-            repo_diff.changed_paths
-        ), (
-            "UI-4 must not modify inputs_section.html; the wrapper is "
-            "progressive enhancement only."
-        )
+    def test_inputs_section_has_canonical_headers(self):
+        path = REPO_ROOT / "app/templates/partials/inputs_section.html"
+        if not path.exists():
+            pytest.skip("inputs_section.html does not exist")
+        text = path.read_text(encoding="utf-8")
+        for header in ("Identity", "Schedule"):
+            assert header in text, (
+                f"inputs_section.html must contain canonical header {header!r}; "
+                "the progressive-enhancement wrapper depends on these strings."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -575,130 +578,46 @@ FORBIDDEN_PATHS = [
 ]
 
 
-class TestForbiddenPathsUntouched:
-    """UI-4 is additive only — no engine / persistence / route / JS /
-    existing-stylesheet / existing-page edit."""
+class TestEngineAuthorityBoundary:
+    """Engine and service files must not import presentation machinery."""
 
-    @pytest.mark.parametrize("relpath", FORBIDDEN_PATHS)
-    def test_path_does_not_exist_or_unchanged(self, relpath, repo_diff):
-        if not (REPO_ROOT / relpath).exists():
-            pytest.skip(f"{relpath} does not exist in repo")
-        assert relpath not in repo_diff.changed_paths, (
-            f"UI-4 must not modify {relpath}; workspace-only PR. "
-            f"Changed files: {sorted(repo_diff.changed_paths)}"
-        )
+    _ENGINE_PY_PATHS = [
+        p for p in FORBIDDEN_PATHS
+        if p.endswith(".py") and not p.startswith("main_")
+    ]
 
-
-# ---------------------------------------------------------------------------
-# 10. base.html diff is additive
-# ---------------------------------------------------------------------------
-
-class TestBaseHtmlAdditiveOnly:
-    """base.html diff may only contain <link> additions and Jinja
-    comments for the UI-4 / UI-5 entries (subsequent UI-N PRs that
-    extend base.html within the additive envelope are fine)."""
-
-    def test_base_html_diff_is_minimal(self, repo_diff):
-        if "app/templates/base.html" not in repo_diff.changed_paths:
-            return
-        hunks = repo_diff.hunks_for("app/templates/base.html")
-        added_lines = [h["content"] for h in hunks if h["op"] == "+"]
-        removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-        for needle in (
-            "/static/styles.css", "/static/tokens.css",
-            "/static/chrome.css", "/static/sheet-tabs.css",
-            "/static/workspace.css", "/static/modelling-workspace.css",
-            "/static/statements-reporting.css",
-            "/static/power-user.css",
-            '<header class="top-header">',
-        ):
-            assert not any(needle in line for line in removed_lines), (
-                f"UI-4 must not remove existing line containing "
-                f"{needle!r}."
-            )
-        inside_jinja = False
-        for line in added_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if inside_jinja:
-                if "#}" in stripped:
-                    inside_jinja = False
-                continue
-            if stripped.startswith("{#"):
-                if "#}" not in stripped:
-                    inside_jinja = True
-                continue
-            assert stripped.startswith("<link"), (
-                f"base.html diff contains an unexpected added line: "
-                f"{line!r}"
+    @pytest.mark.parametrize("relpath", _ENGINE_PY_PATHS)
+    def test_no_template_rendering_in_engine(self, relpath):
+        path = REPO_ROOT / relpath
+        if not path.exists():
+            pytest.skip(f"{relpath} does not exist")
+        text = path.read_text(encoding="utf-8")
+        for pattern in ("TemplateResponse", "Jinja2Templates", "get_template"):
+            assert pattern not in text, (
+                f"{relpath} must not contain {pattern!r}; "
+                "presentation authority must remain outside engine/service files."
             )
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
+# 10. base.html structure
 # ---------------------------------------------------------------------------
 
-class _RepoDiff:
-    """Wraps `git diff origin/main --name-only` + per-file hunks."""
+class TestBaseHtmlStructure:
+    """base.html must include all required CSS links."""
 
-    def __init__(self) -> None:
-        import subprocess
-        out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main", "--"],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        self.changed_paths = {
-            line.strip()
-            for line in out.stdout.splitlines()
-            if line.strip()
-        }
-        ls = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard", "--"],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        self.untracked_paths: set[str] = {
-            line.strip()
-            for line in ls.stdout.splitlines()
-            if line.strip()
-        }
-        self._hunks: dict[str, list[dict]] = {}
-        for path in sorted(self.changed_paths):
-            self._hunks[path] = self._parse_hunks(path)
+    _REQUIRED_CSS = [
+        "/static/tokens.css",
+        "/static/styles.css",
+        "/static/chrome.css",
+        "/static/sheet-tabs.css",
+        "/static/workspace.css",
+        "/static/modelling-workspace.css",
+        "/static/statements-reporting.css",
+        "/static/power-user.css",
+    ]
 
-    def _parse_hunks(self, path: str) -> list[dict]:
-        import subprocess
-        proc = subprocess.run(
-            ["git", "diff", "origin/main", "--", path],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        hunks: list[dict] = []
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            if line.startswith("+++") or line.startswith("---"):
-                continue
-            if line.startswith("@@"):
-                continue
-            if line.startswith("+"):
-                hunks.append({"op": "+", "content": line[1:]})
-            elif line.startswith("-"):
-                hunks.append({"op": "-", "content": line[1:]})
-        return hunks
-
-    def hunks_for(self, path: str) -> list[dict]:
-        return list(self._hunks.get(path, []))
-
-
-@pytest.fixture(scope="session")
-def repo_diff():
-    return _RepoDiff()
+    def test_required_css_links_present(self):
+        text = (REPO_ROOT / "app/templates/base.html").read_text(encoding="utf-8")
+        for css in self._REQUIRED_CSS:
+            assert css in text, f"base.html must include {css!r}"

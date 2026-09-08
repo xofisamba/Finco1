@@ -119,16 +119,37 @@ def _start_server(tmp_path: Path) -> tuple:
         "FINCO_DB_PATH": db_path,
         "FINCO_SECRET_KEY": _SERVER_SECRET,
     })
+    stderr_path = tmp_path / "ui4a_server_stderr.txt"
+    stderr_fh = open(str(stderr_path), "w")
     proc = subprocess.Popen(
         [sys.executable, "-m", "uvicorn", "main_web:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
         cwd=str(BASE_DIR),
         env=env,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=stderr_fh,
     )
     base_url = f"http://127.0.0.1:{port}"
-    _wait_for_server(base_url)
+    try:
+        _wait_for_server(base_url)
+    except AssertionError:
+        stderr_fh.flush()
+        stderr_fh.close()
+        exit_code = proc.poll()
+        try:
+            stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            stderr_text = "<unreadable>"
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except Exception:
+            proc.kill()
+        raise AssertionError(
+            f"UI-4A server at {base_url} failed to start.\n"
+            f"Exit code: {exit_code!r}\n"
+            f"Server stderr:\n{stderr_text}"
+        )
     return proc, base_url, db_path
 
 

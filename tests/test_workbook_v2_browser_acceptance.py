@@ -135,7 +135,7 @@ def _create_project(base_url: str, token: str, name: str,
         "interest_rate_pct": "4.5",
         "tenor_years": "18",
         "target_dscr": "1.30",
-    })
+    }, extra_headers={"HX-Request": "true"})
     redirect = (headers.get("hx-redirect") or headers.get("Hx-Redirect")
                 or headers.get("location") or headers.get("Location") or "")
     parsed = urllib.parse.parse_qs(urllib.parse.urlparse(redirect).query)

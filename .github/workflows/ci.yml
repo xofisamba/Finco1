@@ -143,6 +143,17 @@ jobs:
       needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: checked-out commit does not match expected head SHA" >&2
+            exit 1
+          fi
+          echo "HEAD OK: $ACTUAL"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -241,6 +252,8 @@ jobs:
       needs.classify-scope.outputs.browser_ui_changed == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -272,13 +285,15 @@ jobs:
       needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
-          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio requests
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio uvicorn requests
           pip install playwright
           python3 -m playwright install chromium
       - name: UI-4A output contract browser acceptance
