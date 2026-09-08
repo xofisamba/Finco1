@@ -74,7 +74,7 @@
   <span class="v2-opex-line-name">{{ line.name }}</span>
   <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
   <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
-  {%- if line.notes %}<span class="v2-opex-line-notes">{{ line.notes }}</span>{% endif %}
+  {# Calibration/development notes suppressed in standard product view. #}
   {%- if line.is_derived or line.is_read_only %}<span class="v2-binding-badge v2-opex-badge-calc" data-binding="{{ 'derived' if line.is_derived else 'engine' }}">Calculated</span>{%- endif %}
 </div>
 {% endmacro %}

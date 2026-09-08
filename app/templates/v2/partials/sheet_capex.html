@@ -70,7 +70,7 @@
   <span class="v2-capex-subline-name">{{ line.name }}</span>
   <span class="v2-capex-subline-amount">{{ "%.0f"|format(line.amount_keur) }}</span>
   <span class="v2-capex-subline-permw">{{ "%.1f"|format(line.per_mw) }}</span>
-  {%- if line.notes %}<span class="v2-capex-subline-notes">{{ line.notes }}</span>{% endif %}
+  {# Calibration/development notes suppressed in standard product view. #}
 </div>
 {% endmacro %}
 

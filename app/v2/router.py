@@ -2101,6 +2101,7 @@ async def v2_scenario_sensitivity_run(
     from app.api.project_runner import run_project
     from app.workbook.service import WorkbookService
     from app.v2.scenario_kpi_projection import build_scenario_projection, KPI_CATALOG, _fmt
+    from app.v2.output_metric_projection import build_output_metric_projection
 
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
@@ -2296,14 +2297,20 @@ async def v2_scenario_sensitivity_run(
                 project_inputs_override=pi_override,
             )
             kpis_raw = eng_result.get("kpis", {})
-            formatted_kpis = {}
+            # Build canonical OutputMetricProjection for each KPI.
+            step_metrics = {}
             for _key, _label, _unit, _fmt_code, _src in KPI_CATALOG:
-                formatted_kpis[_key] = _fmt(kpis_raw.get(_key), _fmt_code)
+                step_metrics[_key] = build_output_metric_projection(
+                    _key, kpis_raw.get(_key), freshness="current"
+                )
+            # Compatibility: derived formatted/raw dicts from metrics.
+            formatted_kpis = {k: m.display_value for k, m in step_metrics.items()}
             results.append({
                 "label": step_label,
                 "status": "OK",
+                "metrics": step_metrics,
                 "kpis": formatted_kpis,
-                "kpis_raw": {_key: kpis_raw.get(_key) for _key, *_ in KPI_CATALOG},
+                "kpis_raw": {k: m.raw_value for k, m in step_metrics.items()},
             })
 
         except Exception as exc:

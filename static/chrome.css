@@ -140,7 +140,7 @@
   background: var(--fo-surface-alt);
   color: var(--fo-ink);
   border-color: var(--fo-line-strong);
-  outline: 2px solid var(--fo-focus, #2563eb);
+  outline: 2px solid var(--fo-focus);
   outline-offset: 2px;
 }
 

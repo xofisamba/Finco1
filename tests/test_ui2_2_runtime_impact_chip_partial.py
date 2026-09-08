@@ -73,7 +73,8 @@ class TestStatesSupported:
 EXPECTED_TOOLTIPS = [
     "Included in model calculations.",
     "Shown for review; does not affect calculations.",
-    "Mapped but not yet connected to runtime calculations.",
+    # Current safe semantics for Pending state (formerly "Mapped but not yet connected")
+    "Not included in current model calculations.",
     "Requires review before use."
 ]
 
