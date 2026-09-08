@@ -911,16 +911,21 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     from app.v2.overview_projection import build_overview_projection
     context["overview"] = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=ws.active_scenario_name or "")
 
-    # UI-3B: inject scenario list for the Scenarios tab
+    # UI-3B: inject scenario presentations for the Scenarios tab
     try:
         from app.persistence.scenarios_repository import list_scenarios
-        context["scenarios"] = list_scenarios(
+        from app.v2.scenario_presentation import build_scenario_presentations
+        _sc_records = list_scenarios(
             user_id=workspace_owner,
             project_id=project_record.project_id,
             include_archived=False,
         )
+        _active_sc_id = ws.active_scenario_id if ws else None
+        context["scenarios"] = build_scenario_presentations(_sc_records, _active_sc_id)
+        context["active_scenario_id"] = _active_sc_id
     except Exception:
         context["scenarios"] = []
+        context.setdefault("active_scenario_id", None)
 
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
@@ -1637,12 +1642,19 @@ async def v2_workbook_run(
     if active_scenario_id:
         try:
             from app.persistence.repository import update_scenario_last_run_summary
+            from app.v2.scenario_presentation import _scenario_snapshot_hash
+            from app.persistence.scenarios_repository import get_scenario as _get_sc
+            _active_sc_rec = _get_sc(active_scenario_id, workspace_owner)
+            _sc_snap_hash = _scenario_snapshot_hash(_active_sc_rec) if _active_sc_rec else None
+            _sc_overrides_at_run = dict(getattr(_active_sc_rec, "overrides", None) or {})
             _sc_run_summary = {
                 "kpis": dict(result["kpis"]),
                 "snapshot_id": runtime_snapshot_id,
                 "ran_at": ran_at.isoformat(),
                 "scenario_id": active_scenario_id,
                 "scenario_name": active_scenario_name or "",
+                "scenario_snapshot_hash": _sc_snap_hash,
+                "scenario_overrides_at_run": _sc_overrides_at_run,
             }
             update_scenario_last_run_summary(
                 user_id=workspace_owner,
@@ -1741,10 +1753,12 @@ async def v2_workbook_run(
 def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) -> str:
     """Render the scenario list partial HTML (used by multiple endpoints)."""
     from app.persistence.scenarios_repository import list_scenarios
+    from app.v2.scenario_presentation import build_scenario_presentations
     scenarios = list_scenarios(user_id=user_id, project_id=project_id, include_archived=False)
     active_id = ws.active_scenario_id if ws else None
+    presentations = build_scenario_presentations(scenarios, active_id)
     ctx = {
-        "scenarios": scenarios,
+        "scenarios": presentations,
         "active_scenario_id": active_id,
         "project_code": project_code,
         "ws": ws,

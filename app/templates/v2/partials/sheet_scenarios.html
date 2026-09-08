@@ -1,11 +1,12 @@
 {#
   UI-3B — Workbook V2 Scenarios sheet partial.
 
-  Displays the scenario workspace: list of scenarios with status badges,
-  create/select/rename/archive controls, and links to Compare + Sensitivity.
+  Consumes ScenarioPresentation objects (from app.v2.scenario_presentation).
+  All values are pre-normalised by the router — NO datetime slicing, NO
+  type checks, NO financial arithmetic here.
 
   Context variables:
-    scenarios          list[ScenarioRecord]
+    scenarios          list[ScenarioPresentation]
     active_scenario_id str | None
     project_code       str
     ws                 WorkspaceStateRecord | None
@@ -37,13 +38,7 @@
     {% endif %}
 
     {% for sc in scenarios %}
-    {% set is_active = (sc.scenario_id == active_scenario_id) %}
-    {% set has_run   = sc.last_run_summary and sc.last_run_summary.get("kpis") %}
-    {# Stale: scenario was edited (updated_at) after its last run (ran_at in last_run_summary) #}
-    {% set run_ts    = sc.last_run_summary.get("ran_at", "") if sc.last_run_summary else "" %}
-    {% set sc_ts     = sc.updated_at[:19] if sc.updated_at else "" %}
-    {% set is_stale  = has_run and sc_ts and run_ts and sc_ts > run_ts[:19] %}
-    <div class="v2-scenario-row {% if is_active %}v2-scenario-row--active{% endif %}"
+    <div class="v2-scenario-row {% if sc.is_active %}v2-scenario-row--active{% endif %}"
          data-scenario-id="{{ sc.scenario_id }}">
 
       <div class="v2-scenario-row-main">
@@ -52,28 +47,28 @@
             <span class="v2-scenario-base-badge" title="Base Case">BC</span>
           {% endif %}
           {{ sc.scenario_name }}
-          {% if is_active %}
+          {% if sc.is_active %}
             <span class="v2-scenario-active-badge">Active</span>
           {% endif %}
         </div>
         <div class="v2-scenario-row-meta">
-          {% if has_run and is_stale %}
+          {% if sc.state == "STALE" %}
             <span class="v2-scenario-state v2-scenario-state--stale" title="Inputs changed since last run">Stale</span>
-          {% elif has_run %}
+          {% elif sc.state == "CURRENT" %}
             <span class="v2-scenario-state v2-scenario-state--clean" title="Has authoritative run results">Current</span>
           {% else %}
             <span class="v2-scenario-state v2-scenario-state--notrun">Not run</span>
           {% endif %}
-          {% if run_ts %}
-            <span class="v2-scenario-ts">{{ run_ts[:16] | replace("T", " ") }}</span>
-          {% elif sc.updated_at %}
-            <span class="v2-scenario-ts">{{ sc.updated_at[:16] | replace("T", " ") }}</span>
+          {% if sc.run_at_display %}
+            <span class="v2-scenario-ts" title="Last run">{{ sc.run_at_display }}</span>
+          {% elif sc.updated_at_display %}
+            <span class="v2-scenario-ts" title="Last updated">{{ sc.updated_at_display }}</span>
           {% endif %}
         </div>
       </div>
 
       <div class="v2-scenario-row-actions">
-        {% if not is_active %}
+        {% if not sc.is_active %}
         <form hx-post="/v2/workbook/scenarios/select"
               hx-target="#v2-sheet-scenarios"
               hx-swap="outerHTML"

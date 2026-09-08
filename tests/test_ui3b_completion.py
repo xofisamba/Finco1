@@ -574,3 +574,276 @@ class TestEngineFreezeGate:
         assert result.stdout.strip() == "", (
             f"Frozen files were modified:\n{result.stdout}"
         )
+
+
+# ── Correction B: ScenarioPresentation datetime 500 regression ───────────── #
+
+class TestScenarioPresentation:
+    """
+    Regression tests for the 'datetime.datetime' object is not subscriptable 500.
+
+    The old template did sc.updated_at[:19] where updated_at is a datetime.
+    ScenarioPresentation must supply pre-normalised strings so templates never
+    need to slice or type-check timestamps.
+    """
+
+    def _make_sc_with_datetime(self, updated_at_dt, last_run_summary=None):
+        """Return a minimal mock ScenarioRecord with a real datetime updated_at."""
+        class _FakeSc:
+            scenario_id = "sc_001"
+            scenario_name = "Downside"
+            is_base_case = False
+            updated_at = updated_at_dt
+            overrides = {"tariff_eur_mwh": 55.0}
+            base_input_set = {"tariff_eur_mwh": 65.0}
+            snapshot = {"tariff_eur_mwh": 55.0}
+
+        sc = _FakeSc()
+        sc.last_run_summary = last_run_summary
+        return sc
+
+    def test_datetime_updated_at_does_not_raise(self):
+        """build_scenario_presentation must not raise when updated_at is a datetime."""
+        from app.v2.scenario_presentation import build_scenario_presentation
+        from datetime import datetime, timezone
+        sc = self._make_sc_with_datetime(datetime(2025, 6, 15, 14, 30, 0, tzinfo=timezone.utc))
+        # Must not raise TypeError
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.updated_at_display == "2025-06-15 14:30"
+
+    def test_iso_string_updated_at(self):
+        """build_scenario_presentation handles ISO string updated_at."""
+        from app.v2.scenario_presentation import build_scenario_presentation
+        sc = self._make_sc_with_datetime("2025-06-15T14:30:00Z")
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.updated_at_display == "2025-06-15 14:30"
+
+    def test_none_updated_at(self):
+        from app.v2.scenario_presentation import build_scenario_presentation
+        sc = self._make_sc_with_datetime(None)
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.updated_at_display == ""
+
+    def test_no_run_state(self):
+        from app.v2.scenario_presentation import build_scenario_presentation
+        sc = self._make_sc_with_datetime(None, last_run_summary=None)
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.state == "NOT_RUN"
+        assert not p.has_run
+        assert not p.is_stale
+
+    def test_current_state_same_snapshot(self):
+        """Scenario with last_run_summary matching current snapshot → CURRENT."""
+        from app.v2.scenario_presentation import build_scenario_presentation, _scenario_snapshot_hash
+
+        class _FakeSc:
+            scenario_id = "sc_002"
+            scenario_name = "Base"
+            is_base_case = True
+            updated_at = None
+            overrides = {}
+            base_input_set = {"tariff_eur_mwh": 65.0}
+            snapshot = {"tariff_eur_mwh": 65.0}
+
+        sc = _FakeSc()
+        snap_hash = _scenario_snapshot_hash(sc)
+        sc.last_run_summary = {
+            "kpis": {"project_irr": 0.085},
+            "ran_at": "2025-06-15T10:00:00Z",
+            "scenario_snapshot_hash": snap_hash,
+        }
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.state == "CURRENT"
+        assert p.has_run
+        assert not p.is_stale
+
+    def test_stale_state_different_snapshot(self):
+        """Scenario edited after run (snapshot changed) → STALE."""
+        from app.v2.scenario_presentation import build_scenario_presentation
+
+        class _FakeSc:
+            scenario_id = "sc_003"
+            scenario_name = "Downside"
+            is_base_case = False
+            updated_at = None
+            overrides = {"tariff_eur_mwh": 50.0}  # changed from 55 at run time
+            base_input_set = {"tariff_eur_mwh": 65.0}
+            snapshot = {"tariff_eur_mwh": 50.0}  # current
+
+        sc = _FakeSc()
+        # Stored hash was for the old snapshot (tariff=55)
+        sc.last_run_summary = {
+            "kpis": {"project_irr": 0.075},
+            "ran_at": "2025-06-15T10:00:00Z",
+            "scenario_snapshot_hash": "deadbeef12345678",  # doesn't match current
+        }
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.state == "STALE"
+        assert p.is_stale
+
+    def test_rename_does_not_cause_stale(self):
+        """Rename bumps updated_at but must NOT change snapshot → not stale."""
+        from app.v2.scenario_presentation import build_scenario_presentation, _scenario_snapshot_hash
+        from datetime import datetime, timezone
+
+        class _FakeSc:
+            scenario_id = "sc_004"
+            scenario_name = "Downside Renamed"
+            is_base_case = False
+            updated_at = datetime(2025, 7, 1, 12, 0, 0, tzinfo=timezone.utc)  # bumped by rename
+            overrides = {"tariff_eur_mwh": 55.0}
+            base_input_set = {"tariff_eur_mwh": 65.0}
+            snapshot = {"tariff_eur_mwh": 55.0}
+
+        sc = _FakeSc()
+        snap_hash = _scenario_snapshot_hash(sc)
+        sc.last_run_summary = {
+            "kpis": {"project_irr": 0.075},
+            "ran_at": "2025-06-15T10:00:00Z",
+            "scenario_snapshot_hash": snap_hash,  # same snapshot
+        }
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        # Rename bumped updated_at but snapshot unchanged → CURRENT not STALE
+        assert p.state == "CURRENT"
+        assert not p.is_stale
+
+    def test_run_at_display_from_iso_string(self):
+        from app.v2.scenario_presentation import build_scenario_presentation
+
+        class _FakeSc:
+            scenario_id = "sc_005"
+            scenario_name = "Base"
+            is_base_case = True
+            updated_at = None
+            overrides = {}
+            base_input_set = {}
+            snapshot = {}
+
+        sc = _FakeSc()
+        sc.last_run_summary = {
+            "kpis": {"project_irr": 0.085},
+            "ran_at": "2025-06-15T14:30:00Z",
+        }
+        p = build_scenario_presentation(sc, active_scenario_id=None)
+        assert p.run_at_display == "2025-06-15 14:30"
+
+    def test_is_active_flag(self):
+        from app.v2.scenario_presentation import build_scenario_presentation
+
+        class _FakeSc:
+            scenario_id = "sc_active"
+            scenario_name = "Base"
+            is_base_case = True
+            updated_at = None
+            overrides = {}
+            base_input_set = {}
+            snapshot = {}
+            last_run_summary = None
+
+        sc = _FakeSc()
+        p = build_scenario_presentation(sc, active_scenario_id="sc_active")
+        assert p.is_active
+        p2 = build_scenario_presentation(sc, active_scenario_id="sc_other")
+        assert not p2.is_active
+
+
+# ── Correction B: route smoke regression for datetime 500 ─────────────────── #
+
+class TestDatetime500Regression:
+    """
+    Verifies the exact CI failure path:
+      GET /v2/workbook?project=<code>
+    must return HTTP 200 when ScenarioRecord.updated_at is a real datetime object.
+    The old template sliced sc.updated_at[:19] causing TypeError.
+
+    Uses the ScenarioPresentation layer (not the raw template) — verifies that
+    build_scenario_presentations accepts real datetime objects without raising.
+    """
+
+    def _make_sc_with_datetime_updated_at(self, dt_value=None):
+        """Return a minimal scenario-like object with a real datetime updated_at."""
+        from datetime import datetime, timezone
+
+        class _FakeSc:
+            scenario_id = f"sc_{uuid.uuid4().hex[:8]}"
+            scenario_name = "Downside"
+            is_base_case = False
+            updated_at = dt_value or datetime(2025, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+            overrides = {"tariff_eur_mwh": 55.0}
+            base_input_set = {"tariff_eur_mwh": 65.0}
+            snapshot = {"tariff_eur_mwh": 55.0}
+            last_run_summary = None
+
+        return _FakeSc()
+
+    def test_build_presentations_no_raise_with_real_datetime(self):
+        """build_scenario_presentations must not raise TypeError with datetime updated_at."""
+        from app.v2.scenario_presentation import build_scenario_presentations
+        from datetime import datetime, timezone
+
+        sc_list = [
+            self._make_sc_with_datetime_updated_at(
+                datetime(2025, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+            ),
+        ]
+        # Must not raise
+        presentations = build_scenario_presentations(sc_list, active_scenario_id=None)
+        assert len(presentations) == 1
+        assert presentations[0].updated_at_display == "2025-06-15 14:30"
+        assert "subscriptable" not in str(presentations[0])
+
+    def test_build_presentations_mixed_datetime_and_string(self):
+        """Build presentations from a list with both datetime and string updated_at."""
+        from app.v2.scenario_presentation import build_scenario_presentations
+        from datetime import datetime, timezone
+
+        class _ScString:
+            scenario_id = "sc_str"
+            scenario_name = "Base"
+            is_base_case = True
+            updated_at = "2025-06-15T10:00:00Z"
+            overrides = {}
+            base_input_set = {}
+            snapshot = {}
+            last_run_summary = None
+
+        class _ScDatetime:
+            scenario_id = "sc_dt"
+            scenario_name = "Downside"
+            is_base_case = False
+            updated_at = datetime(2025, 6, 15, 14, 30, 0, tzinfo=timezone.utc)
+            overrides = {"tariff_eur_mwh": 55.0}
+            base_input_set = {}
+            snapshot = {}
+            last_run_summary = None
+
+        sc_list = [_ScString(), _ScDatetime()]
+        presentations = build_scenario_presentations(sc_list, active_scenario_id=None)
+        assert len(presentations) == 2
+        assert presentations[0].updated_at_display == "2025-06-15 10:00"
+        assert presentations[1].updated_at_display == "2025-06-15 14:30"
+
+    def test_build_presentations_none_updated_at(self):
+        from app.v2.scenario_presentation import build_scenario_presentations
+        sc = self._make_sc_with_datetime_updated_at(None)
+        sc.updated_at = None
+        presentations = build_scenario_presentations([sc], active_scenario_id=None)
+        assert presentations[0].updated_at_display == ""
+
+    def test_scenario_run_timestamp_displayed(self):
+        """run_at_display is populated from last_run_summary.ran_at string."""
+        from app.v2.scenario_presentation import build_scenario_presentations
+
+        class _FakeSc:
+            scenario_id = "sc_run"
+            scenario_name = "Base"
+            is_base_case = True
+            updated_at = None
+            overrides = {}
+            base_input_set = {}
+            snapshot = {}
+            last_run_summary = {"kpis": {"project_irr": 0.08}, "ran_at": "2025-07-01T09:15:00Z"}
+
+        presentations = build_scenario_presentations([_FakeSc()], active_scenario_id=None)
+        assert presentations[0].run_at_display == "2025-07-01 09:15"
+        assert presentations[0].state == "CURRENT"
