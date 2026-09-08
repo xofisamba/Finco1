@@ -249,12 +249,12 @@ jobs:
           python3 -m playwright install chromium
       - name: UI-3B browser acceptance
         run: |
-          python3 -m pytest -q --tb=short \
+          python3 -m pytest -p pytest_asyncio.plugin -q --tb=short \
             --basetemp=.pytest-tmp-browser \
             tests/test_ui3b_browser_acceptance.py
       - name: Workbook V2 browser acceptance
         run: |
-          python3 -m pytest -q --tb=short \
+          python3 -m pytest -p pytest_asyncio.plugin -q --tb=short \
             --basetemp=.pytest-tmp-workbook-browser \
             tests/test_workbook_v2_browser_acceptance.py \
             tests/test_workbook_v2_product_acceptance.py
@@ -278,7 +278,7 @@ jobs:
           python3 -m playwright install chromium
       - name: UI-4A output contract browser acceptance
         run: |
-          python3 -m pytest -q --tb=short \
+          python3 -m pytest -p pytest_asyncio.plugin -q --tb=short \
             --basetemp=.pytest-tmp-ui4a-browser \
             tests/test_ui4a_output_contract_browser.py
 
