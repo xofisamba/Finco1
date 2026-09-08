@@ -272,3 +272,42 @@ def build_overview_metric_projections(
         )
 
     return projections
+
+
+def extract_numeric_runtime_kpis(runtime_summary: Any) -> dict:
+    """Extract canonical numeric KPI values from a v2 persisted runtime_summary dict.
+
+    Fail-closed: only keys present in KPI_CATALOG are considered.
+    Only int/float (non-NaN, non-inf) values pass; str/dict/list/bool/NaN/inf are
+    rejected and excluded from the result.
+
+    Parameters
+    ----------
+    runtime_summary : any
+        Raw runtime_summary payload (may be MappingProxyType or plain dict).
+
+    Returns
+    -------
+    dict[str, float]
+        Filtered dict with only clean numeric KPI values.
+    """
+    if not runtime_summary:
+        return {}
+    rs: dict = dict(runtime_summary) if not isinstance(runtime_summary, dict) else runtime_summary
+    allowed_keys = {entry[0] for entry in KPI_CATALOG}
+    result: dict = {}
+    for key in allowed_keys:
+        v = rs.get(key)
+        if v is None:
+            continue
+        if isinstance(v, bool):
+            continue
+        if isinstance(v, (int, float)):
+            try:
+                f = float(v)
+                if f != f or abs(f) == float("inf"):
+                    continue
+                result[key] = f
+            except (TypeError, ValueError):
+                continue
+    return result

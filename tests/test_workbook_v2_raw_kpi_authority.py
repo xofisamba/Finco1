@@ -1,9 +1,9 @@
 """
-UI-4A Correction B — Raw KPI Authority Tests.
+UI-4A Final — Raw KPI Authority Tests.
 
 Proves:
-1. RuntimeResult.raw_kpis returns numeric-only subset (excludes revenue_derivation)
-2. Overview uses raw_kpis → OutputMetricProjection correctly
+1. extract_numeric_runtime_kpis() filters numeric subset, excludes revenue_derivation
+2. Overview uses extract_numeric_runtime_kpis → OutputMetricProjection correctly
 3. Catalog consolidation: scenario_kpi_projection imports KPI_CATALOG from output_metric_projection
 4. No format→parse→format patterns in presentation modules
 5. Zero / None / unavailable integration
@@ -29,6 +29,7 @@ from app.v2.output_metric_projection import (
     MetricAvailability,
     build_output_metric_projection,
     build_overview_metric_projections,
+    extract_numeric_runtime_kpis,
 )
 from app.v2.scenario_kpi_projection import (
     build_scenario_projection,
@@ -38,11 +39,11 @@ from app.v2.scenario_kpi_projection import (
 
 
 # ─────────────────────────────────────────────────────────────────────────── #
-# 1. RuntimeResult.raw_kpis property                                          #
+# 1. extract_numeric_runtime_kpis — fail-closed numeric filter                 #
 # ─────────────────────────────────────────────────────────────────────────── #
 
 class TestRuntimeResultRawKpis:
-    """raw_kpis returns numeric subset, excluding revenue_derivation."""
+    """extract_numeric_runtime_kpis returns numeric subset, excluding revenue_derivation."""
 
     def _make_rr(self, runtime_summary: dict):
         """Build a minimal RuntimeResult from a runtime_summary dict."""
@@ -65,7 +66,7 @@ class TestRuntimeResultRawKpis:
             "equity_irr": 0.123,
             "min_dscr": 1.32,
         })
-        kpis = rr.raw_kpis
+        kpis = extract_numeric_runtime_kpis(dict(rr.runtime_summary))
         assert kpis["project_irr"] == 0.085
         assert kpis["equity_irr"] == 0.123
         assert kpis["min_dscr"] == 1.32
@@ -75,24 +76,13 @@ class TestRuntimeResultRawKpis:
             "project_irr": 0.085,
             "revenue_derivation": {"display_value_keur": "27,000 kEUR"},
         })
-        kpis = rr.raw_kpis
+        kpis = extract_numeric_runtime_kpis(dict(rr.runtime_summary))
         assert "revenue_derivation" not in kpis
         assert "project_irr" in kpis
 
     def test_raw_kpis_empty_when_no_runtime_summary(self):
-        from app.workbook.runtime_result import RuntimeResult
-        rr = RuntimeResult(
-            snapshot_id="test",
-            ran_at="",
-            origin="test",
-            runtime_summary={},
-            financial_statements=None,
-            debt_schedule=None,
-            tax_schedule=None,
-            distribution_schedule=None,
-            sponsor_schedule=None,
-        )
-        assert rr.raw_kpis == {}
+        kpis = extract_numeric_runtime_kpis({})
+        assert kpis == {}
 
     def test_raw_kpis_survives_mappingproxy(self):
         """MappingProxyType (frozen dicts) must be handled transparently."""
@@ -102,14 +92,12 @@ class TestRuntimeResultRawKpis:
         })
         # RuntimeResult __post_init__ freezes to MappingProxyType
         assert isinstance(rr.runtime_summary, MappingProxyType)
-        kpis = rr.raw_kpis
+        kpis = extract_numeric_runtime_kpis(rr.runtime_summary)
         assert isinstance(kpis, dict)
         assert kpis["project_irr"] == 0.085
 
     def test_raw_kpis_reconstruction_path(self):
         """Simulate from_workspace_state: raw floats survive workspace persist."""
-        from app.workbook.runtime_result import RuntimeResult
-
         # Simulate what v2_atomic_run_commit persists: raw kpis + revenue_derivation
         persisted = {
             "project_irr": 0.07593168077589,
@@ -119,18 +107,7 @@ class TestRuntimeResultRawKpis:
             "total_capex_keur": 45000.0,
             "revenue_derivation": {"display_value_keur": "80000"},
         }
-        rr = RuntimeResult(
-            snapshot_id="20260908T143200Z",
-            ran_at="2026-09-08T14:32:00Z",
-            origin="v2_run",
-            runtime_summary=persisted,
-            financial_statements=None,
-            debt_schedule=None,
-            tax_schedule=None,
-            distribution_schedule=None,
-            sponsor_schedule=None,
-        )
-        kpis = rr.raw_kpis
+        kpis = extract_numeric_runtime_kpis(persisted)
         # Solar real-engine proof value: raw IRR preserved exactly
         assert kpis["project_irr"] == pytest.approx(0.07593168077589)
         assert "revenue_derivation" not in kpis
@@ -139,6 +116,29 @@ class TestRuntimeResultRawKpis:
         proj = build_output_metric_projection("project_irr", kpis["project_irr"], freshness="current")
         assert proj.raw_value == pytest.approx(0.07593168077589)
         assert proj.display_value == "7.59%"
+
+    def test_str_values_rejected(self):
+        """Pre-formatted strings like '8.50%' must be excluded (fail-closed)."""
+        kpis = extract_numeric_runtime_kpis({"project_irr": "8.50%", "min_dscr": 1.32})
+        assert "project_irr" not in kpis
+        assert kpis.get("min_dscr") == pytest.approx(1.32)
+
+    def test_nan_rejected(self):
+        kpis = extract_numeric_runtime_kpis({"project_irr": float("nan")})
+        assert "project_irr" not in kpis
+
+    def test_inf_rejected(self):
+        kpis = extract_numeric_runtime_kpis({"project_irr": float("inf")})
+        assert "project_irr" not in kpis
+
+    def test_bool_rejected(self):
+        kpis = extract_numeric_runtime_kpis({"project_irr": True})
+        assert "project_irr" not in kpis
+
+    def test_non_catalog_keys_excluded(self):
+        kpis = extract_numeric_runtime_kpis({"unknown_kpi": 123.0, "project_irr": 0.085})
+        assert "unknown_kpi" not in kpis
+        assert "project_irr" in kpis
 
 
 # ─────────────────────────────────────────────────────────────────────────── #
@@ -188,7 +188,7 @@ class TestCatalogConsolidation:
 
 
 # ─────────────────────────────────────────────────────────────────────────── #
-# 3. Overview uses raw_kpis via OutputMetricProjection                         #
+# 3. Overview uses extract_numeric_runtime_kpis via OutputMetricProjection     #
 # ─────────────────────────────────────────────────────────────────────────── #
 
 class TestOverviewUsesCanonicalMetrics:

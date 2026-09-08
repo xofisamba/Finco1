@@ -28,6 +28,7 @@ from app.workbook.runtime_projection import (
 from app.v2.output_metric_projection import (
     OutputMetricProjection,
     build_overview_metric_projections,
+    extract_numeric_runtime_kpis,
 )
 
 NOT_AVAILABLE = "NOT_AVAILABLE"
@@ -147,16 +148,12 @@ def build_overview_projection(
         str(rr.ran_at) if _has_runtime and getattr(rr, "ran_at", None) else None
     )
 
-    # ── KPIs: use raw_kpis (numeric authority) ───────────────────────── #
-    # rr.raw_kpis returns result["kpis"] raw floats (excludes revenue_derivation).
-    # In v2, runtime_summary IS the raw kpis dict — rr.raw_kpis is the clean subset.
-    # Fallback to thawed runtime_summary for test mocks that lack .raw_kpis.
-    _raw_kpis = getattr(rr, "raw_kpis", None) if rr is not None else None
-    if _raw_kpis is not None:
-        rs: Dict[str, Any] = _raw_kpis
-    else:
-        _rs_raw = getattr(rr, "runtime_summary", None) if rr is not None else None
-        rs = thaw_runtime_payload(_rs_raw) if _rs_raw else {}
+    # ── KPIs: extract clean numerics from persisted runtime_summary ─────── #
+    # extract_numeric_runtime_kpis() is fail-closed: only KPI_CATALOG keys,
+    # only int/float (non-NaN, non-inf). Never calls rr.raw_kpis.
+    _rs_raw = getattr(rr, "runtime_summary", None) if rr is not None else None
+    _rs_thawed = thaw_runtime_payload(_rs_raw) if _rs_raw else {}
+    rs: Dict[str, Any] = extract_numeric_runtime_kpis(_rs_thawed)
 
     _PCT_KEYS  = {"project_irr", "equity_irr"}
     _RATIO_KEYS = {"avg_dscr", "min_dscr"}
