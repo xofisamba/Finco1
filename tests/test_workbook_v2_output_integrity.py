@@ -13,10 +13,10 @@ import pytest
 from app.v2.output_metric_projection import (
     NOT_AVAILABLE,
     MetricAvailability,
+    KPI_CATALOG as _KPI_CATALOG,
     OutputMetricProjection,
     build_output_metric_projection,
     build_overview_metric_projections,
-    _KPI_CATALOG,
 )
 
 
@@ -89,13 +89,18 @@ class TestFormatting:
         assert "27,000" in proj.display_value
         assert "kEUR" in proj.display_value
 
-    def test_pre_formatted_string_passes_through(self):
+    def test_pre_formatted_string_rejected(self):
+        # NO_FORMAT_PARSE_FORMAT: pre-formatted strings are NOT accepted as raw_value.
+        # "8.50%" → _safe_float returns None → display_value = "—"
         proj = build_output_metric_projection("project_irr", "8.50%", freshness="current")
-        assert proj.display_value == "8.50%"
+        assert proj.display_value == "—"
+        assert proj.raw_value is None
 
-    def test_pre_formatted_ratio_passes_through(self):
+    def test_pre_formatted_ratio_rejected(self):
+        # Pre-formatted ratio strings are not accepted.
         proj = build_output_metric_projection("avg_dscr", "1.45x", freshness="current")
-        assert proj.display_value == "1.45x"
+        assert proj.display_value == "—"
+        assert proj.raw_value is None
 
 
 class TestAvailability:
@@ -147,7 +152,7 @@ class TestKpiCatalogCoverage:
         assert proj.key == key
         assert proj.label == entry[1]
         assert proj.unit == entry[2]
-        assert proj.source == entry[3]
+        assert proj.source == entry[4]
         assert "NOT_AVAILABLE" not in proj.display_value
 
     @pytest.mark.parametrize("entry", _KPI_CATALOG)
@@ -194,11 +199,12 @@ class TestBuildOverviewMetricProjections:
             )
 
     def test_runtime_summary_values_propagate(self):
+        # Raw floats only (NO_FORMAT_PARSE_FORMAT: no pre-formatted strings)
         rs = {
             "project_irr": 0.085,
-            "equity_irr": "12.30%",
+            "equity_irr": 0.1230,
             "min_dscr": 1.32,
-            "avg_dscr": "1.45x",
+            "avg_dscr": 1.45,
             "total_capex_keur": 45000.0,
             "senior_debt_keur": 27000.0,
             "total_revenue_keur": 80000.0,

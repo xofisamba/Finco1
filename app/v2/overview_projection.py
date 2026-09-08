@@ -25,6 +25,10 @@ from app.workbook.runtime_projection import (
     extract_periods,
     thaw_runtime_payload,
 )
+from app.v2.output_metric_projection import (
+    OutputMetricProjection,
+    build_overview_metric_projections,
+)
 
 NOT_AVAILABLE = "NOT_AVAILABLE"
 
@@ -99,6 +103,10 @@ class OverviewProjection:
 
     # ── UI-3B: active scenario identity ──────────────────────────────────── #
     active_scenario_name: str = ""         # "Base Case" | scenario display name
+
+    # ── UI-4A: canonical OutputMetricProjection objects (OUTPUT_METRIC_CONTRACT_ACTUALLY_WIRED) #
+    # Templates render metric.display_value directly — no sentinel repair needed.
+    output_metrics: Dict[str, OutputMetricProjection] = field(default_factory=dict)
 
 
 def build_overview_projection(
@@ -219,6 +227,20 @@ def build_overview_projection(
     except Exception:
         pass
 
+    # ── UI-4A: build canonical OutputMetricProjection objects from raw floats ── #
+    _freshness = (
+        "not_run" if state in (RuntimeProjectionState.NOT_RUN, RuntimeProjectionState.UNAVAILABLE)
+        else "stale" if state == RuntimeProjectionState.STALE
+        else "current"
+    )
+    _output_metrics = build_overview_metric_projections(
+        rs,
+        _debt_summary,
+        freshness=_freshness,
+        scenario_id=None,
+        run_timestamp=_ran_at,
+    )
+
     return OverviewProjection(
         state=state,
         snapshot_id=_snapshot_id,
@@ -246,4 +268,5 @@ def build_overview_projection(
         senior_tenor_years=_senior_tenor,
         input_target_dscr=_input_target_dscr,
         active_scenario_name=active_scenario_name or "",
+        output_metrics=_output_metrics,
     )

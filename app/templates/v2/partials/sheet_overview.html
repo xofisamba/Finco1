@@ -24,8 +24,12 @@
     has_runtime     bool
 #}
 
-{# ── Helper macro: render a KPI value, never showing NOT_AVAILABLE ────── #}
-{% macro kpi_display(val) %}{{ val | replace("NOT_AVAILABLE", "—") }}{% endmacro %}
+{#
+  KPI display: use ov.output_metrics[key].display_value directly.
+  OutputMetricProjection guarantees display_value is never "NOT_AVAILABLE".
+  Template-level sentinel repair is not needed (OUTPUT_METRIC_CONTRACT_ACTUALLY_WIRED).
+#}
+{% macro kpi_metric(key) %}{{ ov.output_metrics[key].display_value if key in ov.output_metrics else "—" }}{% endmacro %}
 
 <div id="v2-sheet-overview" class="v2-overview" data-sheet="overview">
 
@@ -93,45 +97,43 @@
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-project-irr">
         <span class="v2-kpi-label">Project IRR</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.project_irr) }}</span>
+        <span class="v2-kpi-value">{{ kpi_metric("project_irr") }}</span>
       </div>
 
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-equity-irr">
         <span class="v2-kpi-label">Equity IRR</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.equity_irr) }}</span>
+        <span class="v2-kpi-value">{{ kpi_metric("equity_irr") }}</span>
       </div>
 
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-min-dscr">
         <span class="v2-kpi-label">Min DSCR</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.min_dscr) }}</span>
+        <span class="v2-kpi-value">{{ kpi_metric("min_dscr") }}</span>
       </div>
 
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-avg-dscr">
         <span class="v2-kpi-label">Avg DSCR</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.avg_dscr) }}</span>
+        <span class="v2-kpi-value">{{ kpi_metric("avg_dscr") }}</span>
       </div>
 
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-min-llcr">
         <span class="v2-kpi-label">Min LLCR</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.min_llcr) }}</span>
+        <span class="v2-kpi-value">{{ kpi_metric("min_llcr") }}</span>
       </div>
 
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-senior-debt">
         <span class="v2-kpi-label">Senior Debt</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.senior_debt_keur) }}</span>
-        <span class="v2-kpi-unit">kEUR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("senior_debt_keur") }}</span>
       </div>
 
       <div class="v2-kpi-tile {% if is_stale %}v2-kpi-tile--stale{% endif %}"
            data-testid="kpi-total-capex">
         <span class="v2-kpi-label">Total CAPEX</span>
-        <span class="v2-kpi-value">{{ kpi_display(ov.total_capex_keur) }}</span>
-        <span class="v2-kpi-unit">kEUR</span>
+        <span class="v2-kpi-value">{{ kpi_metric("total_capex_keur") }}</span>
       </div>
 
       <div class="v2-kpi-tile v2-kpi-tile--unavail"
@@ -162,21 +164,21 @@
           <tr><td class="v2-ov-sum-label">Country</td>
               <td class="v2-ov-sum-value" data-testid="summary-country">{{ ov.country_iso or "—" }}</td></tr>
           <tr><td class="v2-ov-sum-label">Capacity</td>
-              <td class="v2-ov-sum-value" data-testid="summary-capacity">{{ kpi_display(ov.capacity_mw) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="summary-capacity">{{ ov.capacity_mw | replace("NOT_AVAILABLE", "—") }}</td></tr>
           <tr><td class="v2-ov-sum-label">COD</td>
-              <td class="v2-ov-sum-value" data-testid="summary-cod">{{ kpi_display(ov.cod_year) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="summary-cod">{{ ov.cod_year | replace("NOT_AVAILABLE", "—") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Horizon</td>
-              <td class="v2-ov-sum-value" data-testid="summary-horizon">{{ kpi_display(ov.horizon_years) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="summary-horizon">{{ ov.horizon_years | replace("NOT_AVAILABLE", "—") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Gearing</td>
-              <td class="v2-ov-sum-value" data-testid="summary-gearing">{{ kpi_display(ov.gearing_pct) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="summary-gearing">{{ ov.gearing_pct | replace("NOT_AVAILABLE", "—") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Debt Tenor</td>
-              <td class="v2-ov-sum-value" data-testid="summary-tenor">{{ kpi_display(ov.senior_tenor_years) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="summary-tenor">{{ ov.senior_tenor_years | replace("NOT_AVAILABLE", "—") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Total CAPEX</td>
-              <td class="v2-ov-sum-value">{{ kpi_display(ov.total_capex_keur) }} <span class="v2-ov-sum-unit">kEUR</span></td></tr>
+              <td class="v2-ov-sum-value">{{ kpi_metric("total_capex_keur") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Total Revenue</td>
-              <td class="v2-ov-sum-value">{{ kpi_display(ov.total_revenue_keur) }} <span class="v2-ov-sum-unit">kEUR</span></td></tr>
+              <td class="v2-ov-sum-value">{{ kpi_metric("total_revenue_keur") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Total EBITDA</td>
-              <td class="v2-ov-sum-value">{{ kpi_display(ov.total_ebitda_keur) }} <span class="v2-ov-sum-unit">kEUR</span></td></tr>
+              <td class="v2-ov-sum-value">{{ kpi_metric("total_ebitda_keur") }}</td></tr>
         </tbody>
       </table>
     </section>
@@ -214,13 +216,13 @@
       <table class="v2-overview-summary-table">
         <tbody>
           <tr><td class="v2-ov-sum-label">Min DSCR</td>
-              <td class="v2-ov-sum-value" data-testid="cov-min-dscr">{{ kpi_display(ov.min_dscr) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="cov-min-dscr">{{ kpi_metric("min_dscr") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Target DSCR</td>
-              <td class="v2-ov-sum-value" data-testid="cov-target-dscr">{{ kpi_display(ov.target_dscr) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="cov-target-dscr">{{ kpi_metric("target_dscr") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Min LLCR</td>
-              <td class="v2-ov-sum-value" data-testid="cov-min-llcr">{{ kpi_display(ov.min_llcr) }}</td></tr>
+              <td class="v2-ov-sum-value" data-testid="cov-min-llcr">{{ kpi_metric("min_llcr") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Avg DSCR</td>
-              <td class="v2-ov-sum-value">{{ kpi_display(ov.avg_dscr) }}</td></tr>
+              <td class="v2-ov-sum-value">{{ kpi_metric("avg_dscr") }}</td></tr>
           <tr><td class="v2-ov-sum-label">Periods in Lockup</td>
               <td class="v2-ov-sum-value">{{ ov.periods_in_lockup | replace("NOT_AVAILABLE", "—") }}</td></tr>
         </tbody>
@@ -266,8 +268,8 @@
            data-testid="chart-dscr-profile"
            data-chart-type="dscr"
            data-periods='{{ periods_json }}'
-           {% if ov.target_dscr not in ("NOT_AVAILABLE", "—") %}
-           data-target="{{ ov.target_dscr | replace('x', '') }}"
+           {% if ov.output_metrics.get("target_dscr") and ov.output_metrics["target_dscr"].raw_value is not none %}
+           data-target="{{ ov.output_metrics['target_dscr'].raw_value }}"
            {% endif %}
            aria-label="DSCR profile over debt tenor"></div>
     </section>
