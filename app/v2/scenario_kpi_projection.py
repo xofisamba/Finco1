@@ -18,8 +18,10 @@ from typing import Any, Optional
 
 from app.v2.output_metric_projection import (
     KPI_CATALOG,
+    OutputMetricProjection,
     _safe_float,
     _apply_fmt,
+    build_output_metric_projection,
 )
 
 _NA = "—"
@@ -62,6 +64,7 @@ class ScenarioProjection:
     ran_at: str
     kpis: dict[str, str]          # key → formatted display string
     kpis_raw: dict[str, Optional[float]]  # key → raw float (None if unavailable)
+    metrics: dict[str, OutputMetricProjection] = None  # canonical OutputMetricProjection objects
 
 
 def build_scenario_projection(
@@ -86,11 +89,16 @@ def build_scenario_projection(
 
     kpis: dict[str, str] = {}
     kpis_raw: dict[str, Optional[float]] = {}
+    metrics: dict[str, OutputMetricProjection] = {}
+    freshness = "not_run" if state == "NOT_RUN" else "stale" if state == "STALE" else "current"
     for entry in KPI_CATALOG:
         key, _label, _unit, fmt, _source = entry
         v = rs.get(key)
         kpis[key] = _fmt(v, fmt)
         kpis_raw[key] = _raw(v)
+        metrics[key] = build_output_metric_projection(
+            key, v, freshness=freshness, run_timestamp=ran_at
+        )
 
     return ScenarioProjection(
         scenario_id=None,
@@ -99,6 +107,7 @@ def build_scenario_projection(
         ran_at=(ran_at or "")[:16].replace("T", " "),
         kpis=kpis,
         kpis_raw=kpis_raw,
+        metrics=metrics,
     )
 
 
