@@ -142,6 +142,10 @@
 
       <table class="v2-overview-summary-table">
         <tbody>
+          <tr><td class="v2-ov-sum-label">Scenario</td>
+              <td class="v2-ov-sum-value" data-testid="overview-active-scenario">
+                {{ ov.active_scenario_name or "Base Case" }}
+              </td></tr>
           <tr><td class="v2-ov-sum-label">Last Run</td>
               <td class="v2-ov-sum-value v2-ov-timestamp" data-testid="overview-run-at">
                 {% if ov.ran_at %}{{ ov.ran_at[:16] | replace("T", " ") }}{% else %}—{% endif %}

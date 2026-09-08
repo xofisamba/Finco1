@@ -872,6 +872,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
         "active_scenario_name": ws.active_scenario_name or "",
+        "active_scenario_id": ws.active_scenario_id or "",
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
@@ -908,7 +909,24 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
     context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
     from app.v2.overview_projection import build_overview_projection
-    context["overview"] = build_overview_projection(_rr, ws.dirty, pis)
+    context["overview"] = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=ws.active_scenario_name or "")
+
+    # UI-3B: inject scenario presentations for the Scenarios tab
+    try:
+        from app.persistence.scenarios_repository import list_scenarios
+        from app.v2.scenario_presentation import build_scenario_presentations
+        _sc_records = list_scenarios(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            include_archived=False,
+        )
+        _active_sc_id = ws.active_scenario_id if ws else None
+        context["scenarios"] = build_scenario_presentations(_sc_records, _active_sc_id)
+        context["active_scenario_id"] = _active_sc_id
+    except Exception:
+        context["scenarios"] = []
+        context.setdefault("active_scenario_id", None)
+
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -1615,6 +1633,44 @@ async def v2_workbook_run(
         msg = "Run completed but could not be saved — please try again."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # ── Step 12b: persist KPIs to ScenarioRecord.last_run_summary ────────── #
+    # This is the UI-3B per-scenario runtime isolation contract.
+    # The workspace-level runtime evidence (last_runtime_summary_json) is
+    # cleared on scenario switch, so Compare reads from each ScenarioRecord's
+    # own last_run_summary_json instead.  We persist the run KPIs + provenance
+    # here so that switching scenarios never corrupts another scenario's evidence.
+    if active_scenario_id:
+        try:
+            from app.persistence.repository import update_scenario_last_run_summary
+            from app.v2.scenario_presentation import _scenario_snapshot_hash
+            from app.persistence.scenarios_repository import get_scenario as _get_sc
+            _active_sc_rec = _get_sc(active_scenario_id, workspace_owner)
+            _sc_snap_hash = _scenario_snapshot_hash(_active_sc_rec) if _active_sc_rec else None
+            _sc_overrides_at_run = dict(getattr(_active_sc_rec, "overrides", None) or {})
+            _sc_run_summary = {
+                "kpis": dict(result["kpis"]),
+                "snapshot_id": runtime_snapshot_id,
+                "ran_at": ran_at.isoformat(),
+                "scenario_id": active_scenario_id,
+                "scenario_name": active_scenario_name or "",
+                "scenario_snapshot_hash": _sc_snap_hash,
+                "scenario_overrides_at_run": _sc_overrides_at_run,
+            }
+            update_scenario_last_run_summary(
+                user_id=workspace_owner,
+                scenario_id=active_scenario_id,
+                last_run_summary=_sc_run_summary,
+                replay_metadata={"v2_run": True, "project": project},
+            )
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "v2_workbook_run: could not persist scenario last_run_summary "
+                "scenario=%s project=%s", active_scenario_id, project
+            )
+            # Non-fatal: workspace run committed; Compare will show NOT_RUN until
+            # user re-runs this scenario.
+
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(
         user_id=workspace_owner, project_id=project_record.project_id
@@ -1687,3 +1743,590 @@ async def v2_workbook_run(
     toolbar_state_oob = _build_toolbar_state_oob(ctx)
     combined = "\n".join([run_controls_oob, banner_oob, toolbar_state_oob, debt_oob, tax_oob, fs_oob])
     return HTMLResponse(content=combined)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UI-3B: Scenario management routes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _scenario_list_html(user_id: str, project_id: str, project_code: str, ws) -> str:
+    """Render the scenario list partial HTML (used by multiple endpoints)."""
+    from app.persistence.scenarios_repository import list_scenarios
+    from app.v2.scenario_presentation import build_scenario_presentations
+    scenarios = list_scenarios(user_id=user_id, project_id=project_id, include_archived=False)
+    active_id = ws.active_scenario_id if ws else None
+    presentations = build_scenario_presentations(scenarios, active_id)
+    ctx = {
+        "scenarios": presentations,
+        "active_scenario_id": active_id,
+        "project_code": project_code,
+        "ws": ws,
+    }
+    return _templates.get_template("partials/sheet_scenarios.html").render(ctx)
+
+
+@router.post("/workbook/scenarios/create")
+async def v2_scenario_create(
+    request: Request,
+    project: str = Form(...),
+    scenario_name: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Create a new child scenario forked from the Base Case.
+
+    The new scenario starts with empty overrides (same effective inputs as Base Case).
+    After creation the new scenario becomes the active scenario.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import (
+        get_or_create_base_case_scenario,
+        add_scenario,
+        select_scenario,
+        list_scenarios,
+    )
+    from app.workbook.service import WorkbookService
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+    if is_protected_reference(project_record):
+        return JSONResponse({"error": "Protected reference — cannot create scenarios."}, status_code=409)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found."}, status_code=404)
+
+    name = (scenario_name or "").strip()
+    if not name:
+        return JSONResponse({"error": "Scenario name cannot be empty."}, status_code=422)
+    if len(name) > 80:
+        return JSONResponse({"error": "Scenario name too long (max 80 characters)."}, status_code=422)
+
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    base_input_set = dict(pis.values)
+
+    base_case = get_or_create_base_case_scenario(
+        user_id=workspace_owner,
+        project_id=project_record.project_id,
+        project_code=project,
+        project_name=project_record.project_name or project,
+        project_type=project_record.project_type or "",
+        source_project_template=project_record.full_inputs.get("source_project_template", "") if project_record.full_inputs else "",
+        base_input_set=base_input_set,
+        governance_state={},
+    )
+
+    new_sc = add_scenario(
+        user_id=workspace_owner,
+        project_id=project_record.project_id,
+        project_code=project,
+        scenario_name=name,
+        parent_scenario_id=base_case.scenario_id,
+        base_input_set=base_input_set,
+        overrides={},
+    )
+    if new_sc is None:
+        return JSONResponse({"error": "Failed to create scenario."}, status_code=500)
+
+    select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=new_sc.scenario_id)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id) or ws
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        toolbar_ctx = {"active_scenario_name": new_sc.scenario_name, "project_code": project}
+        toolbar_html = _templates.get_template("partials/_v2_toolbar_state.html").render(toolbar_ctx)
+        toolbar_oob = '<div id="v2-toolbar-runtime-state" hx-swap-oob="true">' + toolbar_html + "</div>"
+        return HTMLResponse(content=html + "\n" + toolbar_oob)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@router.post("/workbook/scenarios/select")
+async def v2_scenario_select(
+    request: Request,
+    project: str = Form(...),
+    scenario_id: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Set the active scenario.  Clears stale runtime evidence for this project."""
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import select_scenario, get_scenario
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": "Project not found."}, status_code=404)
+
+    sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
+    if sc is None or sc.project_id != project_record.project_id or sc.archived:
+        return JSONResponse({"error": "Scenario not found or archived."}, status_code=404)
+
+    select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=scenario_id)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        # OOB-update the overview sheet to reflect newly active scenario
+        from app.workbook.service import WorkbookService
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.v2.overview_projection import build_overview_projection
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        _rr = WorkbookService.get_runtime_result(ws)
+        _active_sc_name = ws.active_scenario_name or "" if ws else ""
+        ov = build_overview_projection(_rr, ws.dirty, pis, active_scenario_name=_active_sc_name)
+        ov_ctx = {
+            "overview": ov,
+            "project_code": project,
+            "project_name": project_record.project_name or project,
+            "project_type": project_record.project_type or "",
+            "ws_dirty": ws.dirty if ws else True,
+            "has_runtime": bool(ws.last_runtime_snapshot_id) if ws else False,
+        }
+        ov_html = _templates.get_template("partials/sheet_overview.html").render(ov_ctx)
+        ov_oob = ov_html.replace(
+            '<div id="v2-sheet-overview"',
+            '<div id="v2-sheet-overview" hx-swap-oob="true"',
+            1,
+        )
+        return HTMLResponse(content=html + "\n" + ov_oob)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@router.post("/workbook/scenarios/rename")
+async def v2_scenario_rename(
+    request: Request,
+    project: str = Form(...),
+    scenario_id: str = Form(...),
+    new_name: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Rename a scenario.  Base Case cannot be renamed."""
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import rename_scenario, get_scenario
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": "Project not found."}, status_code=404)
+
+    sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
+    if sc is None or sc.project_id != project_record.project_id:
+        return JSONResponse({"error": "Scenario not found."}, status_code=404)
+    if sc.is_base_case:
+        return JSONResponse({"error": "Base Case cannot be renamed."}, status_code=409)
+
+    name = (new_name or "").strip()
+    if not name or len(name) > 80:
+        return JSONResponse({"error": "Invalid scenario name."}, status_code=422)
+
+    rename_scenario(user_id=workspace_owner, scenario_id=scenario_id, new_name=name)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        return HTMLResponse(content=html)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@router.post("/workbook/scenarios/archive")
+async def v2_scenario_archive(
+    request: Request,
+    project: str = Form(...),
+    scenario_id: str = Form(...),
+    _: None = Depends(require_v2_active),
+):
+    """Archive a scenario.  Base Case cannot be archived."""
+    user = _get_current_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthenticated"}, status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import archive_scenario, get_scenario, select_scenario, get_base_case_scenario
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": "Project not found."}, status_code=404)
+
+    sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
+    if sc is None or sc.project_id != project_record.project_id:
+        return JSONResponse({"error": "Scenario not found."}, status_code=404)
+    if sc.is_base_case:
+        return JSONResponse({"error": "Base Case cannot be archived."}, status_code=409)
+
+    archive_scenario(user_id=workspace_owner, scenario_id=scenario_id)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    # If the archived scenario was active, switch to Base Case
+    if ws and ws.active_scenario_id == scenario_id:
+        base = get_base_case_scenario(user_id=workspace_owner, project_id=project_record.project_id)
+        if base:
+            select_scenario(user_id=workspace_owner, project_id=project_record.project_id, scenario_id=base.scenario_id)
+        ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+    if is_htmx:
+        html = _scenario_list_html(workspace_owner, project_record.project_id, project, ws)
+        return HTMLResponse(content=html)
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
+
+
+@router.get("/workbook/scenarios/compare", response_class=HTMLResponse)
+async def v2_scenario_compare(
+    request: Request,
+    project: Optional[str] = None,
+    s1: Optional[str] = None,
+    s2: Optional[str] = None,
+    s3: Optional[str] = None,
+):
+    """Return compare table partial for up to 3 selected scenarios.
+
+    Each scenario's runtime_summary is sourced from the persisted workspace
+    runtime evidence (last_runtime_summary) for that scenario.  Only
+    authoritative values from a completed engine run are shown.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+    if not project:
+        return HTMLResponse(content="<p>No project specified.</p>", status_code=400)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import get_scenario, list_scenarios, get_base_case_scenario
+    from app.v2.scenario_kpi_projection import build_scenario_projection, build_compare_rows
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    all_scenarios = list_scenarios(user_id=workspace_owner, project_id=project_record.project_id, include_archived=False)
+
+    selected_ids = [sid for sid in [s1, s2, s3] if sid]
+    selected_scenarios = []
+    for sid in selected_ids:
+        sc = get_scenario(scenario_id=sid, user_id=workspace_owner)
+        if sc and sc.project_id == project_record.project_id and not sc.archived:
+            selected_scenarios.append(sc)
+
+    projections = []
+    for sc in selected_scenarios:
+        rs = sc.last_run_summary or {}
+        ran_at_str = (rs.get("ran_at") or "") if rs else ""
+        has_result = bool(rs and rs.get("kpis"))
+        if not has_result:
+            is_stale = False  # will show as NOT_RUN
+        else:
+            from app.v2.scenario_presentation import _is_stale as _snap_is_stale
+            is_stale = _snap_is_stale(sc)
+        proj = build_scenario_projection(
+            scenario_name=sc.scenario_name,
+            runtime_summary=rs.get("kpis") if has_result else None,
+            ran_at=ran_at_str,
+            is_stale=is_stale,
+        )
+        # Patch in scenario_id
+        from dataclasses import replace as _dcr
+        proj = _dcr(proj, scenario_id=sc.scenario_id)
+        projections.append(proj)
+
+    rows = build_compare_rows(projections) if len(projections) >= 2 else []
+
+    ctx = {
+        "project_code": project,
+        "project_name": project_record.project_name or project,
+        "all_scenarios": all_scenarios,
+        "selected_scenarios": selected_scenarios,
+        "selected_ids": selected_ids,
+        "projections": projections,
+        "compare_rows": rows,
+        "request": request,
+    }
+    return HTMLResponse(content=_templates.get_template("partials/sheet_compare.html").render(ctx))
+
+
+@router.post("/workbook/scenarios/sensitivity/run", response_class=HTMLResponse)
+async def v2_scenario_sensitivity_run(
+    request: Request,
+    project: str = Form(...),
+    driver: str = Form(...),
+    scenario_id: Optional[str] = Form(default=None),
+    _: None = Depends(require_v2_active),
+):
+    """Run a bounded 5-point sensitivity on one driver.
+
+    Causal chain:
+      resolve_active_scenario_runtime_snapshot(scenario_id)
+      → canonical resolved scenario snapshot (base + all field overrides)
+      → ProjectInputSet
+      → sensitivity driver with_value(field_id)
+      → ProjectInputs
+      → CAPEX/OPEX sub-line fold (for _capex_sub_line_overrides blobs)
+      → run_project()
+      → authoritative result
+
+    No approximation. No interpolation. No client-side financial computation.
+    Results are temporary — not written to scenario persistence.
+
+    MVP supported drivers: tariff, generation, interest_rate, gearing
+    (capex_total and opex_total removed — derived_display fields are not writable via with_value)
+    """
+    import logging as _logging
+
+    user = _get_current_user(request)
+    if not user:
+        return HTMLResponse(content="<p>Unauthenticated.</p>", status_code=401)
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.scenarios_repository import get_scenario, get_base_case_scenario
+    from app.api.project_runner import run_project
+    from app.workbook.service import WorkbookService
+    from app.v2.scenario_kpi_projection import build_scenario_projection, KPI_CATALOG, _fmt
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return HTMLResponse(content="<p>Project not found.</p>", status_code=404)
+    if is_protected_reference(project_record):
+        return HTMLResponse(content="<p>Protected reference — cannot run sensitivity.</p>", status_code=409)
+
+    project_type_raw = (project_record.project_type or "").strip().lower()
+    if project_type_raw not in ("solar", "wind"):
+        return HTMLResponse(content=f"<p>Unsupported project type: {project_record.project_type!r}.</p>", status_code=409)
+    runtime_key = project_type_raw.capitalize()
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return HTMLResponse(content="<p>Workspace not found.</p>", status_code=404)
+
+    # Resolve active scenario overrides (or empty for Base Case)
+    scenario_overrides: dict = {}
+    scenario_display = "Base Case"
+    if scenario_id:
+        sc = get_scenario(scenario_id=scenario_id, user_id=workspace_owner)
+        if sc and sc.project_id == project_record.project_id and not sc.archived:
+            scenario_overrides = dict(sc.overrides or {})
+            scenario_display = sc.scenario_name
+
+    # Sensitivity driver definitions.
+    # "field_id" is the canonical semantic field_id accepted by ProjectInputSet.with_value().
+    # "snapshot_key" is retained as provenance metadata only — never passed to with_value().
+    #
+    # PCT fields (interest_rate_pct, gearing_pct) are stored as percentages (0-100 scale,
+    # e.g. 4.5 = 4.5%, 70 = 70%).  Absolute steps are in percentage-point units.
+    DRIVER_SPECS: dict[str, dict] = {
+        "tariff": {
+            "label": "Tariff / Energy Price",
+            "field_id": "revenue.ppa.base_tariff",
+            # Legacy projects populate revenue.ppa.tariff_legacy instead
+            "field_id_fallback": "revenue.ppa.tariff_legacy",
+            "snapshot_key": "rev_ppa_base_tariff",
+            "steps": [-0.20, -0.10, 0.0, +0.10, +0.20],
+            "step_labels": ["-20%", "-10%", "Base", "+10%", "+20%"],
+            "mode": "pct_multiplier",
+        },
+        # capex_total (capex.summary.total) and opex_total (opex.summary.total_y1) are
+        # derived_display / source_of_truth=derived_ui — not writable via with_value().
+        # Removed from MVP sensitivity catalog per spec: "do not fake support".
+
+        "generation": {
+            "label": "P50 Operating Hours",
+            "field_id": "project_setup.technical.p50_hours",
+            "snapshot_key": "p50_hours",
+            "steps": [-0.10, -0.05, 0.0, +0.05, +0.10],
+            "step_labels": ["-10%", "-5%", "Base", "+5%", "+10%"],
+            "mode": "pct_multiplier",
+        },
+        "interest_rate": {
+            "label": "Senior Interest Rate",
+            "field_id": "debt.senior.interest_rate_pct",
+            "snapshot_key": "interest_rate_pct",
+            # Stored as percentage (e.g. 4.5).  ±200 bps = ±2.0 percentage points.
+            "steps": [-2.0, -1.0, 0.0, +1.0, +2.0],
+            "step_labels": ["-200 bps", "-100 bps", "Base", "+100 bps", "+200 bps"],
+            "mode": "absolute_add",
+        },
+        "gearing": {
+            "label": "Gearing",
+            "field_id": "debt.senior.gearing_pct",
+            "snapshot_key": "gearing_pct",
+            # Stored as percentage (e.g. 70).  ±10 pp = ±10.0 percentage points.
+            "steps": [-10.0, -5.0, 0.0, +5.0, +10.0],
+            "step_labels": ["-10 pp", "-5 pp", "Base", "+5 pp", "+10 pp"],
+            "mode": "absolute_add",
+        },
+    }
+
+    if driver not in DRIVER_SPECS:
+        return HTMLResponse(content=f"<p>Unknown driver: {driver!r}.</p>", status_code=422)
+
+    spec = DRIVER_SPECS[driver]
+    field_id = spec["field_id"]
+    field_id_fallback = spec.get("field_id_fallback")
+
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base as _apply_capex
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex as _apply_opex
+    from dataclasses import replace as _dc_replace
+    from app.persistence.scenarios_repository import resolve_active_scenario_runtime_snapshot as _resolve_snap
+
+    # Resolve selected scenario's canonical financial snapshot.
+    # Uses resolve_active_scenario_runtime_snapshot so that scenario field overrides
+    # (tariff, generation, interest_rate, gearing, etc.) are correctly merged into the
+    # base case snapshot BEFORE any sensitivity driver override is applied.
+    _scenario_rec = None
+    _scenario_overrides_for_fold = None
+    if scenario_id:
+        _scenario_rec, _resolved_snap, _warn = _resolve_snap(
+            workspace_owner, project_record.project_id, scenario_id
+        )
+        if _scenario_rec is None:
+            return HTMLResponse(
+                content="<p>Scenario not found, archived, or inaccessible.</p>",
+                status_code=404,
+            )
+        # Double-check identity (resolve_active_scenario_runtime_snapshot already validates these)
+        if _scenario_rec.project_id != project_record.project_id or _scenario_rec.archived:
+            return HTMLResponse(
+                content="<p>Scenario does not belong to this project or is archived.</p>",
+                status_code=403,
+            )
+        if _resolved_snap is None:
+            return HTMLResponse(
+                content="<p>Could not resolve scenario inputs. Please re-run the scenario and retry.</p>",
+                status_code=409,
+            )
+        scenario_display = _scenario_rec.scenario_name
+        _scenario_overrides_for_fold = _scenario_rec.overrides
+        # Build PIS from the fully resolved scenario snapshot (includes all field overrides)
+        pis_base = WorkbookService.build_input_set(_resolved_snap)
+    else:
+        # Base Case: use workspace draft (canonical current inputs)
+        pis_base = WorkbookService.build_draft_input_set_from_workspace(ws)
+
+    # Snapshot of pis_base values before any sensitivity run (for non-destructive check)
+    _pis_base_values_snapshot = dict(pis_base.values)
+
+    # Resolve base value from the canonical field_id in pis_base.values.
+    # For tariff, fall back to the legacy field_id if the canonical one is absent.
+    base_val = pis_base.values.get(field_id)
+    if base_val is None and field_id_fallback:
+        base_val = pis_base.values.get(field_id_fallback)
+        if base_val is not None:
+            field_id = field_id_fallback  # use whichever field_id is populated
+
+    results: list[dict] = []
+    for step, step_label in zip(spec["steps"], spec["step_labels"]):
+        # Each iteration works from a fresh pis_base — never accumulates, never mutates.
+        try:
+            if spec["mode"] == "pct_multiplier":
+                if base_val is not None:
+                    try:
+                        new_val: object = float(base_val) * (1.0 + step)
+                    except (TypeError, ValueError):
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Cannot apply multiplier to {field_id!r}", "kpis": {}})
+                        continue
+                else:
+                    if step == 0.0:
+                        new_val = None  # Base step: run scenario overrides only, no driver override
+                    else:
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Base value for {field_id!r} not in workspace inputs", "kpis": {}})
+                        continue
+            else:  # absolute_add
+                if base_val is not None:
+                    try:
+                        new_val = float(base_val) + step
+                    except (TypeError, ValueError):
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Cannot apply offset to {field_id!r}", "kpis": {}})
+                        continue
+                else:
+                    if step == 0.0:
+                        new_val = None
+                    else:
+                        results.append({"label": step_label, "status": "FAILED",
+                                        "error": f"Base value for {field_id!r} not in workspace inputs", "kpis": {}})
+                        continue
+
+            # Apply driver override to fresh PIS.  Fail-closed: if with_value() raises,
+            # this point FAILS — we never silently run unchanged base inputs.
+            pis_sens = pis_base
+            if new_val is not None:
+                pis_sens = pis_sens.with_value(field_id, str(new_val))  # raises on bad field_id
+
+            # Causal chain: base PIS → driver override → ProjectInputs → CAPEX/OPEX scenario fold → engine
+            pi_override = WorkbookService.to_projectinputs(pis_sens)
+            folded_capex = _apply_capex(
+                pi_override.capex,
+                project_id=project_record.project_id,
+                scenario_overrides=_scenario_overrides_for_fold,
+            )
+            if folded_capex is not pi_override.capex:
+                pi_override = _dc_replace(pi_override, capex=folded_capex)
+            folded_opex = _apply_opex(
+                pi_override.opex,
+                project_id=project_record.project_id,
+                scenario_overrides=_scenario_overrides_for_fold,
+            )
+            if folded_opex is not pi_override.opex:
+                pi_override = _dc_replace(pi_override, opex=folded_opex)
+
+            eng_result = run_project(
+                runtime_key,
+                "Base",
+                project_inputs_override=pi_override,
+            )
+            kpis_raw = eng_result.get("kpis", {})
+            formatted_kpis = {}
+            for item in KPI_CATALOG:
+                formatted_kpis[item["key"]] = _fmt(kpis_raw.get(item["key"]), item["fmt"])
+            results.append({
+                "label": step_label,
+                "status": "OK",
+                "kpis": formatted_kpis,
+                "kpis_raw": {k: kpis_raw.get(k) for item in KPI_CATALOG for k in [item["key"]]},
+            })
+
+        except Exception as exc:
+            _logging.getLogger(__name__).exception(
+                "sensitivity_run: driver=%s step=%s project=%s", driver, step, project
+            )
+            results.append({"label": step_label, "status": "FAILED", "error": str(exc)[:120], "kpis": {}})
+
+    # Non-destructive proof: pis_base.values must be unchanged by sensitivity execution.
+    # If sensitivity accidentally mutated shared state, this will catch it at runtime.
+    _pis_after_values = dict(pis_base.values)
+    if _pis_after_values != _pis_base_values_snapshot:
+        _logging.getLogger(__name__).error(
+            "sensitivity_run: NON-DESTRUCTIVE VIOLATION — pis_base mutated during sensitivity "
+            "driver=%s project=%s", driver, project
+        )
+
+    ctx = {
+        "project_code": project,
+        "driver": driver,
+        "driver_label": spec["label"],
+        "scenario_display": scenario_display,
+        "results": results,
+        "kpi_catalog": KPI_CATALOG,
+        "request": request,
+    }
+    return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))

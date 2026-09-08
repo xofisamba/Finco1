@@ -97,11 +97,15 @@ class OverviewProjection:
     senior_tenor_years: str = ""           # "15 years"
     input_target_dscr: str = ""            # "1.20x"
 
+    # ── UI-3B: active scenario identity ──────────────────────────────────── #
+    active_scenario_name: str = ""         # "Base Case" | scenario display name
+
 
 def build_overview_projection(
     rr: Any,
     is_dirty: bool,
     pis: Any,
+    active_scenario_name: str = "",
 ) -> OverviewProjection:
     """Build OverviewProjection from RuntimeResult + ProjectInputSet.
 
@@ -241,4 +245,5 @@ def build_overview_projection(
         gearing_pct=_gearing_pct,
         senior_tenor_years=_senior_tenor,
         input_target_dscr=_input_target_dscr,
+        active_scenario_name=active_scenario_name or "",
     )
