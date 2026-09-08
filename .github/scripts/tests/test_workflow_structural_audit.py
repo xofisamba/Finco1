@@ -54,20 +54,25 @@ class TestStructuralAudit:
             import yaml  # noqa: F401
 
     def test_all_main_pr_workflows_guarded(self):
+        # NOTE: path-filtered workflows are NOT exempt. A path-filtered heavy
+        # workflow can still execute its full body when triggered by a workflow-only
+        # PR that touches a .github/ file listed in its paths: filter.
+        # Every workflow with pytest must have a classifier guard OR be explicitly
+        # in the lightweight allowlist.
         violations = []
         for f, content, data, pr in _load_workflows():
             name = f.name
-            has_path_filter = bool(pr.get("paths") or pr.get("paths-ignore"))
             has_classifier = (
                 "classify_ci_scope" in content or "Classify CI scope" in content
             )
             has_pytest = "pytest" in content
             in_allowlist = name in LIGHTWEIGHT_ALLOWLIST
-            if has_pytest and not has_classifier and not has_path_filter and not in_allowlist:
+            if has_pytest and not has_classifier and not in_allowlist:
                 violations.append(name)
         assert not violations, (
-            f"Workflows trigger on main PRs with pytest but no classifier guard, "
-            f"path filter, or allowlist entry:\n  " + "\n  ".join(violations)
+            f"Workflows trigger on main PRs with pytest but no classifier guard "
+            f"or allowlist entry (path filter alone is not sufficient):\n  "
+            + "\n  ".join(violations)
         )
 
     def test_no_engine_workflow_suppresses_failures(self):
@@ -110,6 +115,63 @@ class TestStructuralAudit:
             assert key in content, (
                 f"ci.yml must expose '{key}' as a job output for explicit routing"
             )
+
+    def test_c3b3a_is_guarded(self):
+        """c3b3a_clean_senior_debt_check.yml must have classifier + step guards."""
+        f = WF_DIR / "c3b3a_clean_senior_debt_check.yml"
+        assert f.exists()
+        content = f.read_text()
+        assert "Classify CI scope" in content, "c3b3a must have Classify CI scope step"
+        assert "classify_ci_scope.py" in content, "c3b3a must call classify_ci_scope.py"
+        assert "engine_sensitive == 'true'" in content, (
+            "c3b3a must guard heavy steps with engine_sensitive == 'true'"
+        )
+        # setup-python must be guarded
+        setup_idx = content.find("actions/setup-python")
+        assert setup_idx != -1
+        before_setup = content[max(0, setup_idx-200):setup_idx]
+        assert "engine_sensitive" in before_setup, (
+            "c3b3a: setup-python must be guarded with engine_sensitive"
+        )
+        # Check original job name preserved
+        assert "C3B3A Clean Senior Debt Source Contract" in content, (
+            "c3b3a: job name must be preserved"
+        )
+
+    def test_c3b3d2b5_is_guarded(self):
+        """c3b3d2b5_shl_fixed_point_integration_check.yml must have classifier + step guards."""
+        f = WF_DIR / "c3b3d2b5_shl_fixed_point_integration_check.yml"
+        assert f.exists()
+        content = f.read_text()
+        assert "Classify CI scope" in content, "c3b3d2b5 must have Classify CI scope step"
+        assert "classify_ci_scope.py" in content, "c3b3d2b5 must call classify_ci_scope.py"
+        assert "engine_sensitive == 'true'" in content, (
+            "c3b3d2b5 must guard heavy steps with engine_sensitive == 'true'"
+        )
+        # setup-python must be guarded
+        setup_idx = content.find("actions/setup-python")
+        assert setup_idx != -1
+        before_setup = content[max(0, setup_idx-200):setup_idx]
+        assert "engine_sensitive" in before_setup, (
+            "c3b3d2b5: setup-python must be guarded with engine_sensitive"
+        )
+        # pytest steps must be guarded
+        for step_name in [
+            "C3B3D2B5 full suite",
+            "C3B3D2B4 post-senior cash authority regression",
+            "C3B3A clean senior debt regression",
+            "Production governance scans",
+        ]:
+            idx = content.find(f"- name: {step_name}")
+            assert idx != -1, f"c3b3d2b5: step '{step_name}' not found"
+            after = content[idx:idx+150]
+            assert "engine_sensitive" in after, (
+                f"c3b3d2b5: step '{step_name}' must be guarded with engine_sensitive"
+            )
+        # Check original job name preserved
+        assert "C3B3D2B5 SHL fixed-point integration" in content, (
+            "c3b3d2b5: job name must be preserved"
+        )
 
     def test_nightly_not_in_pr_trigger(self):
         """Nightly regression must not trigger on pull_request."""

@@ -21,6 +21,10 @@ on:
       - "docs/architecture/mvp_g1_current_financial_authority.md"
       - ".github/workflows/mvp_g1_governance_methodology_lock.yml"
 
+concurrency:
+  group: c3b3a-clean-senior-debt-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   c3b3a-clean-senior-debt:
     name: C3B3A Clean Senior Debt Source Contract
@@ -42,12 +46,44 @@ jobs:
             exit 1
           fi
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
       - name: Set up Python
+        if: steps.scope.outputs.engine_sensitive == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pip install --upgrade pip
           if [ -f constraints.txt ]; then
@@ -59,27 +95,32 @@ jobs:
           fi
 
       - name: git diff --check (no trailing whitespace)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
 
       - name: Run C3B3A clean senior debt tests
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
             -v --tb=short --no-header \
             -k "not workbook_v2"
 
       - name: Run C3B2 debt interest tests (parity)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
             -v --tb=short --no-header
 
       - name: Run Phase 2C solver tests (explicit targets — no repository-wide collection)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest \
             tests/test_phase2c_senior_debt.py \
             -v --tb=short --no-header
 
       - name: Run C3B1 historical freeze governance
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py::TestLFinancialFreeze \
             tests/test_stage_c3b1_oborovo_tax_source_truth.py::TestTGovernanceVerdictAndSHA \

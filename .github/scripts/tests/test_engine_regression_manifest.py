@@ -70,6 +70,16 @@ class TestManifestIntegrity:
             assert isinstance(entry["areas"], list), f"'areas' must be a list: {entry}"
             assert len(entry["areas"]) > 0, f"'areas' must not be empty: {entry}"
 
+    def test_c3b3a_represented(self):
+        """C3B3A clean senior debt source contract must be in the manifest."""
+        found = any("c3b3a" in e["path"] for e in MANIFEST)
+        assert found, "test_stage_c3b3a_clean_senior_debt_source_contract.py not in manifest"
+
+    def test_c3b3d2b5_represented(self):
+        """C3B3D2B5 SHL fixed-point integration must be in the manifest."""
+        found = any("c3b3d2b5" in e["path"] for e in MANIFEST)
+        assert found, "test_stage_c3b3d2b5_shl_fixed_point_integration.py not in manifest"
+
     def test_validate_manifest_passes(self):
         errors = validate_manifest(REPO_ROOT)
         assert not errors, f"Manifest validation errors: {errors}"

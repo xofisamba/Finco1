@@ -244,6 +244,8 @@ def patch_workflow(filepath: Path) -> bool:
 
 TARGET_WORKFLOWS = [
     "c3b1_diagnostic_check.yml",
+    "c3b3a_clean_senior_debt_check.yml",
+    "c3b3d2b5_shl_fixed_point_integration_check.yml",
     "c3b3d2b6_base_post_senior_cash_parity_check.yml",
     "c3b3d2b7_bank_case_senior_parity_check.yml",
     "c3b3d2b8_base_senior_shl_parity_check.yml",

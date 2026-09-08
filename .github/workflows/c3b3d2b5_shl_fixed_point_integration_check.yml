@@ -47,6 +47,10 @@ on:
       - docs/architecture/c3b3d2b5_shl_fixed_point_inventory.md
       - .github/workflows/c3b3d2b5_shl_fixed_point_integration_check.yml
 
+concurrency:
+  group: c3b3d2b5-shl-fixed-point-integration-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   c3b3d2b5-check:
     name: C3B3D2B5 SHL fixed-point integration
@@ -68,7 +72,38 @@ jobs:
           fi
           echo "SHA verified: ${ACTUAL}"
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
       - name: Verify reviewed base ancestry
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           BASE_SHA="8c8f8357c56025d156bbe7e19f319040e4ba476b"
           if ! git merge-base --is-ancestor "$BASE_SHA" HEAD; then
@@ -78,31 +113,37 @@ jobs:
           echo "Reviewed base ancestry verified: ${BASE_SHA}"
 
       - name: Set up Python
+        if: steps.scope.outputs.engine_sensitive == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           pip install --no-cache-dir -c constraints.txt \
             pytest openpyxl numpy pandas scipy itsdangerous bcrypt
 
       - name: git diff --check
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
 
       - name: C3B3D2B5 full suite including production SHL input authority
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
             -v --tb=short --no-header
 
       - name: C3B3D2B4 post-senior cash authority regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \
             -v --tb=short --no-header
 
       - name: C3B3D2B4.2 solver proof subset
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \
@@ -110,6 +151,7 @@ jobs:
             -v --tb=short --no-header
 
       - name: C3B3D2B3 production debt sizing regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
@@ -117,12 +159,14 @@ jobs:
             -v --tb=short --no-header
 
       - name: C3B3A clean senior debt regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
             -v --tb=short --no-header
 
       - name: C3B1 source tax regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b1_oborovo_tax_source_truth.py \
@@ -130,24 +174,28 @@ jobs:
             -v --tb=short --no-header
 
       - name: C3B3D1 canonical SHL schedule regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d1_canonical_shl_schedule.py \
             -v --tb=short --no-header -q
 
       - name: C3B3D2B0 clean SHL formula parity regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py \
             -v --tb=short --no-header -q
 
       - name: C3B3C tax-policy contract regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
             -v --tb=short --no-header -q
 
       - name: Production governance scans
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python - <<'PY'
           from pathlib import Path
