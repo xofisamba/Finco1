@@ -37,71 +37,59 @@ jobs:
             pip install -r requirements.txt
           fi
 
-      - name: C3B1 diagnostic check
-        run: python -m pytest -q tests/test_c3b1_diagnostic.py -v || true
-
-      - name: C3B3D2B6 base post-senior cash parity
-        run: python -m pytest -q tests/test_c3b3d2b6_base_post_senior_cash_parity.py -v || true
-
-      - name: C3B3D2B7 bank case senior parity
-        run: python -m pytest -q tests/test_c3b3d2b7_bank_case_senior_parity.py -v || true
-
-      - name: C3B3D2B8 base senior SHL parity
-        run: python -m pytest -q tests/test_c3b3d2b8_base_senior_shl_parity.py -v || true
-
-      - name: KUPI K0-K3 causal grid
-        run: python -m pytest -q tests/test_kupi_k0_k3_causal_grid.py -v || true
-
-      - name: MVP G0 generic clean engine
-        run: python -m pytest -q tests/test_mvp_g0_generic_clean_engine.py -v || true
-
-      - name: MVP G1 governance methodology lock
-        run: python -m pytest -q tests/test_mvp_g1_governance_methodology_lock.py -v || true
-
-      - name: MVP G2A financing stack
-        run: python -m pytest -q tests/test_mvp_g2a_financing_stack.py -v || true
-
-      - name: MVP G2B sponsor returns
-        run: python -m pytest -q tests/test_mvp_g2b_sponsor_returns.py -v || true
-
-      - name: MVP G2C shareholder waterfall
-        run: python -m pytest -q tests/test_mvp_g2c_shareholder_waterfall.py -v || true
-
-      - name: Phase B2 Oborovo clean production promotion
-        run: python -m pytest -q tests/test_phaseb2_oborovo_clean_production_promotion.py -v || true
-
-      - name: Phase B4 single production engine
-        run: python -m pytest -q tests/test_phaseb4_single_production_engine.py -v || true
-
-      - name: Phase C1 returns maturity
-        run: python -m pytest -q tests/test_phasec1_returns_maturity.py -v || true
-
-      - name: Phase C2 NPV LLCR PLCR authority
-        run: python -m pytest -q tests/test_phasec2_npv_llcr_plcr_authority.py -v || true
-
-      - name: Phase C3 clean financial statements authority
-        run: python -m pytest -q tests/test_phasec3_clean_financial_statements_authority.py -v || true
-
-      - name: Prefreeze PR5 canonical EBITDA authority
-        run: python -m pytest -q tests/test_prefreeze_pr5_canonical_ebitda_authority.py -v || true
-
-      - name: Prefreeze PR6 typed SHL repayment policy
-        run: python -m pytest -q tests/test_prefreeze_pr6_typed_shl_repayment_policy.py -v || true
-
-      - name: Prefreeze PR7 base bank case authority
-        run: python -m pytest -q tests/test_prefreeze_pr7_base_bank_case_authority.py -v || true
-
-      - name: Prefreeze PR8 single production financial authority
-        run: python -m pytest -q tests/test_prefreeze_pr8_single_production_financial_authority.py -v || true
-
-      - name: Upstream cash reserve interest authority
-        run: python -m pytest -q tests/test_upstream_cash_reserve_interest_authority.py -v || true
-
-      - name: Full regression summary
-        if: always()
+      - name: Validate manifest (all test paths exist)
         run: |
-          echo "======================================================"
-          echo "NIGHTLY FULL ENGINE REGRESSION COMPLETE"
-          echo "All 20 historical authority regression suites executed."
-          echo "Review individual step results above for pass/fail."
-          echo "======================================================"
+          python3 .github/scripts/engine_regression_manifest.py
+
+      - name: Run full engine regression suite
+        run: |
+          python3 - <<'RUNNER'
+          import subprocess, sys
+          from pathlib import Path
+
+          # Load canonical manifest
+          sys.path.insert(0, '.github/scripts')
+          from engine_regression_manifest import MANIFEST
+
+          FAILURES = []
+          PASSES = []
+
+          for entry in MANIFEST:
+              path = entry["path"]
+              label = entry["label"]
+              print(f"\n{'='*60}")
+              print(f"SUITE: {label}")
+              print(f"PATH:  {path}")
+              print(f"{'='*60}")
+
+              if not Path(path).exists():
+                  print(f"FAIL — file not found: {path}", flush=True)
+                  FAILURES.append((label, path, "FILE_NOT_FOUND"))
+                  continue
+
+              result = subprocess.run(
+                  ["python", "-m", "pytest", "-q", "--tb=short", path],
+                  capture_output=False,
+              )
+              if result.returncode == 0:
+                  PASSES.append(label)
+                  print(f"\nPASS: {label}", flush=True)
+              else:
+                  FAILURES.append((label, path, f"exit_code={result.returncode}"))
+                  print(f"\nFAIL: {label}", flush=True)
+
+          print("\n" + "="*60)
+          print("NIGHTLY FULL ENGINE REGRESSION SUMMARY")
+          print("="*60)
+          print(f"PASSED: {len(PASSES)}/{len(MANIFEST)}")
+          for label in PASSES:
+              print(f"  PASS  {label}")
+          if FAILURES:
+              print(f"FAILED: {len(FAILURES)}/{len(MANIFEST)}")
+              for label, path, reason in FAILURES:
+                  print(f"  FAIL  {label}  ({reason})")
+              print("\nNIGHTLY FULL ENGINE REGRESSION: FAILED")
+              sys.exit(1)
+          else:
+              print("\nNIGHTLY FULL ENGINE REGRESSION: PASSED")
+          RUNNER

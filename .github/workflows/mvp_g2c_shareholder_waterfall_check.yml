@@ -41,13 +41,22 @@ jobs:
             --head "${{ github.event.pull_request.head.sha || github.sha }}" \
             | tee -a "$GITHUB_OUTPUT"
 
-      - name: ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
         if: steps.scope.outputs.engine_sensitive != 'true'
         shell: bash
         run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
           echo "======================================================"
-          echo "ENGINE_REGRESSION_SKIPPED_SAFE_UI_ONLY"
-          echo "All changed files are in UI/template/presentation paths."
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
           echo "No financial engine authority regression required."
           echo "Frozen authority diff: ZERO (verified by classifier)."
           echo "Full engine regression: available via nightly / workflow_dispatch."
