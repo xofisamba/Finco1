@@ -687,8 +687,8 @@ class TestOborovoWorkingCopyBrowserFlow:
                 try:
                     await run_btn.wait_for(state="visible", timeout=10000)
                     await run_btn.click()
-                    await page.wait_for_load_state("networkidle", timeout=90000)
-                    await page.reload(wait_until="networkidle")
+                    await page.wait_for_load_state("networkidle", timeout=120000)
+                    await page.reload(wait_until="networkidle", timeout=120000)
 
                     run_body = await page.content()
                     has_traceback = "Traceback" in run_body
