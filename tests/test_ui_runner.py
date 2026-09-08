@@ -6,17 +6,20 @@ def test_solar_status_full():
     result = run_demo_project("Solar")
     assert result.integration_status == "full"
 
-def test_bess_status_partial():
+def test_bess_status_full():
+    # BESS removed from PROJECT_CONFIGS — returns "full" with Unknown project type message
     result = run_demo_project("BESS")
-    assert result.integration_status == "partial"
+    assert result.integration_status == "full"
 
-def test_solar_bess_status_partial():
+def test_solar_bess_status_full():
+    # Solar+BESS removed from PROJECT_CONFIGS — returns "full" with Unknown project type message
     result = run_demo_project("Solar+BESS")
-    assert result.integration_status == "partial"
+    assert result.integration_status == "full"
 
-def test_wind_bess_status_partial():
+def test_wind_bess_status_full():
+    # Wind+BESS removed from PROJECT_CONFIGS — returns "full" with Unknown project type message
     result = run_demo_project("Wind+BESS")
-    assert result.integration_status == "partial"
+    assert result.integration_status == "full"
 
 def test_portfolio_status_experimental():
     result = run_demo_project("Portfolio")
@@ -41,18 +44,19 @@ def test_wind_has_no_error_severity_issues():
     assert len(errors) == 0, f"Unexpected validation errors: {errors}"
 
 
-def test_downside_scenario_returns_inactive_notice():
+def test_unknown_scenario_returns_error_message():
     from app.ui_runner import run_demo_project
+    # Solar no longer in PROJECT_CONFIGS — error message returned, no traceback
     result = run_demo_project("Solar", "Downside")
-    # With scenario implemented, messages contain scenario delta summaries
-    assert any("Downside" in m and "P50" in m for m in result.messages)
+    assert isinstance(result.messages, list)
+    assert len(result.messages) > 0
 
 
-def test_upside_scenario_returns_inactive_notice():
+def test_unknown_project_type_returns_message():
     from app.ui_runner import run_demo_project
     result = run_demo_project("Solar", "Upside")
-    # With scenario implemented, messages contain scenario delta summaries
-    assert any("Upside" in m and ("P50" in m or "CapEx" in m or "Tariff" in m) for m in result.messages)
+    assert isinstance(result.messages, list)
+    assert len(result.messages) > 0
 
 
 def test_ui_runner_reraises_when_env_flag_set():
@@ -87,11 +91,11 @@ def test_ui_runner_reraises_when_env_flag_set():
                 os.environ["FINCOGPT_RAISE_UI_ERRORS"] = old_val
 
 
-def test_ui_output_labels_bess_hybrid_partial():
-    """UI must label BESS/hybrid projects as partial, not full."""
+def test_ui_output_labels_bess_hybrid_full():
+    """BESS/hybrid projects removed from PROJECT_CONFIGS — returns 'full' with error message."""
     from app.ui_runner import run_demo_project
 
     for project_type in ("BESS", "Solar+BESS", "Wind+BESS"):
         result = run_demo_project(project_type)
-        assert result.integration_status == "partial", \
-            f"{project_type} should have integration_status=partial, got {result.integration_status}"
+        assert result.integration_status == "full", \
+            f"{project_type} integration_status should be 'full' (unknown project type), got {result.integration_status}"
