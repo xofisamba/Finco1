@@ -1694,3 +1694,191 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   .v2-compare-chip:hover { background: #1e3a5f; border-color: #60a5fa; }
   .v2-compare-chip--selected { background: #1e3a5f; border-color: #60a5fa; color: #93c5fd; }
 }
+
+/* ── UI-4A: Tab group labels ─────────────────────────────────── */
+.v2-tab-group-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #9ca3af;
+  padding: 0 0.5rem;
+  align-self: center;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+.v2-tab-group-sep {
+  display: inline-block;
+  width: 1px;
+  background: #e5e7eb;
+  height: 1rem;
+  align-self: center;
+  margin: 0 0.25rem;
+  flex-shrink: 0;
+}
+
+/* ── UI-4A: Model state strip ────────────────────────────────── */
+.v2-overview-state-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  border-bottom: 1px solid transparent;
+}
+.v2-state-strip--current {
+  background: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+.v2-state-strip--stale {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #78350f;
+}
+.v2-state-strip--notrun {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+  color: #6b7280;
+}
+.v2-state-strip-dot {
+  font-size: 0.55rem;
+  flex-shrink: 0;
+}
+.v2-state-strip-label {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.v2-state-strip-detail { font-size: 0.82rem; }
+
+/* ── UI-4A: Status pills ─────────────────────────────────────── */
+.v2-status-pill {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.1em 0.5em;
+  border-radius: 3px;
+}
+.v2-status-pill--current { background: #dcfce7; color: #166534; }
+.v2-status-pill--stale   { background: #fef3c7; color: #78350f; }
+.v2-status-pill--notrun  { background: #f3f4f6; color: #6b7280; }
+.v2-status-pill--failed  { background: #fee2e2; color: #991b1b; }
+
+/* ── UI-4A: Toolbar run failed state ─────────────────────────── */
+.v2-state-failed { background: #7f1d1d; color: #fecaca; }
+
+/* ── UI-4A: KPI tile units ───────────────────────────────────── */
+.v2-kpi-unit {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  letter-spacing: 0.02em;
+}
+.v2-kpi-unit--na { display: none; }
+.v2-kpi-value--na { color: #d1d5db; }
+
+/* ── UI-4A: Stale badge in section title ─────────────────────── */
+.v2-overview-stale-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.05em 0.4em;
+  border-radius: 2px;
+  background: #fef3c7;
+  color: #78350f;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+/* ── UI-4A: Overview summary unit inline ─────────────────────── */
+.v2-ov-sum-unit {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  margin-left: 0.2rem;
+}
+
+/* ── UI-4A: Sensitivity loading state ────────────────────────── */
+.v2-sensitivity-loading {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+.htmx-request .v2-sensitivity-loading { display: flex; }
+.v2-sens-loading-dots {
+  font-size: 1.2rem;
+  letter-spacing: 0.1em;
+  animation: v2-dot-pulse 1s step-end infinite;
+}
+@keyframes v2-dot-pulse {
+  0%   { opacity: 1; }
+  33%  { opacity: 0.4; }
+  66%  { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+/* ── UI-4A: Sensitivity driver guide table ───────────────────── */
+.v2-sensitivity-driver-guide {
+  margin: 0.5rem 0 1rem;
+  overflow-x: auto;
+}
+.v2-sensitivity-driver-table {
+  font-size: 0.78rem;
+  border-collapse: collapse;
+  min-width: 28rem;
+}
+.v2-sensitivity-driver-table th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem 0.25rem 0;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+.v2-sensitivity-driver-table td {
+  padding: 0.2rem 0.75rem 0.2rem 0;
+  color: #374151;
+  border-bottom: 1px solid #f3f4f6;
+  font-variant-numeric: tabular-nums;
+}
+.v2-sensitivity-driver-table tr:last-child td { border-bottom: none; }
+
+/* ── UI-4A: Sensitivity actions layout ──────────────────────── */
+.v2-sensitivity-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* ── UI-4A: Sheet section header ─────────────────────────────── */
+.v2-sheet-section-header {
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+/* Dark-theme adjustments for UI-4A additions */
+@media (prefers-color-scheme: dark) {
+  .v2-tab-group-label { color: #64748b; }
+  .v2-tab-group-sep   { background: #334155; }
+  .v2-state-strip--current { background: #052e16; border-color: #166534; color: #86efac; }
+  .v2-state-strip--stale   { background: #292524; border-color: #78350f; color: #fde68a; }
+  .v2-state-strip--notrun  { background: #111827; border-color: #374151; color: #9ca3af; }
+  .v2-status-pill--current { background: #052e16; color: #86efac; }
+  .v2-status-pill--stale   { background: #292524; color: #fde68a; }
+  .v2-status-pill--notrun  { background: #1f2937; color: #9ca3af; }
+  .v2-status-pill--failed  { background: #450a0a; color: #fecaca; }
+  .v2-overview-stale-badge { background: #292524; color: #fde68a; }
+  .v2-sensitivity-driver-table th { color: #9ca3af; border-color: #334155; }
+  .v2-sensitivity-driver-table td { color: #d1d5db; border-color: #1f2937; }
+}

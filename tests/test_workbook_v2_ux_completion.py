@@ -449,20 +449,20 @@ class TestTabTabindex(unittest.TestCase):
     def test_first_tab_has_tabindex_0(self):
         body = _get_workbook(self.client, self.project_code)
         import re
-        # Find the first tab button
+        # UI-4A: tab-overview is the default active tab (first in Analysis group)
         first_tab = re.search(
-            r'<button[^>]+id="tab-project-setup"[^>]*>', body
+            r'<button[^>]+id="tab-overview"[^>]*>', body
         )
-        self.assertIsNotNone(first_tab, "tab-project-setup must exist")
+        self.assertIsNotNone(first_tab, "tab-overview must exist")
         self.assertIn('tabindex="0"', first_tab.group(0),
-                      "First tab must have tabindex=0")
+                      "Active tab (tab-overview) must have tabindex=0")
 
     def test_non_active_tabs_have_tabindex_minus1(self):
         body = _get_workbook(self.client, self.project_code)
         import re
-        # Find non-first tabs
+        # All tabs except tab-overview (the active one) must have tabindex=-1
         non_first_tabs = re.findall(
-            r'<button[^>]+id="tab-(?!project-setup)[^"]*"[^>]*>', body
+            r'<button[^>]+id="tab-(?!overview)[^"]*"[^>]*>', body
         )
         for tab_html in non_first_tabs:
             self.assertIn('tabindex="-1"', tab_html,

@@ -53,15 +53,26 @@
 
   {# ── Sheet tab navigation ──────────────────────────────────────────── #}
   <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
+    {# ANALYSIS group #}
+    <span class="v2-tab-group-label" aria-hidden="true">Analysis</span>
     <button class="v2-tab" role="tab" aria-selected="true"  tabindex="0"  aria-controls="panel-overview"       id="tab-overview">Overview</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-scenarios"      id="tab-scenarios">Scenarios</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-compare"        id="tab-compare">Compare</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-sensitivity"    id="tab-sensitivity">Sensitivity</button>
+    {# SETUP group #}
+    <span class="v2-tab-group-sep" aria-hidden="true"></span>
+    <span class="v2-tab-group-label" aria-hidden="true">Setup</span>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-inputs"          id="tab-inputs">Inputs</button>
+    {# OPERATIONS group #}
+    <span class="v2-tab-group-sep" aria-hidden="true"></span>
+    <span class="v2-tab-group-label" aria-hidden="true">Operations</span>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-revenue"         id="tab-revenue">Revenue</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-capex"           id="tab-capex">CAPEX</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-opex"            id="tab-opex">OPEX</button>
+    {# FINANCING group #}
+    <span class="v2-tab-group-sep" aria-hidden="true"></span>
+    <span class="v2-tab-group-label" aria-hidden="true">Financing</span>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-debt"            id="tab-debt">Senior Debt</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-tax"             id="tab-tax">Tax</button>
     <button class="v2-tab" role="tab" aria-selected="false" tabindex="-1" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
