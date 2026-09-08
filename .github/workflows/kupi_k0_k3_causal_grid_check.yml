@@ -9,6 +9,11 @@ on:
       - prefreeze-kupi-k0-k3-causal-grid
       - claude/festive-cerf-uaq5hb
 
+concurrency:
+  group: kupi-k0-k3-causal-grid-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   kupi-k0-k3-causal-grid:
     runs-on: ubuntu-latest
@@ -30,12 +35,45 @@ jobs:
           fi
           echo "HEAD OK: $ACTUAL"
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - name: Set up Python 3.11
+        if: steps.scope.outputs.engine_sensitive == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pip install --upgrade pip
           if [ -f constraints.txt ]; then
@@ -48,6 +86,7 @@ jobs:
           fi
 
       - name: Run KUPI K0-K3 causal grid tests
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q tests/test_kupi_k0_k3_causal_grid.py -v
 
@@ -57,6 +96,7 @@ jobs:
           python -m pytest --collect-only -q tests/test_kupi_k0_k3_causal_grid.py 2>&1 | tail -5
 
       - name: Governance guard — no source Senior/SHL injected as runtime input
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           import ast, sys, pathlib, textwrap
@@ -144,6 +184,7 @@ jobs:
           "
 
       - name: Governance guard — no project identity dispatch
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -c "
           import re, sys, pathlib

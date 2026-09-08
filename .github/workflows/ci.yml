@@ -6,13 +6,267 @@ on:
   pull_request:
     branches: [main, industry-engine-refactor]
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
 
 jobs:
+  # ── 1. Classify CI scope ────────────────────────────────────────────────────
+  classify-scope:
+    name: Classify CI scope
+    runs-on: ubuntu-latest
+    outputs:
+      engine_sensitive: ${{ steps.scope.outputs.engine_sensitive }}
+      ui_only: ${{ steps.scope.outputs.ui_only }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+      workflow_only: ${{ steps.scope.outputs.workflow_only }}
+      browser_ui_changed: ${{ steps.scope.outputs.browser_ui_changed }}
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: checked-out commit does not match expected head SHA" >&2
+            exit 1
+          fi
+          echo "HEAD OK: $ACTUAL"
+
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+          # Derive browser_ui_changed: true if any browser-rendered paths changed
+          python3 - <<'PYEOF' | tee -a "$GITHUB_OUTPUT"
+          import subprocess, sys
+          base = "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}"
+          head = "${{ github.event.pull_request.head.sha || github.sha }}"
+          try:
+              r = subprocess.run(
+                  ["git", "diff", "--name-only", f"{base}...{head}"],
+                  capture_output=True, text=True, check=True,
+              )
+              files = r.stdout.splitlines()
+          except Exception:
+              files = []
+          BROWSER_PREFIXES = ("app/templates/", "static/", "app/v2/", "app/v1/")
+          changed = any(
+              any(f.startswith(p) for p in BROWSER_PREFIXES) for f in files
+          )
+          print(f"browser_ui_changed={'true' if changed else 'false'}")
+          PYEOF
+
+  # ── 2. CI routing self-test (runs for workflow-only and always) ─────────────
+  ci-routing-self-test:
+    name: CI routing self-test
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: >
+      needs.classify-scope.outputs.workflow_only == 'true' ||
+      needs.classify-scope.outputs.engine_sensitive == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: |
+          pip install --no-cache-dir pytest pyyaml
+
+      - name: Validate classifier imports
+        run: python3 -c "from classify_ci_scope import classify, _classify_file; print('classifier OK')"
+        working-directory: .github/scripts
+
+      - name: Validate manifest imports
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from engine_regression_manifest import MANIFEST, validate_manifest
+          print('manifest OK:', len(MANIFEST), 'entries')
+          "
+        working-directory: .github/scripts
+
+      - name: Validate workflow YAML syntax
+        run: |
+          python3 - <<'PYEOF'
+          import yaml, pathlib, sys
+          errors = []
+          for f in sorted(pathlib.Path('.github/workflows').glob('*.yml')):
+              try:
+                  yaml.safe_load(f.read_text())
+              except yaml.YAMLError as e:
+                  errors.append(f"{f.name}: {e}")
+          if errors:
+              print("YAML parse errors:")
+              for e in errors:
+                  print(f"  {e}")
+              sys.exit(1)
+          print(f"All {sum(1 for _ in pathlib.Path('.github/workflows').glob('*.yml'))} workflow YAMLs valid.")
+          PYEOF
+
+      - name: Run CI scope classifier tests
+        run: |
+          python3 -m pytest -q .github/scripts/tests/test_classify_ci_scope.py -v
+
+      - name: Run manifest and structural audit tests
+        run: |
+          python3 -m pytest -q \
+            .github/scripts/tests/test_engine_regression_manifest.py \
+            .github/scripts/tests/test_workflow_structural_audit.py \
+            -v
+
+  # ── 3. UI ring fast path ────────────────────────────────────────────────────
+  ui-ring:
+    name: UI ring (fast path)
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.ui_only == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Route render smoke
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui-route-smoke \
+            tests/test_phase57pre_route_render_smoke.py
+      - name: HTMX and component tests
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui-htmx \
+            tests/test_htmx_internal_demo.py \
+            tests/test_ui_components.py \
+            tests/test_ui_runner.py \
+            tests/test_ui_runner_validation_block.py
+      - name: UI-1 design tokens and shell
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui1 \
+            tests/test_ui1_finco_design_tokens.py \
+            tests/test_ui1a_single_application_shell.py
+      - name: UI-2 application chrome and components
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui2 \
+            tests/test_ui2_application_chrome.py \
+            tests/test_ui2_2_runtime_impact_chip_partial.py \
+            tests/test_ui2_3_validation_summary_bar.py \
+            tests/test_ui2_4_factory_lock_indicator.py \
+            tests/test_ui2_5_stale_result_warning.py \
+            tests/test_ui2_6_run_source_indicator.py
+      - name: UI-3B scenario sensitivity and completion
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui3b \
+            tests/test_ui3b_completion.py \
+            tests/test_ui3b_scenario_sensitivity.py
+      - name: UI-4 through UI-8 guardrails
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui4plus \
+            tests/test_ui4_overview_inputs_workspace.py \
+            tests/test_ui5_modelling_workspace.py \
+            tests/test_ui7_power_user.py \
+            tests/test_ui8f_navigation_guardrails.py \
+            tests/test_ui8g_consistency_guardrails.py
+      - name: Workbook unit tests
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-workbook-unit \
+            tests/test_workbook_flag.py \
+            tests/test_workbook_input_set.py \
+            tests/test_workbook_prb_focused.py \
+            tests/test_workbook_registry.py \
+            tests/test_workbook_runtime_result.py \
+            tests/test_workbook_service.py
+      - name: Workbook V2 sheet and runtime tests
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-workbook-v2 \
+            tests/test_workbook_v2_runtime_integration.py \
+            tests/test_workbook_v2_runtime_projection.py \
+            tests/test_workbook_v2_sheet_inputs.py \
+            tests/test_workbook_v2_sheet_capex.py \
+            tests/test_workbook_v2_sheet_opex.py \
+            tests/test_workbook_v2_sheet_project_setup.py \
+            tests/test_workbook_v2_sheet_revenue.py \
+            tests/test_workbook_v2_tax_sheet.py \
+            tests/test_workbook_v2_debt_sheet.py \
+            tests/test_workbook_v2_financial_statements.py \
+            tests/test_workbook_v2_inactive_surface.py \
+            tests/test_workbook_v2_capex_row_lifecycle.py \
+            tests/test_workbook_v2_opex_row_lifecycle.py \
+            tests/test_workbook_v2_ux_completion.py
+
+  # ── 4. Browser gate ─────────────────────────────────────────────────────────
+  browser-gate:
+    name: Browser acceptance gate
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: >
+      needs.classify-scope.outputs.ui_only == 'true' &&
+      needs.classify-scope.outputs.browser_ui_changed == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: UI-3B browser acceptance
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-browser \
+            tests/test_ui3b_browser_acceptance.py
+      - name: Workbook V2 browser acceptance
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-workbook-browser \
+            tests/test_workbook_v2_browser_acceptance.py \
+            tests/test_workbook_v2_product_acceptance.py
+
+  # ── 5. Docs path ────────────────────────────────────────────────────────────
+  docs-hygiene:
+    name: Docs hygiene
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.docs_only == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docs-only fast check
+        run: echo "Docs-only PR — no engine or browser execution required."
+
+  # ── 6. Engine-sensitive heavy jobs ──────────────────────────────────────────
   core-model-tests:
     name: Core model tests
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -34,6 +288,8 @@ jobs:
   capex-persistence-and-route-smoke:
     name: CAPEX persistence and route smoke
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,6 +322,8 @@ jobs:
   persistence-and-records-guardrails:
     name: Persistence and records guardrails
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -89,6 +347,8 @@ jobs:
   legacy-quarantined-sentinels:
     name: Legacy quarantined sentinels
     runs-on: ubuntu-latest
+    needs: classify-scope
+    if: needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

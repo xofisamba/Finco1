@@ -1,0 +1,95 @@
+name: Nightly Full Engine Regression
+
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-full-engine-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  full-engine-regression:
+    name: Full engine regression (nightly)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          elif [ -f pyproject.toml ]; then
+            pip install -e ".[dev]"
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Validate manifest (all test paths exist)
+        run: |
+          python3 .github/scripts/engine_regression_manifest.py
+
+      - name: Run full engine regression suite
+        run: |
+          python3 - <<'RUNNER'
+          import subprocess, sys
+          from pathlib import Path
+
+          # Load canonical manifest
+          sys.path.insert(0, '.github/scripts')
+          from engine_regression_manifest import MANIFEST
+
+          FAILURES = []
+          PASSES = []
+
+          for entry in MANIFEST:
+              path = entry["path"]
+              label = entry["label"]
+              print(f"\n{'='*60}")
+              print(f"SUITE: {label}")
+              print(f"PATH:  {path}")
+              print(f"{'='*60}")
+
+              if not Path(path).exists():
+                  print(f"FAIL — file not found: {path}", flush=True)
+                  FAILURES.append((label, path, "FILE_NOT_FOUND"))
+                  continue
+
+              result = subprocess.run(
+                  ["python", "-m", "pytest", "-q", "--tb=short", path],
+                  capture_output=False,
+              )
+              if result.returncode == 0:
+                  PASSES.append(label)
+                  print(f"\nPASS: {label}", flush=True)
+              else:
+                  FAILURES.append((label, path, f"exit_code={result.returncode}"))
+                  print(f"\nFAIL: {label}", flush=True)
+
+          print("\n" + "="*60)
+          print("NIGHTLY FULL ENGINE REGRESSION SUMMARY")
+          print("="*60)
+          print(f"PASSED: {len(PASSES)}/{len(MANIFEST)}")
+          for label in PASSES:
+              print(f"  PASS  {label}")
+          if FAILURES:
+              print(f"FAILED: {len(FAILURES)}/{len(MANIFEST)}")
+              for label, path, reason in FAILURES:
+                  print(f"  FAIL  {label}  ({reason})")
+              print("\nNIGHTLY FULL ENGINE REGRESSION: FAILED")
+              sys.exit(1)
+          else:
+              print("\nNIGHTLY FULL ENGINE REGRESSION: PASSED")
+          RUNNER

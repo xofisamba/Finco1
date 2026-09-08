@@ -9,6 +9,11 @@ env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
   PYTHONUTF8: "1"
 
+concurrency:
+  group: prefreeze-pr5-canonical-ebitda-authority-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   canonical-ebitda-authority:
     runs-on: ubuntu-latest
@@ -25,29 +30,66 @@ jobs:
           EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$EXPECTED"
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - name: Set up Python
+        if: steps.scope.outputs.engine_sensitive == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
       - name: Diff hygiene
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: git diff --check
 
       - name: PR-5 focused authority suite
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: python -m pytest -q tests/test_prefreeze_pr5_canonical_ebitda_authority.py
 
       - name: Historical cross-arc guardrails
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q \
             tests/test_phase57a8_capex_add_line_ux_in_memory.py \
             tests/test_phase57a9d_capex_sub_lines_run_integration.py
 
       - name: Frozen downstream authority regression
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q \
             tests/test_pr3_cash_dsra_module.py \
@@ -66,6 +108,7 @@ jobs:
             tests/test_kupi_k0_k3_causal_grid.py
 
       - name: Added-line governance scan
+        if: steps.scope.outputs.engine_sensitive == 'true'
         shell: bash
         run: |
           BASE="${{ github.event.pull_request.base.sha || '84117df4443bcc5a09d0c5db733115f9b34dacd0' }}"

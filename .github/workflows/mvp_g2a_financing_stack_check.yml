@@ -12,6 +12,11 @@ env:
   PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
+concurrency:
+  group: mvp-g2a-financing-stack-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   mvp-g2a-financing-stack:
     runs-on: ubuntu-latest
@@ -26,16 +31,50 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - uses: actions/setup-python@v5
+        if: steps.scope.outputs.engine_sensitive == 'true'
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
       - name: G2A financing stack and G0 capacity authority
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest -q --tb=short \
             tests/test_mvp_g2a_financing_stack.py \
@@ -43,6 +82,7 @@ jobs:
             tests/test_mvp_g1_workflow_authority.py
 
       - name: Changed-file anti-calibration scan
+        if: steps.scope.outputs.engine_sensitive == 'true'
         shell: bash
         run: |
           git fetch origin main --depth=1

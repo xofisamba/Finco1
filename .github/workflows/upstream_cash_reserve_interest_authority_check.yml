@@ -8,6 +8,11 @@ on:
     branches:
       - main
 
+concurrency:
+  group: upstream-cash-reserve-interest-authority-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
 jobs:
   u2-exact-head-check:
     name: U2 Exact-Head CI — Cash Reserve Interest Upstream Authority
@@ -19,7 +24,39 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Classify CI scope
+        id: scope
+        shell: bash
+        run: |
+          python3 .github/scripts/classify_ci_scope.py \
+            --base "${{ github.event.pull_request.base.sha || github.event.before || 'HEAD~1' }}" \
+            --head "${{ github.event.pull_request.head.sha || github.sha }}" \
+            | tee -a "$GITHUB_OUTPUT"
+
+      - name: ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE
+        if: steps.scope.outputs.engine_sensitive != 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.scope.outputs.ui_only }}" = "true" ]; then
+            SCOPE="UI_ONLY"
+          elif [ "${{ steps.scope.outputs.docs_only }}" = "true" ]; then
+            SCOPE="DOCS_ONLY"
+          elif [ "${{ steps.scope.outputs.workflow_only }}" = "true" ]; then
+            SCOPE="WORKFLOW_ONLY"
+          else
+            SCOPE="NON_ENGINE"
+          fi
+          echo "======================================================"
+          echo "ENGINE_REGRESSION_SKIPPED_NON_ENGINE_SCOPE"
+          echo "Actual scope: $SCOPE"
+          echo "No financial engine authority regression required."
+          echo "Frozen authority diff: ZERO (verified by classifier)."
+          echo "Full engine regression: available via nightly / workflow_dispatch."
+          echo "======================================================"
+
+
       - name: Assert exact branch ancestry
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           HEAD=$(git rev-parse HEAD)
           echo "HEAD SHA: $HEAD"
@@ -31,6 +68,7 @@ jobs:
           echo "Ancestry check passed."
 
       - name: Whitespace / diff check
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
           git diff --check "$MAIN_BASE"...HEAD || {
@@ -39,6 +77,7 @@ jobs:
           }
 
       - name: Governance scan — no project-name dispatch
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
           CHANGED_FILES=$(git diff --name-only "$MAIN_BASE"...HEAD -- '*.py')
@@ -56,6 +95,7 @@ jobs:
           echo "Governance scan passed."
 
       - name: Governance scan — EBITDA invariant (no EBITDA augmentation)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
           CHANGED_FILES=$(git diff --name-only "$MAIN_BASE"...HEAD -- '*.py')
@@ -71,6 +111,7 @@ jobs:
           echo "EBITDA invariant scan passed."
 
       - name: Governance scan — waterfall_core reverted
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           # app/waterfall_core.py must not contain any U2 annotations or financing income wiring
           if grep -n "U2-BRIDGE\|cash_reserve_interest\|financing_income" app/waterfall_core.py 2>/dev/null; then
@@ -80,6 +121,7 @@ jobs:
           echo "waterfall_core revert check passed."
 
       - name: Governance scan — waterfall_engine reverted
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           # finco_core/waterfall/waterfall_engine.py must not contain U2 wiring
           if grep -n "cash_reserve_interest_policy\|financing_income\|UNRESOLVED_POLICY" finco_core/waterfall/waterfall_engine.py 2>/dev/null; then
@@ -89,36 +131,44 @@ jobs:
           echo "waterfall_engine revert check passed."
 
       - name: Set up Python
+        if: steps.scope.outputs.engine_sensitive == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
       - name: U2 policy unit tests (full dedicated suite)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_upstream_cash_reserve_interest_policy.py -v --tb=short
 
       - name: U1 upstream basis tests (regression guard)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_upstream_book_depreciable_asset_basis.py -v --tb=short
 
       - name: Waterfall tax integration (regression guard)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_waterfall_tax_integration.py -v --tb=short
 
       - name: Waterfall golden validation (regression guard)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_waterfall_golden_validation.py -q --tb=short
 
       - name: C2 canonical tax consistency (regression guard)
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python -m pytest tests/test_c2_tax_canonical_consistency.py -v --tb=short
 
       - name: Structural — UNRESOLVED policy fails closed
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python - <<'EOF'
           from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY, CashReserveInterestAuthority
@@ -133,6 +183,7 @@ jobs:
           EOF
 
       - name: Structural — financing_income in TaxCalculationInput contract
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python - <<'EOF'
           from financial_engine.inputs import TaxCalculationInput, PeriodFinancingIncomeInput
@@ -148,6 +199,7 @@ jobs:
           EOF
 
       - name: Structural — financing_income in TaxAnnualResult and PeriodCashTaxResult
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python - <<'EOF'
           from financial_engine.tax.models import TaxAnnualResult, PeriodCashTaxResult, TaxYearCalculationBasis
@@ -159,6 +211,7 @@ jobs:
           EOF
 
       - name: Structural — CFADS formula includes financing_income
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python - <<'EOF'
           from financial_engine.cfads import PeriodCfadsResult
@@ -169,6 +222,7 @@ jobs:
           EOF
 
       - name: Canonical causal chain — EBITDA unchanged, TI/CIT/CFADS increase with financing_income
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python - <<'EOF'
           from financial_engine.inputs import TaxCalculationInput, PeriodFinancingIncomeInput
@@ -242,6 +296,7 @@ jobs:
           EOF
 
       - name: PR-5 canonical clean production path — EBITDA authority not augmented
+        if: steps.scope.outputs.engine_sensitive == 'true'
         run: |
           python - <<'EOF'
           import ast, pathlib
