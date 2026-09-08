@@ -2072,13 +2072,21 @@ async def v2_scenario_sensitivity_run(
 ):
     """Run a bounded 5-point sensitivity on one driver.
 
-    Each point is a full canonical engine execution:
-      base inputs + scenario overrides + one driver override → run_project() → kpis
+    Causal chain:
+      resolve_active_scenario_runtime_snapshot(scenario_id)
+      → canonical resolved scenario snapshot (base + all field overrides)
+      → ProjectInputSet
+      → sensitivity driver with_value(field_id)
+      → ProjectInputs
+      → CAPEX/OPEX sub-line fold (for _capex_sub_line_overrides blobs)
+      → run_project()
+      → authoritative result
 
     No approximation. No interpolation. No client-side financial computation.
     Results are temporary — not written to scenario persistence.
 
-    Supported drivers: tariff, capex_total, opex_total, generation, interest_rate, gearing
+    MVP supported drivers: tariff, generation, interest_rate, gearing
+    (capex_total and opex_total removed — derived_display fields are not writable via with_value)
     """
     import logging as _logging
 
@@ -2176,22 +2184,41 @@ async def v2_scenario_sensitivity_run(
     from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base as _apply_capex
     from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex as _apply_opex
     from dataclasses import replace as _dc_replace
-    from app.persistence.scenarios_repository import get_scenario as _get_sc_rec
+    from app.persistence.scenarios_repository import resolve_active_scenario_runtime_snapshot as _resolve_snap
 
-    # Resolve full scenario record (needed for CAPEX/OPEX fold with scenario overrides)
+    # Resolve selected scenario's canonical financial snapshot.
+    # Uses resolve_active_scenario_runtime_snapshot so that scenario field overrides
+    # (tariff, generation, interest_rate, gearing, etc.) are correctly merged into the
+    # base case snapshot BEFORE any sensitivity driver override is applied.
     _scenario_rec = None
+    _scenario_overrides_for_fold = None
     if scenario_id:
-        _scenario_rec = _get_sc_rec(scenario_id=scenario_id, user_id=workspace_owner)
-        if _scenario_rec and (
-            _scenario_rec.project_id != project_record.project_id or _scenario_rec.archived
-        ):
-            _scenario_rec = None
-        if _scenario_rec:
-            scenario_display = _scenario_rec.scenario_name
-
-    _scenario_overrides_for_fold = _scenario_rec.overrides if _scenario_rec else None
-
-    pis_base = WorkbookService.build_draft_input_set_from_workspace(ws)
+        _scenario_rec, _resolved_snap, _warn = _resolve_snap(
+            workspace_owner, project_record.project_id, scenario_id
+        )
+        if _scenario_rec is None:
+            return HTMLResponse(
+                content="<p>Scenario not found, archived, or inaccessible.</p>",
+                status_code=404,
+            )
+        # Double-check identity (resolve_active_scenario_runtime_snapshot already validates these)
+        if _scenario_rec.project_id != project_record.project_id or _scenario_rec.archived:
+            return HTMLResponse(
+                content="<p>Scenario does not belong to this project or is archived.</p>",
+                status_code=403,
+            )
+        if _resolved_snap is None:
+            return HTMLResponse(
+                content="<p>Could not resolve scenario inputs. Please re-run the scenario and retry.</p>",
+                status_code=409,
+            )
+        scenario_display = _scenario_rec.scenario_name
+        _scenario_overrides_for_fold = _scenario_rec.overrides
+        # Build PIS from the fully resolved scenario snapshot (includes all field overrides)
+        pis_base = WorkbookService.build_input_set(_resolved_snap)
+    else:
+        # Base Case: use workspace draft (canonical current inputs)
+        pis_base = WorkbookService.build_draft_input_set_from_workspace(ws)
 
     # Snapshot of pis_base values before any sensitivity run (for non-destructive check)
     _pis_base_values_snapshot = dict(pis_base.values)
