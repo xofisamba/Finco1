@@ -84,7 +84,7 @@ class TestBuildScenarioProjection:
 
     def test_kpis_raw_none_on_missing(self):
         sp = build_scenario_projection("B", {}, None, is_stale=False)
-        for key in [item["key"] for item in KPI_CATALOG]:
+        for key in [item[0] for item in KPI_CATALOG]:
             assert sp.kpis_raw[key] is None
 
     def test_kpis_raw_none_on_nan(self):
@@ -116,7 +116,7 @@ class TestBuildCompareRows:
         p1, p2 = self._two_projections()
         rows = build_compare_rows([p1, p2])
         keys = {r.key for r in rows}
-        assert keys == {item["key"] for item in KPI_CATALOG}
+        assert keys == {item[0] for item in KPI_CATALOG}
 
     def test_base_delta_is_dash(self):
         p1, p2 = self._two_projections()
@@ -189,14 +189,14 @@ class TestKpiCatalog:
     def test_all_fmt_values_valid(self):
         valid_fmts = {"pct", "ratio", "keur"}
         for item in KPI_CATALOG:
-            assert item["fmt"] in valid_fmts, f"{item['key']} has unknown fmt {item['fmt']!r}"
+            assert item[3] in valid_fmts, f"{item['key']} has unknown fmt {item['fmt']!r}"
 
     def test_no_duplicate_keys(self):
-        keys = [item["key"] for item in KPI_CATALOG]
+        keys = [item[0] for item in KPI_CATALOG]
         assert len(keys) == len(set(keys))
 
     def test_required_kpis_present(self):
-        keys = {item["key"] for item in KPI_CATALOG}
+        keys = {item[0] for item in KPI_CATALOG}
         required = {"project_irr", "equity_irr", "min_dscr", "avg_dscr", "min_llcr"}
         assert required.issubset(keys)
 
