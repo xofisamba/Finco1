@@ -161,12 +161,12 @@ class TestModellingWorkspaceCssOnlyConsumesFoTokens:
         )
 
     def test_uses_fo_tokens(self):
-        """Every var(--fo-*) token referenced by this sheet must be defined in tokens.css.
+        """Every var(--fo-*) token referenced by this sheet must be defined in
+        tokens.css OR locally within the same stylesheet.
 
-        This replaces the previous "must consume this exact list" contract.
-        That contract was stale: UI-8B changed --fo-text-xl to --fo-text-lg for
-        the sheet title, so requiring --fo-text-xl in the stylesheet was wrong.
-        The meaningful contract is: no undefined token reference is introduced.
+        Component-scoped tokens (e.g. --fo-mod-context-w, --fo-mod-gap) are
+        legitimately defined inline rather than in the global token sheet.
+        The contract is: no unresolvable token reference is introduced.
         """
         css_text = MODELLING_WORKSPACE_CSS.read_text(encoding="utf-8")
         stripped = re.sub(r"/\*.*?\*/", "", css_text, flags=re.DOTALL)
@@ -174,10 +174,14 @@ class TestModellingWorkspaceCssOnlyConsumesFoTokens:
         if not referenced:
             return
         tokens_text = TOKENS_CSS.read_text(encoding="utf-8")
-        undefined = sorted(t for t in referenced if t not in tokens_text)
+        locally_defined = set(re.findall(r"(--fo-[a-zA-Z0-9_-]+)\s*:", stripped))
+        undefined = sorted(
+            t for t in referenced
+            if t not in tokens_text and t not in locally_defined
+        )
         assert not undefined, (
-            "modelling-workspace.css references --fo-* tokens not defined in tokens.css:\n  "
-            + "\n  ".join(undefined)
+            "modelling-workspace.css references --fo-* tokens not defined in "
+            "tokens.css or locally:\n  " + "\n  ".join(undefined)
         )
 
     def test_no_legacy_palette_alias(self):
