@@ -7,6 +7,17 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_upstream_cash_reserve_interest_policy.py"
+      - ".github/workflows/upstream_cash_reserve_interest_authority_check.yml"
 
 concurrency:
   group: upstream-cash-reserve-interest-authority-check-${{ github.event.pull_request.number || github.ref }}

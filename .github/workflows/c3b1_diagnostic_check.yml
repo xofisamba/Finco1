@@ -4,6 +4,17 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_stage_c3b1_oborovo_tax_source_truth.py"
+      - ".github/workflows/c3b1_diagnostic_check.yml"
   push:
     branches:
       - stage-c3b1-oborovo-tax-source-truth

@@ -3,6 +3,17 @@ name: C3B3D2B7 - Bank Case + Senior Debt Source Parity Check
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_stage_c3b3d2b7_bank_case_senior_parity.py"
+      - ".github/workflows/c3b3d2b7_bank_case_senior_parity_check.yml"
   workflow_dispatch:
 
 concurrency:

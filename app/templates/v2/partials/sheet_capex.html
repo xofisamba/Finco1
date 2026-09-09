@@ -236,9 +236,9 @@
         </span>
         <span class="v2-capex-col-status">
           {%- if group.is_readonly -%}
-            <span class="v2-binding-badge v2-capex-badge-calc" data-binding="engine">Calculated</span>
+            <span class="v2-binding-badge v2-capex-badge-calc v2-capex-badge-engine" data-binding="engine">Calculated</span>
           {%- elif group.is_contingency -%}
-            <span class="v2-binding-badge v2-capex-badge-calc" data-binding="derived">Calculated</span>
+            <span class="v2-binding-badge v2-capex-badge-calc v2-binding-display-only" data-binding="derived">Calculated</span>
           {%- elif alias -%}
             <span class="v2-binding-badge v2-capex-badge-inherited" data-binding="shared">Inherited</span>
           {%- elif gf and gf.binding_label == "bound" -%}

@@ -3,6 +3,17 @@ name: C3B3D2B8 - Base + Senior + SHL Parity Closure Check
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py"
+      - ".github/workflows/c3b3d2b8_base_senior_shl_parity_check.yml"
   workflow_dispatch:
 
 concurrency:

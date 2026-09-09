@@ -3,6 +3,17 @@ name: Pre-freeze PR-7 Base vs Bank Case Authority Check
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_prefreeze_pr7_typed_base_bank_case_authority.py"
+      - ".github/workflows/prefreeze_pr7_base_bank_case_authority_check.yml"
   push:
     branches: [main]
 

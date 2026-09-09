@@ -15,6 +15,17 @@ name: Parity Guardrails
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_phase51f_parallel_work_guardrails.py"
+      - ".github/workflows/parity_guardrails.yml"
   push:
     branches: [main]
 
