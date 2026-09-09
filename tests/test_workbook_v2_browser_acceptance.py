@@ -59,6 +59,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 SCREENSHOTS_DIR = BASE_DIR / "tests" / "screenshots"
 
 from app.auth import COOKIE_NAME, create_session_token  # noqa: E402 – after env
+from app.workbook.registry import WORKBOOK as _WORKBOOK  # noqa: E402
+_WB_VERSION = _WORKBOOK.version
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +167,7 @@ def _field_update_api(base_url: str, token: str, project_code: str,
         "field_id": field_id,
         "value": value,
         "project": project_code,
-        "workbook_version": "2.1.0",
+        "workbook_version": _WB_VERSION,
         "content_hash": ch,
         "sheet_id": sheet_id,
     }, extra_headers={"HX-Request": "true"})
@@ -291,7 +293,7 @@ def ran_project(live_server, oborovo_project):
     ch = _get_content_hash(base_url, token, code)
     _http(base_url, token, "POST", "/v2/workbook/run", {
         "project": code,
-        "workbook_version": "2.1.0",
+        "workbook_version": _WB_VERSION,
         "content_hash": ch,
     }, extra_headers={"HX-Request": "true"})
     return code
@@ -967,7 +969,7 @@ class TestAdditionalOPEX:
             "field_id": "opex.lines.technical_management",
             "value": "210",
             "project": code,
-            "workbook_version": "2.1.0",
+            "workbook_version": _WB_VERSION,
             "content_hash": ch,
             "sheet_id": "opex",
         }, extra_headers={"HX-Request": "true"})

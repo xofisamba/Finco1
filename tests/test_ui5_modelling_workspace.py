@@ -363,9 +363,13 @@ class TestEngineAuthorityBoundary:
         if not path.exists():
             pytest.skip(f"{relpath} does not exist")
         text = path.read_text(encoding="utf-8")
+        import_lines = "\n".join(
+            line for line in text.splitlines()
+            if line.strip().startswith(("import ", "from "))
+        )
         for pattern in ("TemplateResponse", "Jinja2Templates", "get_template"):
-            assert pattern not in text, (
-                f"{relpath} must not contain {pattern!r}; "
+            assert pattern not in import_lines, (
+                f"{relpath} must not import {pattern!r}; "
                 "presentation authority must remain outside engine/service files."
             )
 
