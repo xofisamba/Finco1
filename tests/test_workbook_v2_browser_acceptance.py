@@ -1062,41 +1062,51 @@ class TestFSBrowserAcceptance:
         SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_period_labels_readable(self):
-        # Phase B4: financial_statements_payload is explicitly NOT_AVAILABLE
-        # (project_runner.py line 334, frozen). All V2 runs produce no FS data.
-        # The correct production state is the "no runtime" placeholder.
+        # A successful run with financial_statements_payload=None (project_runner.py
+        # line 334, frozen Phase B4) produces state=UNAVAILABLE, not NOT_RUN.
+        # UNAVAILABLE renders data-testid="fs-pnl-unavailable" (income statement
+        # section) and data-testid="fs-unavailable-notice" (top-level bar).
         p = self.page
-        no_runtime = p.locator('[data-testid="fs-pnl-no-runtime"]')
-        assert no_runtime.count() >= 1, (
-            "Expected fs-pnl-no-runtime placeholder (Phase B4: FS explicitly "
-            "NOT_AVAILABLE for all V2 runs). Got unexpected FS table instead."
+        unavailable = p.locator('[data-testid="fs-pnl-unavailable"]')
+        assert unavailable.count() >= 1, (
+            "Expected fs-pnl-unavailable (UNAVAILABLE state after successful run "
+            "with financial_statements_payload=None). "
+            "Got neither the unavailable placeholder nor a data table."
         )
 
     def test_long_table_has_horizontal_scroll(self):
-        # Phase B4: no FS data produced — verify the tab panel itself renders
-        # without error (page did not crash or 500).
+        # Phase B4: run completed but FS payload absent → fs_state=UNAVAILABLE.
+        # The top-level FS unavailable notice must be present.
         p = self.page
-        panel = p.locator("#panel-fs")
-        assert panel.count() >= 1, "FS panel (#panel-fs) not found after tab switch"
+        notice = p.locator('[data-testid="fs-unavailable-notice"]')
+        assert notice.count() >= 1, (
+            "Expected fs-unavailable-notice (FS_UNAVAILABLE state) after a "
+            "successful run — financial_statements_payload is None (Phase B4)."
+        )
 
     def test_annual_revenue_equals_sum_of_model_periods(self):
-        # Phase B4: financial_statements_payload = None (frozen project_runner.py).
-        # No FS rows exist for any V2 run; verify the FS tab renders the correct
-        # "not yet run" state rather than crashing or showing stale data.
+        # Phase B4: successful run, financial_statements_payload=None →
+        # UNAVAILABLE. Income Statement section shows fs-pnl-unavailable.
+        # Revenue aggregation comparison is N/A until FS runtime handoff is wired.
         p = self.page
-        no_runtime = p.locator('[data-testid="fs-pnl-no-runtime"]')
-        assert no_runtime.count() >= 1, (
-            "Expected fs-pnl-no-runtime placeholder (Phase B4). "
-            "FS revenue comparison is N/A until FS assembly is re-enabled."
+        unavailable = p.locator('[data-testid="fs-pnl-unavailable"]')
+        assert unavailable.count() >= 1, (
+            "Expected fs-pnl-unavailable (UNAVAILABLE) after successful run. "
+            "FS revenue comparison is N/A while Phase B4 constraint holds."
         )
 
     def test_annual_pf_cf_table_present(self):
-        # Phase B4: no FS data — verify CF tab inner panel renders without error.
+        # Phase B4: CF waterfall payload is None → UNAVAILABLE.
+        # CF waterfall section renders fs-pf-cf-unavailable.
         p = self.page
+        p.locator('[data-panel="fs-inner-panel-pf-cf"]').click()
+        p.wait_for_timeout(200)
         p.screenshot(path=str(SCREENSHOTS_DIR / "fs_annual_cash_waterfall.png"))
-        # The panel itself must be present and contain the no-runtime placeholder.
-        panel = p.locator("#panel-fs")
-        assert panel.count() >= 1, "FS panel (#panel-fs) missing after tab switch"
+        unavailable = p.locator('[data-testid="fs-pf-cf-unavailable"]')
+        assert unavailable.count() >= 1, (
+            "Expected fs-pf-cf-unavailable (UNAVAILABLE) in CF waterfall panel "
+            "after successful run with financial_statements_payload=None."
+        )
 
     def test_bs_annual_uses_year_end_not_sum(self):
         """
