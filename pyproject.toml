@@ -23,10 +23,17 @@ dependencies = [
     "click",
 ]
 
+[tool.setuptools]
+py-modules = ["main_web", "main_api"]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "domain*"]
-exclude = ["ui", "static", "deploy", "reports", "reporting", "validation", "tests*"]
+include = ["app*", "domain*", "financial_engine*", "finco_core*", "static*", "utils*"]
+exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
+
+[tool.setuptools.package-data]
+app = ["templates/**/*.html", "templates/**/*.txt", "templates/**/*.css", "templates/**/*.js"]
+static = ["*", "**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
