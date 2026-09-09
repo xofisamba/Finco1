@@ -160,7 +160,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
-          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio uvicorn
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio uvicorn beautifulsoup4
       - name: Route render smoke
         run: |
           python3 -m pytest -q --tb=short \
