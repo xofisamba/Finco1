@@ -4,6 +4,17 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_kupi_k0_k3_causal_grid.py"
+      - ".github/workflows/kupi_k0_k3_causal_grid_check.yml"
   push:
     branches:
       - prefreeze-kupi-k0-k3-causal-grid

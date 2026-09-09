@@ -3,6 +3,17 @@ name: MVP G1 - Governance & Methodology Lock
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_mvp_g1_governance_methodology_lock.py"
+      - ".github/workflows/mvp_g1_governance_methodology_lock.yml"
   workflow_dispatch:
 
 permissions:
