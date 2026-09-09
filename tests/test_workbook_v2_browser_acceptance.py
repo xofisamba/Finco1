@@ -282,20 +282,56 @@ def oborovo_project(live_server):
 
 
 @pytest.fixture(scope="module")
-def ran_project(live_server, oborovo_project):
-    """
-    Oborovo project that has been run at least once (TM=200), giving a clean
-    RuntimeResult for FS and downstream assertions.
+def runnable_v2_project(live_server):
+    """Generic Solar project seeded with TM=200 for generic Workbook V2 tests.
+
+    Uses generic_solar (not oborovo) so the project inputs are fully
+    self-consistent and the engine runs without factory-calibration conflicts.
+    The oborovo_project fixture creates a hybrid project (oborovo factory
+    baseline + custom form parameters) whose mixed inputs fail engine validation;
+    the canonical Oborovo acceptance path (reference → working copy → run) is
+    covered separately in the UI-4A browser gate.
+    TM=200 gives a non-zero baseline for the 200→300 queued-run tests.
     """
     base_url = live_server["base_url"]
     token = live_server["token"]
-    code = oborovo_project
+    code = _create_project(base_url, token, "_v2BrowserAccept_GenericRun",
+                           project_type="Solar", template_source="generic_solar")
+    status, _, body = _field_update_api(base_url, token, code,
+                                        "opex.lines.technical_management", "200", "opex")
+    assert status == 200, (
+        f"runnable_v2_project: failed to seed TM=200: HTTP {status}. "
+        f"body[:400]={body[:400]!r}"
+    )
+    return code
+
+
+@pytest.fixture(scope="module")
+def ran_project(live_server, runnable_v2_project):
+    """
+    Generic Solar project that has been run (TM=200), giving a persisted
+    RuntimeResult for FS and downstream assertions.
+
+    Uses generic_solar rather than oborovo because TestFSBrowserAcceptance
+    tests generic FS page structure (period headers, scroll, revenue
+    aggregation, PF CF table), not Oborovo-specific semantics.
+    A rejected or engine-failed Run must never silently cascade into six
+    downstream FS failures — the assertion below makes any run failure
+    immediately visible with status + body excerpt.
+    """
+    base_url = live_server["base_url"]
+    token = live_server["token"]
+    code = runnable_v2_project
     ch = _get_content_hash(base_url, token, code)
-    _http(base_url, token, "POST", "/v2/workbook/run", {
+    status, _headers, body = _http(base_url, token, "POST", "/v2/workbook/run", {
         "project": code,
         "workbook_version": _WB_VERSION,
         "content_hash": ch,
     }, extra_headers={"HX-Request": "true"})
+    assert status == 200, (
+        f"ran_project: /v2/workbook/run returned HTTP {status}. "
+        f"body[:500]={body[:500]!r}"
+    )
     return code
 
 
@@ -475,12 +511,12 @@ class TestTM200To300QueuedRun:
     """
 
     @pytest.fixture(autouse=True)
-    def setup(self, authed_page, live_server, oborovo_project):
+    def setup(self, authed_page, live_server, runnable_v2_project):
         self.page = authed_page
         self.base_url = live_server["base_url"]
         self.token = live_server["token"]
         self.db_path = live_server["db"]
-        self.project_code = oborovo_project
+        self.project_code = runnable_v2_project
         self.update_requests: list[dict] = []
         self.run_requests: list[dict] = []
 
