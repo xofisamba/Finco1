@@ -182,12 +182,26 @@ class TestMvpSolarE2E(unittest.TestCase):
     # ── Step 2: Edit verification ─────────────────────────────────────────
 
     def test_02_edits_reflected_in_workspace(self):
-        """Edited assumption (opex_y1_keur=900) persists in workspace snapshot."""
+        """Edited assumptions persist in the runtime snapshot used for the run."""
         ws = _ws(self.project_code)
         self.assertIsNotNone(ws)
         snap = ws.last_runtime_snapshot or {}
-        # opex edit should be reflected in the runtime snapshot used for the run
-        self.assertIsNotNone(snap, "workspace must have a runtime snapshot after run")
+        self.assertTrue(bool(snap), "workspace must have a runtime snapshot after run")
+        # p50_hours edited to 2100
+        self.assertEqual(
+            float(snap.get("p50_hours", -1)), 2100.0,
+            f"p50_hours not 2100 in runtime snapshot; got {snap.get('p50_hours')!r}"
+        )
+        # EPC contract edited to 42000 kEUR
+        self.assertEqual(
+            float(snap.get("capex_epc_contract_keur", -1)), 42000.0,
+            f"capex_epc_contract_keur not 42000 in runtime snapshot; got {snap.get('capex_epc_contract_keur')!r}"
+        )
+        # OPEX insurance edited to 200 kEUR
+        self.assertEqual(
+            float(snap.get("opex_insurance_y1_keur", -1)), 200.0,
+            f"opex_insurance_y1_keur not 200 in runtime snapshot; got {snap.get('opex_insurance_y1_keur')!r}"
+        )
 
     # ── Step 3 + 4: Run and inspect ──────────────────────────────────────
 
@@ -280,10 +294,28 @@ class TestMvpSolarE2E(unittest.TestCase):
         self.assertEqual(resp_wb.status_code, 200)
 
     def test_06_reopened_runtime_matches_saved(self):
-        """Runtime summary after reopen matches what was saved by the run."""
-        s = _summary(self.project_code)
-        ebitda = s.get("total_ebitda_keur")
-        self.assertIsNotNone(ebitda, "reopened project must have persisted EBITDA")
+        """Runtime summary after reopen is identical to what was saved by the run."""
+        # Capture persisted runtime values immediately (before the reopen flow)
+        s_before = _summary(self.project_code)
+        keys = ["total_ebitda_keur", "total_revenue_keur", "project_irr", "min_dscr"]
+        for k in keys:
+            self.assertIsNotNone(s_before.get(k), f"{k} missing before reopen")
+
+        # Perform the leave/reopen flow (same as test_06_reopen_project_from_library)
+        resp_lib = self.client.get("/library", follow_redirects=True)
+        self.assertEqual(resp_lib.status_code, 200)
+        resp_wb = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp_wb.status_code, 200)
+
+        # Re-read persisted runtime state after reopen
+        s_after = _summary(self.project_code)
+
+        # Values are read from the database (not recalculated), so exact equality holds
+        for k in keys:
+            self.assertEqual(
+                s_after.get(k), s_before.get(k),
+                f"{k} changed after reopen: before={s_before.get(k)!r} after={s_after.get(k)!r}"
+            )
 
     def test_06_project_identity_persists(self):
         """Project record still has correct project_code after reopen."""
