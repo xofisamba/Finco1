@@ -90,6 +90,9 @@ from fastapi.testclient import TestClient
 
 import main_web
 from app.auth import COOKIE_NAME, create_session_token
+from app.workbook.registry import WORKBOOK as _WORKBOOK
+
+_WB_VERSION: str = _WORKBOOK.version
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +251,7 @@ def _render_fs_template(ctx: dict) -> BeautifulSoup:
 def _base_no_runtime_ctx() -> dict:
     return {
         "project_code": "TEST-FS",
-        "workbook_version": "2.1.0",
+        "workbook_version": _WB_VERSION,
         "content_hash": "abc123",
         "project_editable": True,
         "ws_dirty": False,
@@ -279,7 +282,7 @@ def _base_clean_ctx(num_periods: int = 2) -> dict:
     )
     return {
         "project_code": "TEST-FS",
-        "workbook_version": "2.1.0",
+        "workbook_version": _WB_VERSION,
         "content_hash": "abc123",
         "project_editable": True,
         "ws_dirty": False,
@@ -663,7 +666,7 @@ class TestCrossSheetOobUpdate(unittest.TestCase):
                 "field_id": field_id,
                 "value": value,
                 "project": self.project_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": ch,
                 "sheet_id": sheet_id,
             },
@@ -688,7 +691,7 @@ class TestCrossSheetOobUpdate(unittest.TestCase):
                 "field_id": "nonexistent.field",
                 "value": "999",
                 "project": self.project_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": "stale-hash-that-causes-stale-error",
                 "sheet_id": "tax",
             },
@@ -784,7 +787,7 @@ class TestCrossSheetStaleTransition(unittest.TestCase):
                 "field_id": "tax.assumptions.cit_rate_pct",
                 "value": "19.5",
                 "project": self.project_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": ch,
                 "sheet_id": "tax",
             },
@@ -803,7 +806,7 @@ class TestCrossSheetStaleTransition(unittest.TestCase):
                 "field_id": "tax.assumptions.cit_rate_pct",
                 "value": "20.0",
                 "project": self.project_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": ch,
                 "sheet_id": "tax",
             },
@@ -976,7 +979,7 @@ class TestCITRateDisplay(unittest.TestCase):
                 "field_id": "tax.assumptions.cit_rate_pct",
                 "value": value_str,
                 "project": self.project_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": ch,
                 "sheet_id": "tax",
             },
@@ -1047,7 +1050,7 @@ class TestHXTriggerSaveSignals(unittest.TestCase):
                 "field_id": field_id,
                 "value": value,
                 "project": self.project_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": ch,
                 "sheet_id": sheet_id,
             },

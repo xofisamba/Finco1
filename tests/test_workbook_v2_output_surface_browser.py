@@ -43,6 +43,9 @@ os.environ.setdefault("FINCO_SECRET_KEY", "output-surface-test-secret")
 BASE_DIR = Path(__file__).resolve().parents[1]
 _SERVER_SECRET = "output-surface-test-secret"
 
+from app.workbook.registry import WORKBOOK as _WORKBOOK  # noqa: E402
+_WB_VERSION: str = _WORKBOOK.version
+
 _FULL_CREATE_FORM = {
     "project_name": "Output Surface Test",
     "project_type": "Wind",
@@ -204,7 +207,7 @@ def _run_model(base_url: str, token: str, project_code: str) -> None:
         f"{base_url}/v2/workbook/run",
         data={
             "project": project_code,
-            "workbook_version": "2.1.0",
+            "workbook_version": _WB_VERSION,
             "content_hash": ch,
         },
         cookies={COOKIE_NAME: token},
@@ -392,7 +395,7 @@ async def test_revenue_stale_state(server_v2):
                     "field_id": "project_setup.technical.p50_hours",
                     "value": "2100",
                     "project": code,
-                    "workbook_version": "2.1.0",
+                    "workbook_version": _WB_VERSION,
                     "content_hash": ch,
                 },
                 cookies={COOKIE_NAME: token},
@@ -484,7 +487,7 @@ async def test_debt_stale_prior_output_visible(server_v2):
                 f"{base_url}/v2/workbook/update",
                 data={"field_id": "project_setup.technical.p50_hours",
                       "value": "2150", "project": code,
-                      "workbook_version": "2.1.0", "content_hash": ch},
+                      "workbook_version": _WB_VERSION, "content_hash": ch},
                 cookies={COOKIE_NAME: token},
                 headers={"HX-Request": "true"},
             )
@@ -563,7 +566,7 @@ async def test_tax_stale_prior_output_visible(server_v2):
                 f"{base_url}/v2/workbook/update",
                 data={"field_id": "project_setup.technical.p50_hours",
                       "value": "2050", "project": code,
-                      "workbook_version": "2.1.0", "content_hash": ch},
+                      "workbook_version": _WB_VERSION, "content_hash": ch},
                 cookies={COOKIE_NAME: token},
                 headers={"HX-Request": "true"},
             )
@@ -721,7 +724,7 @@ async def test_fs_stale_state_prior_outputs_remain(server_v2):
                 f"{base_url}/v2/workbook/update",
                 data={"field_id": "project_setup.technical.p50_hours",
                       "value": "1900", "project": code,
-                      "workbook_version": "2.1.0", "content_hash": ch},
+                      "workbook_version": _WB_VERSION, "content_hash": ch},
                 cookies={COOKIE_NAME: token},
                 headers={"HX-Request": "true"},
             )

@@ -14,7 +14,7 @@
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
   <input type="hidden" name="content_hash" value="{{ content_hash }}">
   <button type="submit" class="v2-run-btn" data-testid="v2-run-btn">
-    <span class="v2-run-label">Run</span>
+    <span class="v2-run-label">Run{% if active_scenario_name and active_scenario_name != "Base Case" %} {{ active_scenario_name }}{% else %} Base Case{% endif %}</span>
     <span class="v2-run-loading" aria-hidden="true">Running…</span>
   </button>
 </form>

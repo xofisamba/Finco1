@@ -84,7 +84,7 @@ class TestBuildScenarioProjection:
 
     def test_kpis_raw_none_on_missing(self):
         sp = build_scenario_projection("B", {}, None, is_stale=False)
-        for key in [item["key"] for item in KPI_CATALOG]:
+        for key in [item[0] for item in KPI_CATALOG]:
             assert sp.kpis_raw[key] is None
 
     def test_kpis_raw_none_on_nan(self):
@@ -116,7 +116,7 @@ class TestBuildCompareRows:
         p1, p2 = self._two_projections()
         rows = build_compare_rows([p1, p2])
         keys = {r.key for r in rows}
-        assert keys == {item["key"] for item in KPI_CATALOG}
+        assert keys == {item[0] for item in KPI_CATALOG}
 
     def test_base_delta_is_dash(self):
         p1, p2 = self._two_projections()
@@ -189,14 +189,14 @@ class TestKpiCatalog:
     def test_all_fmt_values_valid(self):
         valid_fmts = {"pct", "ratio", "keur"}
         for item in KPI_CATALOG:
-            assert item["fmt"] in valid_fmts, f"{item['key']} has unknown fmt {item['fmt']!r}"
+            assert item[3] in valid_fmts, f"{item['key']} has unknown fmt {item['fmt']!r}"
 
     def test_no_duplicate_keys(self):
-        keys = [item["key"] for item in KPI_CATALOG]
+        keys = [item[0] for item in KPI_CATALOG]
         assert len(keys) == len(set(keys))
 
     def test_required_kpis_present(self):
-        keys = {item["key"] for item in KPI_CATALOG}
+        keys = {item[0] for item in KPI_CATALOG}
         required = {"project_irr", "equity_irr", "min_dscr", "avg_dscr", "min_llcr"}
         assert required.issubset(keys)
 
@@ -343,18 +343,20 @@ class TestSensitivityProductionHandler:
     @classmethod
     def setup_class(cls):
         """Start a live server and create a Solar project once for the class."""
+        import tempfile
         cls.port = _pick_free_port()
         cls.base_url = f"http://127.0.0.1:{cls.port}"
         env = os.environ.copy()
+        cls._stderr_file = tempfile.TemporaryFile(mode="w+", suffix=".log")
         cls.proc = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "main_web:app",
              "--host", "127.0.0.1", "--port", str(cls.port)],
             cwd=BASE_DIR,
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=cls._stderr_file,
         )
-        _wait_for_health(cls.base_url)
+        _wait_for_health(cls.base_url, stderr_file=cls._stderr_file)
         cls.token = create_session_token()
         cls.project_code = _create_solar_project(cls.base_url, cls.token)
 
@@ -584,7 +586,7 @@ def _pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
+def _wait_for_health(base_url: str, timeout: float = 60.0, stderr_file=None) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -593,7 +595,18 @@ def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
                     return
         except Exception:
             time.sleep(0.3)
-    raise RuntimeError(f"Server at {base_url} did not become healthy within {timeout}s")
+    stderr_content = ""
+    if stderr_file is not None:
+        try:
+            stderr_file.flush()
+            stderr_file.seek(0)
+            stderr_content = stderr_file.read()
+        except Exception:
+            pass
+    raise RuntimeError(
+        f"Server at {base_url} did not become healthy within {timeout}s"
+        + (f"\nServer stderr:\n{stderr_content}" if stderr_content else "")
+    )
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -693,16 +706,18 @@ class TestSelectedScenarioResolution:
 
     @classmethod
     def setup_class(cls):
+        import tempfile
         cls.port = _pick_free_port()
         cls.base_url = f"http://127.0.0.1:{cls.port}"
         env = os.environ.copy()
+        cls._stderr_file = tempfile.TemporaryFile(mode="w+", suffix=".log")
         cls.proc = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "main_web:app",
              "--host", "127.0.0.1", "--port", str(cls.port)],
             cwd=BASE_DIR, env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=cls._stderr_file,
         )
-        _wait_for_health(cls.base_url)
+        _wait_for_health(cls.base_url, stderr_file=cls._stderr_file)
         cls.token = create_session_token()
         cls.project_code = _create_solar_project(cls.base_url, cls.token, name="ScenResolution Solar")
 

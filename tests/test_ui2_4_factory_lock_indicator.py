@@ -52,13 +52,14 @@ class TestPartialExists:
 class TestMissingContextSafe:
     def test_partial_guarded_by_if(self):
         text = PARTIAL.read_text()
-        # Should end with {% endif %}
-        assert "{% if _is_factory %}" in text
+        # Partial must render NOTHING when protection flag is absent.
+        # Implementation uses is_protected_reference (HOTFIX-PILOT-BLOCKER-1).
+        assert "{% if _is_protected %}" in text or "{% if is_protected" in text
 
     def test_partial_renders_nothing_when_not_factory(self):
         text = PARTIAL.read_text()
-        # When all conditions fail, _is_factory = false, partial renders nothing
-        assert "_is_factory = false" in text
+        # When is_protected_reference is falsy, partial renders nothing.
+        assert "is_protected_reference" in text or "is_protected" in text
 
 
 # ============================================================
@@ -68,27 +69,36 @@ class TestMissingContextSafe:
 
 class TestFactorySignals:
     def test_tuho_signal_detected(self):
-        # Lowercase comparison is used (Phase 54G normalization refactor)
+        # HOTFIX-PILOT-BLOCKER-1: gate is now is_protected_reference (boolean),
+        # which is set True for TUHO and Oborovo factory templates by the
+        # project context builder. The partial need not re-detect "tuho" by name.
+        # Structural test: partial must have an "if" guard around its content.
         text = PARTIAL.read_text()
-        assert "tuho" in text
+        assert "{% if" in text and "{% endif %}" in text
 
     def test_oborovo_signal_detected(self):
+        # is_protected_reference covers Oborovo as a protected original.
+        # The partial itself does not need to mention "oborovo" — the context
+        # builder sets is_protected_reference=True for it.
         text = PARTIAL.read_text()
-        assert "oborovo" in text
+        assert "is_protected_reference" in text or "is_protected" in text
 
     def test_explicit_is_factory_template(self):
+        # The variable is now is_protected_reference (see HOTFIX-PILOT-BLOCKER-1).
+        # Accepting either the old name (for legacy templates) or the new one.
         text = PARTIAL.read_text()
-        assert "is_factory_template" in text
+        assert "is_protected_reference" in text or "is_factory_template" in text
 
     def test_template_source_lowercase(self):
+        # template_source is still passed and rendered for display.
+        # The partial renders: {{ template_source|default('') }}
         text = PARTIAL.read_text()
-        # Should handle lowercase too
-        assert "lower" in text
+        assert "template_source" in text
 
     def test_factory_keyword(self):
         text = PARTIAL.read_text()
-        # Should detect "factory" in template_source
-        assert "'factory' in _ts|lower" in text or "factory" in text
+        # "factory" appears in the docstring or as partial body copy.
+        assert "factory" in text.lower()
 
 
 # ============================================================
@@ -237,7 +247,9 @@ class TestNoForbiddenFileChanges:
 
 class TestSafeLanguage:
     EXPECTED_SAFE_PHRASES = [
-        "Factory template",
+        # "Protected original" is the current neutral user-facing wording
+        # (replacing the old "Factory template" — HOTFIX-PILOT-BLOCKER-1 / C2 arch).
+        "Protected original",
         "Create a scenario",
         "Save As before editing",
         "controlled assumptions",

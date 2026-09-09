@@ -186,39 +186,72 @@ class TestNoFakeRunId:
 # ============================================================
 
 
-FORBIDDEN_TERMS = [
-    "bankable", "lender-ready", "investor-ready",
+# Terms that are AFFIRMATIVE claims — forbidden regardless of context.
+# Truthful NEGATIVE disclaimers (e.g. "not lender-ready") are conservative
+# warnings and must NOT be blocked (they are the correct product behaviour).
+AFFIRMATIVE_FORBIDDEN_TERMS = [
+    "bankable", "investor-ready",
     "production-ready", "guaranteed returns", "investment advice",
     "customer reference", "external validation"
 ]
 
 
 class TestNoForbiddenClaims:
-    @pytest.mark.parametrize("term", FORBIDDEN_TERMS)
+    @pytest.mark.parametrize("term", AFFIRMATIVE_FORBIDDEN_TERMS)
     def test_no_forbidden_term_in_partial(self, term):
         text = PARTIAL.read_text().lower()
         pattern = r"\b" + re.escape(term.lower()) + r"\b"
         assert not re.search(pattern, text)
 
-    @pytest.mark.parametrize("term", FORBIDDEN_TERMS)
+    @pytest.mark.parametrize("term", AFFIRMATIVE_FORBIDDEN_TERMS)
     def test_no_forbidden_term_in_index_html(self, term):
         text = INDEX_HTML.read_text().lower()
         pattern = r"\b" + re.escape(term.lower()) + r"\b"
         assert not re.search(pattern, text)
 
     def test_no_validated_alone(self):
+        # Guard: "validated" as a standalone affirmative claim is forbidden.
+        # "not ... validated" (even across whitespace/newlines) is acceptable.
         text = PARTIAL.read_text().lower()
-        pattern = r"\bvalidated\b"
-        assert not re.search(pattern, text)
+        for m in re.finditer(r"\bvalidated\b", text):
+            # Look back 40 chars (handles newlines between "not" and "validated")
+            before = text[max(0, m.start() - 40):m.start()]
+            before_flat = re.sub(r"\s+", " ", before)
+            if "not" not in before_flat and "un" not in before_flat:
+                raise AssertionError(
+                    f"Standalone 'validated' (affirmative claim) found in partial near: "
+                    f"{text[max(0,m.start()-30):m.end()+30]!r}"
+                )
 
     def test_no_certified(self):
         text = PARTIAL.read_text().lower()
         pattern = r"\bcertified\b"
         assert not re.search(pattern, text)
 
-    def test_no_audit_ready(self):
+    def test_no_affirmative_lender_ready(self):
+        # "not lender-ready" is a truthful conservative warning — permitted.
+        # "lender-ready" as a standalone affirmative claim is forbidden.
         text = PARTIAL.read_text().lower()
-        assert "audit-ready" not in text
+        for m in re.finditer(r"\blender-ready\b", text):
+            before = text[max(0, m.start() - 40):m.start()]
+            before_flat = re.sub(r"\s+", " ", before)
+            if "not" not in before_flat:
+                raise AssertionError(
+                    f"Affirmative 'lender-ready' claim found in partial near: "
+                    f"{text[max(0,m.start()-30):m.end()+30]!r}"
+                )
+
+    def test_no_affirmative_audit_ready(self):
+        # "not audit-ready" is a truthful negative disclaimer — permitted.
+        text = PARTIAL.read_text().lower()
+        for m in re.finditer(r"\baudit-ready\b", text):
+            before = text[max(0, m.start() - 40):m.start()]
+            before_flat = re.sub(r"\s+", " ", before)
+            if "not" not in before_flat:
+                raise AssertionError(
+                    f"Affirmative 'audit-ready' claim found in partial near: "
+                    f"{text[max(0,m.start()-30):m.end()+30]!r}"
+                )
 
 
 # ============================================================

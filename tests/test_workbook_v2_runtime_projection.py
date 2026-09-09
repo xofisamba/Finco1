@@ -46,6 +46,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fastapi.testclient import TestClient
 from app.auth import COOKIE_NAME, create_session_token
 import main_web
+from app.workbook.registry import WORKBOOK as _WORKBOOK
+_WB_VERSION: str = _WORKBOOK.version
 
 _SESSION = create_session_token()
 
@@ -289,28 +291,28 @@ class TestExtractPeriods:
 class TestProjectRows:
     def test_none_periods_returns_none(self):
         from app.workbook.runtime_projection import project_rows
-        assert project_rows([("k", "l", False)], None) is None
+        assert project_rows([("k", "l", False, False)], None) is None
 
     def test_empty_periods_returns_rows_with_empty_values(self):
         from app.workbook.runtime_projection import project_rows
-        rows = project_rows([("k", "l", False)], [])
-        assert rows == [{"key": "k", "label": "l", "is_total": False, "values": []}]
+        rows = project_rows([("k", "l", False, False)], [])
+        assert rows == [{"key": "k", "label": "l", "is_total": False, "is_stock": False, "values": []}]
 
     def test_row_structure(self):
         from app.workbook.runtime_projection import project_rows
         periods = [{"k": 42}, {"k": None}]
-        rows = project_rows([("k", "Label", True)], periods)
-        assert rows[0] == {"key": "k", "label": "Label", "is_total": True, "values": [42, None]}
+        rows = project_rows([("k", "Label", True, False)], periods)
+        assert rows[0] == {"key": "k", "label": "Label", "is_total": True, "is_stock": False, "values": [42, None]}
 
     def test_zero_preserved(self):
         from app.workbook.runtime_projection import project_rows
-        rows = project_rows([("k", "L", False)], [{"k": 0}])
+        rows = project_rows([("k", "L", False, False)], [{"k": 0}])
         assert rows[0]["values"] == [0]
 
     def test_no_arithmetic(self):
         from app.workbook.runtime_projection import project_rows
         periods = [{"a": 10}, {"b": 20}]
-        rows = project_rows([("a", "A", False), ("b", "B", False)], periods)
+        rows = project_rows([("a", "A", False, False), ("b", "B", False, False)], periods)
         assert rows[0]["values"] == [10, None]
         assert rows[1]["values"] == [None, 20]
 
@@ -462,6 +464,8 @@ class TestOobViewHelpers:
             pnl_period_labels=[], bs_period_labels=[], pf_cf_period_labels=[],
             pnl_classification="NOT_RUN", bs_classification="NOT_RUN",
             pf_cf_classification="NOT_RUN", runtime_summary=None,
+            pnl_annual_rows=None, bs_annual_rows=None, pf_cf_annual_rows=None,
+            pnl_annual_labels=[], bs_annual_labels=[], pf_cf_annual_labels=[],
         )
         return WorkbookRuntimeProjection(debt=debt, tax=tax, fs=fs)
 
@@ -1296,7 +1300,7 @@ class TestStaleHashNoOob:
         code = _create_project(client, "stale-scalar")
         resp = client.post("/v2/workbook/update", data={
             "field_id": "project_setup.technical.p50_hours", "value": "2600",
-            "project": code, "workbook_version": "2.1.0",
+            "project": code, "workbook_version": _WB_VERSION,
             "content_hash": "definitely-wrong-hash", "sheet_id": "project_setup",
         }, headers={"HX-Request": "true"})
         body = resp.text
@@ -1310,7 +1314,7 @@ class TestStaleHashNoOob:
         resp = client.post("/v2/capex/line/add", data={
             "project": code, "parent_category_code": "C.01",
             "label": "Stale line", "amount_keur": "100", "notes": "",
-            "workbook_version": "2.1.0", "content_hash": "wrong-hash",
+            "workbook_version": _WB_VERSION, "content_hash": "wrong-hash",
         }, headers={"HX-Request": "true"})
         body = resp.text
         assert 'id="debt-runtime-bar" hx-swap-oob="true"' not in body
@@ -1323,7 +1327,7 @@ class TestStaleHashNoOob:
             "project": code, "parent_group_code": "B.01",
             "label": "Stale line", "amount_keur": "100",
             "inflation_pct": "2.0", "notes": "",
-            "workbook_version": "2.1.0", "content_hash": "wrong-hash",
+            "workbook_version": _WB_VERSION, "content_hash": "wrong-hash",
         }, headers={"HX-Request": "true"})
         body = resp.text
         assert 'id="debt-runtime-bar" hx-swap-oob="true"' not in body

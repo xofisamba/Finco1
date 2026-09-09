@@ -167,10 +167,7 @@
           {# Delta column shows the last non-base scenario vs first #}
           {% if row.deltas | length >= 2 %}
           {% set last_delta = row.deltas[-1] %}
-          <td class="v2-compare-kpi-delta
-                     {% if last_delta.startswith('+') %}v2-delta-pos
-                     {% elif last_delta.startswith('-') %}v2-delta-neg
-                     {% else %}v2-delta-neutral{% endif %}"
+          <td class="v2-compare-kpi-delta v2-delta-neutral"
               data-testid="cmp-{{ row.key }}-delta">
             {{ last_delta }}
           </td>

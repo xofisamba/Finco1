@@ -51,9 +51,9 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 
-{# Macro: read-only ENGINE / DERIVED / DISPLAY_ONLY row #}
+{# Macro: read-only calculated row #}
 {% macro opex_ro_row(label, value, badge="ENGINE", unit="kEUR") %}
-<div class="v2-field-row v2-field-readonly v2-opex-ro-row">
+<div class="v2-field-row v2-field-readonly v2-opex-ro-row" data-binding="{{ badge | lower }}">
   <span class="v2-field-label">{{ label }}</span>
   <span class="v2-field-value">
     {%- if value is not none and value != "" -%}
@@ -61,7 +61,7 @@
     {%- else -%}
       <span class="v2-field-empty">—</span>
     {%- endif -%}
-    <span class="v2-binding-badge v2-opex-badge-{{ badge | lower | replace(' ', '-') }}">{{ badge }}</span>
+    <span class="v2-binding-badge v2-opex-badge-calc">Calculated</span>
   </span>
   {%- if unit %}<span class="v2-unit">{{ unit }}</span>{% endif %}
 </div>
@@ -74,10 +74,8 @@
   <span class="v2-opex-line-name">{{ line.name }}</span>
   <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
   <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
-  {%- if line.notes %}<span class="v2-opex-line-notes">{{ line.notes }}</span>{% endif %}
-  {%- if line.is_derived %}<span class="v2-binding-badge v2-opex-badge-derived">DERIVED</span>
-  {%- elif line.is_read_only %}<span class="v2-binding-badge v2-opex-badge-engine">ENGINE</span>
-  {%- endif %}
+  {# Calibration/development notes suppressed in standard product view. #}
+  {%- if line.is_derived or line.is_read_only %}<span class="v2-binding-badge v2-opex-badge-calc" data-binding="{{ 'derived' if line.is_derived else 'engine' }}">Calculated</span>{%- endif %}
 </div>
 {% endmacro %}
 

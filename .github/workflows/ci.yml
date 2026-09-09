@@ -138,16 +138,29 @@ jobs:
     name: UI ring (fast path)
     runs-on: ubuntu-latest
     needs: classify-scope
-    if: needs.classify-scope.outputs.ui_only == 'true'
+    if: >
+      needs.classify-scope.outputs.ui_only == 'true' ||
+      needs.classify-scope.outputs.engine_sensitive == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: checked-out commit does not match expected head SHA" >&2
+            exit 1
+          fi
+          echo "HEAD OK: $ACTUAL"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
-          pip install --no-cache-dir -c constraints.txt pytest
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio uvicorn beautifulsoup4
       - name: Route render smoke
         run: |
           python3 -m pytest -q --tb=short \
@@ -220,6 +233,13 @@ jobs:
             tests/test_workbook_v2_capex_row_lifecycle.py \
             tests/test_workbook_v2_opex_row_lifecycle.py \
             tests/test_workbook_v2_ux_completion.py
+      - name: UI-4D cross-surface KPI contract and calibration guard
+        run: |
+          python3 -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-ui4d \
+            tests/test_ui4d_cross_surface_kpi_contract.py \
+            tests/test_ui4d_calibration_copy_guard.py \
+            tests/test_workbook_v2_raw_kpi_authority.py
 
   # ── 4. Browser gate ─────────────────────────────────────────────────────────
   browser-gate:
@@ -227,28 +247,60 @@ jobs:
     runs-on: ubuntu-latest
     needs: classify-scope
     if: >
-      needs.classify-scope.outputs.ui_only == 'true' &&
+      (needs.classify-scope.outputs.ui_only == 'true' ||
+       needs.classify-scope.outputs.engine_sensitive == 'true') &&
       needs.classify-scope.outputs.browser_ui_changed == 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt -e .
-          pip install --no-cache-dir -c constraints.txt pytest
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio uvicorn requests
+          pip install playwright
+          python3 -m playwright install chromium
       - name: UI-3B browser acceptance
         run: |
-          python3 -m pytest -q --tb=short \
+          python3 -m pytest -p pytest_asyncio.plugin -q --tb=short \
             --basetemp=.pytest-tmp-browser \
             tests/test_ui3b_browser_acceptance.py
       - name: Workbook V2 browser acceptance
         run: |
-          python3 -m pytest -q --tb=short \
+          python3 -m pytest -p pytest_asyncio.plugin -q --tb=short \
             --basetemp=.pytest-tmp-workbook-browser \
             tests/test_workbook_v2_browser_acceptance.py \
             tests/test_workbook_v2_product_acceptance.py
+
+  # ── 4b. UI-4A output contract browser gate ──────────────────────────────────
+  ui-4a-browser-gate:
+    name: UI-4A output contract browser gate
+    runs-on: ubuntu-latest
+    needs: classify-scope
+    if: >
+      needs.classify-scope.outputs.ui_only == 'true' ||
+      needs.classify-scope.outputs.engine_sensitive == 'true'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest pytest-asyncio uvicorn requests
+          pip install playwright
+          python3 -m playwright install chromium
+      - name: UI-4A output contract browser acceptance
+        run: |
+          python3 -m pytest -p pytest_asyncio.plugin -q --tb=short \
+            --basetemp=.pytest-tmp-ui4a-browser \
+            tests/test_ui4a_output_contract_browser.py
 
   # ── 5. Docs path ────────────────────────────────────────────────────────────
   docs-hygiene:

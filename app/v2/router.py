@@ -275,6 +275,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "field_error": field_error,
+        "active_scenario_name": getattr(ws, "active_scenario_name", None) or "",
     }
 
 
@@ -2100,6 +2101,7 @@ async def v2_scenario_sensitivity_run(
     from app.api.project_runner import run_project
     from app.workbook.service import WorkbookService
     from app.v2.scenario_kpi_projection import build_scenario_projection, KPI_CATALOG, _fmt
+    from app.v2.output_metric_projection import build_output_metric_projection
 
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
@@ -2295,14 +2297,20 @@ async def v2_scenario_sensitivity_run(
                 project_inputs_override=pi_override,
             )
             kpis_raw = eng_result.get("kpis", {})
-            formatted_kpis = {}
-            for item in KPI_CATALOG:
-                formatted_kpis[item["key"]] = _fmt(kpis_raw.get(item["key"]), item["fmt"])
+            # Build canonical OutputMetricProjection for each KPI.
+            step_metrics = {}
+            for _key, _label, _unit, _fmt_code, _src in KPI_CATALOG:
+                step_metrics[_key] = build_output_metric_projection(
+                    _key, kpis_raw.get(_key), freshness="current"
+                )
+            # Compatibility: derived formatted/raw dicts from metrics.
+            formatted_kpis = {k: m.display_value for k, m in step_metrics.items()}
             results.append({
                 "label": step_label,
                 "status": "OK",
+                "metrics": step_metrics,
                 "kpis": formatted_kpis,
-                "kpis_raw": {k: kpis_raw.get(k) for item in KPI_CATALOG for k in [item["key"]]},
+                "kpis_raw": {k: m.raw_value for k, m in step_metrics.items()},
             })
 
         except Exception as exc:
@@ -2320,13 +2328,19 @@ async def v2_scenario_sensitivity_run(
             "driver=%s project=%s", driver, project
         )
 
+    # Build kpi_catalog as list of dicts for the template
+    kpi_catalog_dicts = [
+        {"key": k, "label": lbl, "unit": unit, "fmt": fmt_code, "source": src}
+        for k, lbl, unit, fmt_code, src in KPI_CATALOG
+    ]
+
     ctx = {
         "project_code": project,
         "driver": driver,
         "driver_label": spec["label"],
         "scenario_display": scenario_display,
         "results": results,
-        "kpi_catalog": KPI_CATALOG,
+        "kpi_catalog": kpi_catalog_dicts,
         "request": request,
     }
     return HTMLResponse(content=_templates.get_template("partials/sheet_sensitivity_results.html").render(ctx))

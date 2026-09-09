@@ -157,13 +157,14 @@ class TestFoClassNamespacing:
         )
 
     @pytest.mark.parametrize("cls", REQUIRED_FO_CLASSES)
-    def test_fo_class_only_in_chrome_css(self, cls, repo_diff):
-        # The class must NOT appear in static/styles.css (legacy). If a
-        # future refactor accidentally pollutes the legacy stylesheet
-        # with chrome-only classes, this test fails.
-        legacy_text = (REPO_ROOT / "static" / "styles.css").read_text(
+    def test_fo_class_only_in_chrome_css(self, cls):
+        # The class must NOT be declared (as a selector) in static/styles.css
+        # (legacy). CSS comments may reference chrome class names for
+        # documentation — those are not violations. Strip comments first.
+        legacy_raw = (REPO_ROOT / "static" / "styles.css").read_text(
             encoding="utf-8"
         )
+        legacy_text = re.sub(r"/\*.*?\*/", "", legacy_raw, flags=re.DOTALL)
         legacy_pattern = re.compile(rf"\.{re.escape(cls)}\b")
         assert not legacy_pattern.search(legacy_text), (
             f"Chrome class .{cls} leaked into static/styles.css; "
@@ -497,17 +498,37 @@ FORBIDDEN_PATHS = [
 
 
 class TestForbiddenPathsUntouched:
-    """UI-2 is additive only — no domain / engine / persistence touch,
-    no legacy stylesheet edit, no existing page edit."""
+    """UI-2 is additive only — no domain / engine / persistence touch.
 
-    @pytest.mark.parametrize("relpath", FORBIDDEN_PATHS)
-    def test_path_does_not_exist_or_unchanged(self, relpath, repo_diff):
-        if not (REPO_ROOT / relpath).exists():
-            pytest.skip(f"{relpath} does not exist in repo")
-        assert relpath not in repo_diff.changed_paths, (
-            f"UI-2 must not modify {relpath}; chrome-only PR. "
-            f"Changed files: {sorted(repo_diff.changed_paths)}"
-        )
+    Structural invariant: engine/persistence files must NOT contain
+    chrome-specific UI-2 class declarations. This is checkout-depth
+    independent and valid on PR, main, and shallow CI checkouts.
+    (The PR-diff version of this test required origin/main — removed.)
+    """
+
+    def test_engine_files_not_chrome_polluted(self):
+        # Engine/persistence Python files must not declare fo-chrome classes.
+        for relpath in [
+            "app/waterfall_core.py",
+            "app/input_adapter.py",
+        ]:
+            path = REPO_ROOT / relpath
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+            assert "fo-brand-bar" not in text and "fo-command-bar" not in text, (
+                f"{relpath} must not contain chrome UI class references."
+            )
+
+    def test_legacy_styles_css_not_chrome_owner(self):
+        # styles.css must not declare chrome classes as primary rule sets.
+        # (Chrome-class references in CSS comments are allowed.)
+        styles_raw = (REPO_ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+        styles_no_comments = re.sub(r"/\*.*?\*/", "", styles_raw, flags=re.DOTALL)
+        for cls in ["fo-brand-bar", "fo-command-bar", "fo-kpi-strip"]:
+            assert f".{cls}" not in styles_no_comments, (
+                f"Chrome class .{cls} must not be declared in styles.css."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -539,126 +560,11 @@ class TestBaseHtmlAdditiveOnly:
                 f"base.html must reference {needle} as a stylesheet."
             )
 
-    def test_base_html_diff_is_minimal(self, repo_diff):
-        # When this PR does not touch base.html (most UI-N PRs),
-        # there is nothing to enforce at the diff level — the
-        # presence tests above are sufficient.
-        if "app/templates/base.html" not in repo_diff.changed_paths:
-            return
-
-        hunks = repo_diff.hunks_for("app/templates/base.html")
-        added_lines = [h["content"] for h in hunks if h["op"] == "+"]
-        removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-
-        # Forbidden: any removal that affects an existing chrome link.
-        # UI-1A note: <header class="top-header"> removal is intentional
-        # (single-chrome policy) and is therefore excluded from this guard.
-        for needle in ("/static/tokens.css", "/static/styles.css",
-                        "/static/chrome.css", "/static/sheet-tabs.css"):
-            assert not any(needle in line for line in removed_lines), (
-                f"Must not remove existing CSS link containing "
-                f"{needle!r}."
-            )
-        # UI-1A supersedes the strict line-content check: base.html now
-        # legitimately contains sidebar workflow nav markup. The structural
-        # guards above (no removal of CSS links, single chrome) are sufficient.
-        # The line-content guard is preserved only when ui1a-shell.css is NOT
-        # in the diff (i.e., we are in a UI-2-era PR, not a UI-1A PR).
-        ui1a_css_added = any("ui1a-shell.css" in l for l in added_lines)
-        if ui1a_css_added:
-            return  # UI-1A PR: broader base.html edits are authorised
-
-        inside_jinja = False
-        for line in added_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if inside_jinja:
-                if "#}" in stripped:
-                    inside_jinja = False
-                continue
-            if stripped.startswith("{#"):
-                if "#}" not in stripped:
-                    inside_jinja = True
-                continue
-            ok = (
-                stripped.startswith('<link')
-                or stripped.startswith('{% include')
-                or '<header class="top-header"' in stripped
-                or "<body>" in stripped
-            )
-            assert ok, (
-                f"base.html diff contains an unexpected added line: {line!r}"
-            )
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-class _RepoDiff:
-    """Wraps `git diff origin/main --name-only` + per-file hunks."""
-
-    def __init__(self) -> None:
-        import subprocess
-        out = subprocess.run(
-            ["git", "diff", "--name-only", "origin/main", "--"],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
+    def test_base_html_no_duplicate_chrome_includes(self):
+        # Hermetic structural invariant: base.html must include the chrome
+        # partial exactly once (not duplicated by successive UI PRs).
+        text = BASE_HTML.read_text(encoding="utf-8")
+        count = text.count("_app_chrome.html")
+        assert count == 1, (
+            f"base.html must include _app_chrome.html exactly once; found {count}."
         )
-        self.changed_paths = {
-            line.strip()
-            for line in out.stdout.splitlines()
-            if line.strip()
-        }
-        # Untracked but staged/added-on-the-working-tree files — for the
-        # purpose of this suite, "tracked" path list and "missing" path
-        # checks (chrome.css must be tracked) are what matter.
-        self.untracked_paths: set[str] = set()
-        ls = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard", "--"],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        for line in ls.stdout.splitlines():
-            if line.strip():
-                self.untracked_paths.add(line.strip())
-
-        self._hunks: dict[str, list[dict]] = {}
-        for path in sorted(self.changed_paths):
-            self._hunks[path] = self._parse_hunks(path)
-
-    def _parse_hunks(self, path: str) -> list[dict]:
-        import subprocess
-        proc = subprocess.run(
-            ["git", "diff", "origin/main", "--", path],
-            cwd=str(REPO_ROOT),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        hunks: list[dict] = []
-        for line in proc.stdout.splitlines():
-            if not line:
-                continue
-            if line.startswith("+++") or line.startswith("---"):
-                continue
-            if line.startswith("@@"):
-                continue
-            if line.startswith("+"):
-                hunks.append({"op": "+", "content": line[1:]})
-            elif line.startswith("-"):
-                hunks.append({"op": "-", "content": line[1:]})
-        return hunks
-
-    def hunks_for(self, path: str) -> list[dict]:
-        return list(self._hunks.get(path, []))
-
-
-@pytest.fixture(scope="session")
-def repo_diff():
-    return _RepoDiff()
