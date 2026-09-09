@@ -25,11 +25,12 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "domain*", "financial_engine*", "finco_core*"]
-exclude = ["ui", "static", "deploy", "reports", "reporting", "validation", "tests*"]
+include = ["app*", "domain*", "financial_engine*", "finco_core*", "static*"]
+exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
 
 [tool.setuptools.package-data]
 app = ["templates/**/*.html", "templates/**/*.txt", "templates/**/*.css", "templates/**/*.js"]
+static = ["*", "**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

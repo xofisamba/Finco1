@@ -229,8 +229,12 @@ templates.env.globals["_fmt_kpi"] = _jinja_fmt_kpi
 templates.env.globals["_fmt_delta"] = _jinja_fmt_delta
 
 # -- Static files -------------------------------------------------------------
-if os.path.exists(os.path.join(BASE_DIR, "static")):
-    app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+# resolve_static_dir prefers the source-checkout path in dev mode and falls
+# back to the installed `static` package in a clean-install environment.
+from app._asset_paths import resolve_static_dir as _resolve_static_dir
+_static_dir = _resolve_static_dir(BASE_DIR)
+if _static_dir:
+    app.mount("/static", StaticFiles(directory=_static_dir), name="static")
 
 # -- Observability middleware -------------------------------------------------
 # Import only if middleware files exist (graceful degradation)
