@@ -23,9 +23,12 @@ dependencies = [
     "click",
 ]
 
+[tool.setuptools]
+py-modules = ["main_web", "main_api"]
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*", "domain*", "financial_engine*", "finco_core*", "static*"]
+include = ["app*", "domain*", "financial_engine*", "finco_core*", "static*", "utils*"]
 exclude = ["ui", "deploy", "reports", "reporting", "validation", "tests*"]
 
 [tool.setuptools.package-data]
