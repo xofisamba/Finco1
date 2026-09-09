@@ -186,7 +186,12 @@
                 <span class="v2-field-empty">—</span>
               {% endif %}
             </span>
-            <span class="v2-binding-badge v2-binding-{{ mcf.field.binding_label }}">{{ mcf.field.binding_label }}</span>
+            <span class="v2-binding-badge v2-binding-{{ mcf.field.binding_label }}" title="This field is calculated automatically">
+              {%- if mcf.field.binding_label in ('display_only', 'computed', 'partial') -%}Calculated
+              {%- elif mcf.field.binding_label == 'template_locked' -%}Locked
+              {%- elif mcf.field.binding_label == 'bound' -%}Editable
+              {%- else -%}Calculated{%- endif -%}
+            </span>
           </div>
         {% endif %}
       {% endif %}

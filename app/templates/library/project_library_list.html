@@ -53,7 +53,7 @@
 
       <td style="padding:.625rem .75rem;">{{ proj.project_type or '—' }}</td>
 
-      <td style="padding:.625rem .75rem;color:var(--fo-text-muted,#6b7280);">{{ proj.template_source or '—' }}</td>
+      <td style="padding:.625rem .75rem;color:var(--fo-text-muted,#6b7280);">{{ (proj.template_source or '—') | replace("generic_", "") | replace("_", " ") | title }}</td>
 
       <td style="padding:.625rem .75rem;color:var(--fo-text-muted,#6b7280);white-space:nowrap;font-variant-numeric:tabular-nums;">
         {{ proj.updated_at.strftime('%Y-%m-%d') if proj.updated_at else '—' }}
