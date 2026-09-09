@@ -3,6 +3,18 @@ name: Phase C2 - NPV LLCR PLCR Authority
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/**"
+      - "app/services/**"
+      - "app/persistence/**"
+      - "app/workbook/**"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_phasec2_npv_llcr_plcr_authority.py"
+      - ".github/workflows/phasec2_npv_llcr_plcr_authority.yml"
   push:
     branches: [main]
 

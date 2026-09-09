@@ -3,6 +3,18 @@ name: Phase C3 - Clean Financial Statements Authority
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "domain/**"
+      - "app/api/**"
+      - "app/services/**"
+      - "app/persistence/**"
+      - "app/workbook/**"
+      - "app/project_factories.py"
+      - "constraints.txt"
+      - "tests/test_phasec3_clean_financial_statements_authority.py"
+      - ".github/workflows/phasec3_clean_financial_statements_authority_check.yml"
   push:
     branches: [main]
 

@@ -13,8 +13,13 @@ on:
       - 'docs/architecture/MVP_ENGINE_FREEZE_POST_C3.md'
       - 'financial_engine/**'
       - 'finco_core/**'
-      - 'app/**'
       - 'domain/**'
+      - 'app/api/**'
+      - 'app/services/**'
+      - 'app/persistence/**'
+      - 'app/workbook/**'
+      - 'app/project_factories.py'
+      - 'constraints.txt'
       - '.github/workflows/mvp_final_engine_freeze_post_c3.yml'
 
 # Cancel any in-progress run on the same PR/ref when a newer commit is pushed.
