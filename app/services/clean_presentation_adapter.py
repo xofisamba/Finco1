@@ -529,6 +529,9 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     project_npv = valuation.project_npv
     lender_coverage = valuation.lender_coverage
     unavailable_fields = dict(_UNAVAILABLE_FIELDS)
+    # C3 FS handoff: financial_statements is now populated from the clean run.
+    if clean_run.financial_statements_result is not None:
+        unavailable_fields.pop("financial_statements", None)
     if project_npv.npv_keur is None:
         unavailable_fields["project_npv_keur"] = (
             f"C2_{project_npv.status.value}: canonical Project NPV unavailable."

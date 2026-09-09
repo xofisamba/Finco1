@@ -134,8 +134,11 @@ class TestC_NoMixedResult:
         # Remaining deferred metrics continue to fail closed, never using legacy.
         assert kpis["project_npv_keur"] is None
         assert kpis["min_llcr"] is None
-        assert out["financial_statements"] is None
-        assert "financial_statements" in manifest
+        # C3 FS handoff: financial_statements is now populated from the clean run —
+        # it is no longer None and no longer appears in unavailable_fields.
+        assert out["financial_statements"] is not None
+        assert "pnl" in out["financial_statements"]
+        assert "financial_statements" not in manifest
         # And no legacy engine ran to "fill the gaps".
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
