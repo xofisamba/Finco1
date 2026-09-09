@@ -27,6 +27,8 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 SCREENSHOTS_DIR = BASE_DIR / "tests" / "screenshots"
 
 from app.auth import COOKIE_NAME, create_session_token  # noqa: E402
+from app.workbook.registry import WORKBOOK as _WORKBOOK  # noqa: E402
+_WB_VERSION: str = _WORKBOOK.version
 
 
 # ---------------------------------------------------------------------------
@@ -418,7 +420,7 @@ class TestAuthorization:
                 "field_id": "capacity_mw",
                 "value": "999",
                 "project": "tuho-reference",
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": "fake-hash",
                 "sheet_id": "project_setup",
             },
@@ -501,7 +503,7 @@ class TestAuthorization:
             self.base_url, bob_token, "POST", "/v2/workbook/run",
             {
                 "project": wc_code,
-                "workbook_version": "2.1.0",
+                "workbook_version": _WB_VERSION,
                 "content_hash": "fake-hash",
             },
             extra_headers={"HX-Request": "true"},

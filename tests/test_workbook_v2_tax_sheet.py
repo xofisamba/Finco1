@@ -78,6 +78,7 @@ import main_web
 from app.auth import COOKIE_NAME, create_session_token
 from app.v2.router import _build_tax_ctx, _thaw
 from app.workbook.registry import WORKBOOK
+_WB_VERSION: str = WORKBOOK.version
 from app.workbook.specs import BindingStatus, FieldKind, SourceOfTruth
 
 
@@ -669,7 +670,7 @@ class TestTaxOperationalPeriodFiltering(unittest.TestCase):
         with patch("app.workbook.service.WorkbookService.get_runtime_result", return_value=rr):
             ctx = _build_tax_ctx(pis, MagicMock())
         ctx.update({
-            "project_code": "test", "workbook_version": "2.1.0", "content_hash": "x",
+            "project_code": "test", "workbook_version": _WB_VERSION, "content_hash": "x",
             "project_editable": True, "ws_dirty": False, "has_runtime": True, "field_error": "",
         })
         soup = _render_tax_template(ctx)
@@ -679,7 +680,7 @@ class TestTaxOperationalPeriodFiltering(unittest.TestCase):
     def test_no_runtime_shows_no_runtime_notice(self):
         ctx = {
             "tax_fields": [], "tax_schedule": None, "tax_operational_periods": None,
-            "runtime_summary": None, "project_code": "test", "workbook_version": "2.1.0",
+            "runtime_summary": None, "project_code": "test", "workbook_version": _WB_VERSION,
             "content_hash": "x", "project_editable": True, "ws_dirty": False,
             "has_runtime": False, "field_error": "",
         }
@@ -697,7 +698,7 @@ class TestTaxOperationalPeriodFiltering(unittest.TestCase):
         with patch("app.workbook.service.WorkbookService.get_runtime_result", return_value=rr):
             ctx = _build_tax_ctx(self._make_pis(), MagicMock())
         ctx.update({
-            "project_code": "test", "workbook_version": "2.1.0", "content_hash": "x",
+            "project_code": "test", "workbook_version": _WB_VERSION, "content_hash": "x",
             "project_editable": True, "ws_dirty": False, "has_runtime": True, "field_error": "",
         })
         soup = _render_tax_template(ctx)
@@ -789,7 +790,7 @@ class TestTaxKpiTiles(unittest.TestCase):
             "tax_schedule": {"periods": [], "summary": {}},
             "tax_operational_periods": [],
             "runtime_summary": {"total_tax_keur": total_tax, "effective_tax_rate_pct": eff_rate},
-            "project_code": "test", "workbook_version": "2.1.0", "content_hash": "x",
+            "project_code": "test", "workbook_version": _WB_VERSION, "content_hash": "x",
             "project_editable": True, "ws_dirty": False, "has_runtime": True, "field_error": "",
         }
 
@@ -808,7 +809,7 @@ class TestTaxKpiTiles(unittest.TestCase):
     def test_kpi_bar_absent_when_no_runtime(self):
         ctx = {
             "tax_fields": [], "tax_schedule": None, "tax_operational_periods": None,
-            "runtime_summary": None, "project_code": "test", "workbook_version": "2.1.0",
+            "runtime_summary": None, "project_code": "test", "workbook_version": _WB_VERSION,
             "content_hash": "x", "project_editable": True, "ws_dirty": False,
             "has_runtime": False, "field_error": "",
         }
@@ -821,7 +822,7 @@ class TestTaxKpiTiles(unittest.TestCase):
             "tax_schedule": {"periods": [_sample_period(1, True)], "summary": {}},
             "tax_operational_periods": [_sample_period(1, True)],
             "runtime_summary": {"total_tax_keur": "1 kEUR", "effective_tax_rate_pct": "10%"},
-            "project_code": "test", "workbook_version": "2.1.0", "content_hash": "x",
+            "project_code": "test", "workbook_version": _WB_VERSION, "content_hash": "x",
             "project_editable": True, "ws_dirty": False, "has_runtime": True, "field_error": "",
         }
         html_str = __import__("jinja2", fromlist=["Environment"]).Environment(
