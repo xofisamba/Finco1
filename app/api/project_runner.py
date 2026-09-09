@@ -327,11 +327,17 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     # calculations are performed here; it reads from WaterfallResult.periods fields that
     # run_waterfall() already computed. waterfall_core.py does NOT import this module
     # (separation of concerns verified by test_excel_parity_characterization.py C8).
-    # PR-8 promoted (clean) runs: FS assembly over the clean runtime is deferred —
-    # explicitly NOT_AVAILABLE rather than assembled from legacy-shaped inputs.
-    # Phase B4: FS assembly over the clean runtime remains explicitly
-    # NOT_AVAILABLE (no legacy engine to assemble from).
+    # C3 handoff: build_clean_waterfall_view() passes financial_statements_result
+    # through from CleanProductionRun onto CleanWaterfallView (result). Serialize it
+    # using the existing _serialize_financial_statements() — no new calculations.
     financial_statements_payload = None
+    try:
+        _fs_result = getattr(result, "financial_statements_result", None)
+        if _fs_result is not None:
+            financial_statements_payload = _serialize_financial_statements(_fs_result)
+    except Exception:
+        # FS serialization failure must never break the run path.
+        financial_statements_payload = None
 
     # Phase E2: assemble senior debt schedule from the already-computed waterfall result.
     # _serialize_debt_schedule() reads per-period fields already computed by the waterfall
@@ -462,62 +468,94 @@ def _serialize_financial_statements(fs) -> dict:
         except (TypeError, ValueError):
             return None
 
-    # P&L periods — subset of fields for UI display
+    # P&L periods — FinancialStatementsResult uses income_statement_periods;
+    # retained_earnings_keur comes from the parallel retained_earnings_periods.
+    re_by_idx = {
+        rp.period_index: rp
+        for rp in (fs.retained_earnings_periods or ())
+    }
     pnl_periods = []
-    for p in fs.pnl.periods:
+    for p in fs.income_statement_periods:
+        rp = re_by_idx.get(p.period_index)
         pnl_periods.append({
-            "period": p.period,
-            "date": _fmt_date(p.date),
-            "year_index": p.year_index,
-            "period_in_year": p.period_in_year,
-            "revenues_keur": _f(p.revenues_keur),
-            "operating_expenses_keur": _f(p.operating_expenses_keur),
-            "depreciation_keur": _f(p.depreciation_keur),
+            "period": p.period_index,
+            "date": _fmt_date(p.period_end),
+            "revenues_keur": _f(p.revenue_keur),
+            "operating_expenses_keur": _f(p.opex_keur),
+            "depreciation_keur": _f(p.book_depreciation_keur),
             "ebit_keur": _f(p.ebit_keur),
             "senior_interest_expense_keur": _f(p.senior_interest_expense_keur),
             "shl_interest_expense_keur": _f(p.shl_interest_expense_keur),
             "earnings_before_tax_keur": _f(p.earnings_before_tax_keur),
             "cit_accrual_keur": _f(p.cit_accrual_keur),
             "net_income_keur": _f(p.net_income_keur),
-            "retained_earnings_keur": _f(p.retained_earnings_keur),
-            "net_dividends_keur": _f(p.net_dividends_keur),
+            "retained_earnings_keur": _f(rp.closing_retained_earnings_keur if rp else None),
+            "net_dividends_keur": _f(rp.legal_equity_distribution_keur if rp else None),
         })
 
-    # Balance sheet periods
+    # Balance sheet periods — FinancialStatementsResult.balance_sheet_periods
+    # BS fields: unrestricted_cash_keur (cash), senior_debt_balance_keur (senior),
+    # accumulated_book_depreciation_keur (not directly needed for row defs).
+    # net_fixed_assets_keur is not a direct field — derive from gross - accum_depr if available.
+    fa_by_idx = {
+        fp.period_index: fp
+        for fp in (getattr(fs, "fixed_asset_periods", None) or ())
+    }
     bs_periods = []
-    for p in fs.balance_sheet.periods:
+    for p in fs.balance_sheet_periods:
+        fa = fa_by_idx.get(p.period_index)
+        net_fixed = _f(fa.net_fixed_assets_keur if fa else None)
         bs_periods.append({
             "period_index": p.period_index,
-            "date": _fmt_date(p.date),
-            "net_fixed_assets_keur": _f(p.net_fixed_assets_keur),
+            "date": _fmt_date(p.period_end),
+            "net_fixed_assets_keur": net_fixed,
             "dsra_balance_keur": _f(p.dsra_balance_keur),
-            "cash_keur": _f(p.cash_keur),
-            "total_assets_keur": _f(p.total_assets_keur),
+            "cash_keur": _f(p.unrestricted_cash_keur),
+            "total_assets_keur": None,  # not directly on BalanceSheetPeriod
             "share_capital_keur": _f(p.share_capital_keur),
             "retained_earnings_keur": _f(p.retained_earnings_keur),
             "shl_balance_keur": _f(p.shl_balance_keur),
-            "senior_balance_keur": _f(p.senior_balance_keur),
-            "total_liabilities_equity_keur": _f(p.total_liabilities_equity_keur),
+            "senior_balance_keur": _f(p.senior_debt_balance_keur),
+            "total_liabilities_equity_keur": None,
             "balance_check_keur": _f(p.balance_check_keur),
         })
 
-    # PF Cash Waterfall periods
+    # PF Cash Waterfall periods — FinancialStatementsResult.pf_cash_waterfall_periods
     pf_periods = []
-    for p in fs.pf_cash_waterfall.periods:
+    for p in fs.pf_cash_waterfall_periods:
+        # senior_total_ds = cash interest + principal
+        senior_ds = _f(
+            (p.senior_cash_interest_keur or 0) + (p.senior_principal_keur or 0)
+        )
+        # dsra_funding = top-up minus draw
+        dsra_fund = _f(
+            (p.dsra_top_up_keur or 0) - (p.dsra_draw_keur or 0)
+        )
+        # fcf_junior = post_senior_cash after DSRA movements
+        fcf_jr = _f(
+            (p.post_senior_cash_keur or 0)
+            - (p.dsra_top_up_keur or 0)
+            + (p.dsra_draw_keur or 0)
+            + (p.dsra_release_keur or 0)
+        )
+        # fcf_for_distribution = distribution_account inflow (before SHL/equity)
+        fcf_dist = _f(p.distribution_account_inflow_keur)
+        # net_dividends = legal equity distributions
+        net_div = _f(p.legal_equity_distribution_keur)
         pf_periods.append({
             "period_index": p.period_index,
-            "date": _fmt_date(p.date),
+            "date": _fmt_date(p.cashflow_date),
             "revenue_cash_keur": _f(p.revenue_cash_keur),
             "opex_cash_keur": _f(p.opex_cash_keur),
-            "ebitda_cash_keur": _f(p.ebitda_cash_keur),
+            "ebitda_cash_keur": _f(p.ebitda_keur),
             "cash_tax_keur": _f(p.cash_tax_keur),
             "fcf_banks_keur": _f(p.fcf_banks_keur),
-            "senior_total_ds_keur": _f(p.senior_total_ds_keur),
-            "dsra_funding_keur": _f(p.dsra_funding_keur),
+            "senior_total_ds_keur": senior_ds,
+            "dsra_funding_keur": dsra_fund,
             "dsra_release_keur": _f(p.dsra_release_keur),
-            "fcf_junior_keur": _f(p.fcf_junior_keur),
-            "fcf_for_distribution_keur": _f(p.fcf_for_distribution_keur),
-            "net_dividends_keur": _f(p.net_dividends_keur),
+            "fcf_junior_keur": fcf_jr,
+            "fcf_for_distribution_keur": fcf_dist,
+            "net_dividends_keur": net_div,
         })
 
     return {

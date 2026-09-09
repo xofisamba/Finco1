@@ -1101,3 +1101,101 @@ class TestHXTriggerSaveSignals(unittest.TestCase):
         assert "workbook-field-error" in trigger, (
             f"Validation-error response missing 'workbook-field-error': {trigger!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# C3 handoff: a real workbook run exposes P&L, Balance Sheet and PF Cash Flow
+# ---------------------------------------------------------------------------
+
+class TestC3FSRuntimeHandoff(unittest.TestCase):
+    """Prove that POST /v2/workbook/run persists real FS data from the C3 authority.
+
+    The clean production run already assembles financial_statements_result on
+    CleanWaterfallView. project_runner.py now serializes it via
+    _serialize_financial_statements() instead of hardcoding None.
+    These tests drive the full stack: create project → run → GET workbook →
+    assert FS tables are present (not the UNAVAILABLE placeholder).
+    """
+
+    def setUp(self):
+        self.client = _authed_client()
+        self.project_code = _create_project(self.client, "C3Handoff")
+
+    def _get_content_hash(self) -> str:
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        assert resp.status_code == 200
+        soup = BeautifulSoup(resp.text, "html.parser")
+        shell = soup.find(id="v2-workbook-shell")
+        assert shell is not None, "v2-workbook-shell not found"
+        return shell["data-content-hash"]
+
+    def _run_model(self) -> int:
+        ch = self._get_content_hash()
+        resp = self.client.post(
+            "/v2/workbook/run",
+            data={
+                "project": self.project_code,
+                "workbook_version": _WB_VERSION,
+                "content_hash": ch,
+            },
+            headers={"HX-Request": "true"},
+        )
+        return resp.status_code
+
+    def test_run_succeeds(self):
+        """POST /v2/workbook/run must return 200 for a clean generic Wind project."""
+        status = self._run_model()
+        assert status == 200, f"Run returned {status}"
+
+    def test_pnl_table_present_after_run(self):
+        """After a successful run the Income Statement table must render (not UNAVAILABLE)."""
+        self._run_model()
+        soup = _get_workbook_soup(self.client, self.project_code)
+        fs_div = soup.find(id="v2-sheet-financial-statements")
+        assert fs_div is not None, "#v2-sheet-financial-statements missing"
+        table = fs_div.find(attrs={"data-testid": "fs-pnl-table"})
+        found = fs_div.find(attrs={"data-testid": lambda x: x and "pnl" in x})
+        assert table is not None, (
+            f"fs-pnl-table absent after run — C3 FS handoff not wired. Got: {found}"
+        )
+
+    def test_balance_sheet_table_present_after_run(self):
+        """After a successful run the Balance Sheet table must render."""
+        self._run_model()
+        soup = _get_workbook_soup(self.client, self.project_code)
+        fs_div = soup.find(id="v2-sheet-financial-statements")
+        assert fs_div is not None
+        assert fs_div.find(attrs={"data-testid": "fs-bs-table"}) is not None, (
+            "fs-bs-table absent after run — Balance Sheet not persisted"
+        )
+
+    def test_pf_cf_table_present_after_run(self):
+        """After a successful run the PF Cash Waterfall table must render."""
+        self._run_model()
+        soup = _get_workbook_soup(self.client, self.project_code)
+        fs_div = soup.find(id="v2-sheet-financial-statements")
+        assert fs_div is not None
+        assert fs_div.find(attrs={"data-testid": "fs-pf-cf-table"}) is not None, (
+            "fs-pf-cf-table absent after run — PF Cash Waterfall not persisted"
+        )
+
+    def test_fs_unavailable_notice_absent_after_run(self):
+        """After a successful run the UNAVAILABLE placeholder must not be shown."""
+        self._run_model()
+        soup = _get_workbook_soup(self.client, self.project_code)
+        fs_div = soup.find(id="v2-sheet-financial-statements")
+        assert fs_div is not None
+        assert fs_div.find(attrs={"data-testid": "fs-unavailable-notice"}) is None, (
+            "fs-unavailable-notice still shown after run — FS payload not persisted"
+        )
+
+    def test_core_kpis_unchanged(self):
+        """After a run the workbook page must surface core KPI output (engine intact)."""
+        self._run_model()
+        soup = _get_workbook_soup(self.client, self.project_code)
+        body = str(soup)
+        # KPI summary section or run-result panel must reference IRR/DSCR/NPV
+        assert any(kw in body for kw in ("IRR", "irr", "DSCR", "dscr", "NPV", "npv")), (
+            "No core KPI reference (IRR/DSCR/NPV) in workbook page after run — "
+            "engine output may not be persisted"
+        )
