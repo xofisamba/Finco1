@@ -75,6 +75,16 @@ logger = logging.getLogger(__name__)
 _RESERVED_SUB_LINE_OVERRIDES_KEY = "_capex_sub_line_overrides"
 
 
+class SubLineOverrideNonFiniteError(ValueError):
+    """A historical CAPEX sub-line override carries a non-finite amount.
+
+    Raised by ``_extract_sub_line_overrides`` when a persisted override map
+    contains NaN / +Inf / -Inf for any sub-line.  The caller must surface this
+    as an explicit error rather than silently using the malformed value as model
+    economics.
+    """
+
+
 def _extract_sub_line_overrides(
     scenario_overrides: Optional[Mapping[str, Any]],
 ) -> dict:
@@ -87,16 +97,41 @@ def _extract_sub_line_overrides(
     behavior the 57A-9C silent-drop rule gives to
     unknown keys, applied to the reserved surface.
 
+    R3/F05 — Defense in depth: any non-finite amount value in the persisted map
+    raises ``SubLineOverrideNonFiniteError``.  This prevents historical malformed
+    data from silently becoming model economics.  Callers (Run path, display path)
+    must catch and surface an explicit error.
+
     Returns:
         A ``{sub_line_id: amount_keur}`` dict. Empty if
         the scenario is the Base case (no overrides), or
         if the reserved key is missing / malformed.
+
+    Raises:
+        SubLineOverrideNonFiniteError: if any override amount is non-finite.
     """
     if not scenario_overrides:
         return {}
     raw = scenario_overrides.get(_RESERVED_SUB_LINE_OVERRIDES_KEY)
     if isinstance(raw, dict):
-        return dict(raw)
+        extracted = dict(raw)
+        # Defense-in-depth: check all amounts for finiteness.
+        # A persisted NaN/Inf must not silently reach CapexStructure.
+        import math
+        for sub_line_id, amount in extracted.items():
+            try:
+                v = float(amount)
+            except (TypeError, ValueError):
+                raise SubLineOverrideNonFiniteError(
+                    f"CAPEX scenario override for sub_line {sub_line_id!r} "
+                    f"is not a number ({amount!r}); cannot use as model economics."
+                )
+            if not math.isfinite(v):
+                raise SubLineOverrideNonFiniteError(
+                    f"CAPEX scenario override for sub_line {sub_line_id!r} "
+                    f"is non-finite ({amount!r}); cannot use as model economics."
+                )
+        return extracted
     if raw is not None:
         logger.warning(
             "scenario_overrides[%r] is not a dict (%s); "

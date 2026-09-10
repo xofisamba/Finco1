@@ -35,6 +35,7 @@ from app.persistence.opex_sub_lines import (
 )
 from app.persistence.db import get_connection
 from app.persistence.workspace_repository import update_composite_hash_cursor
+from app.workbook.numeric_guard import NumericGuardError, assert_finite_float
 from app.workbook.registry import WORKBOOK
 
 # B.13 Contingencies is always DERIVED — no custom rows allowed.
@@ -79,9 +80,31 @@ class OpexRowNotFoundError(OpexCommandError):
     """Sub-line not found or not active for this project."""
 
 
+class OpexInvalidAmountError(OpexCommandError):
+    """amount_keur or inflation_pct is non-finite (NaN, +Inf, -Inf, or overflow)."""
+
+
 # ---------------------------------------------------------------------------
 # Guard helpers
 # ---------------------------------------------------------------------------
+
+
+def _parse_finite_opex_numerics(raw_amount: Any, raw_inflation: Any) -> tuple[float, float]:
+    """Validate and convert amount_keur and inflation_pct to finite floats.
+
+    Raises OpexInvalidAmountError for NaN, +Inf, -Inf, or overflow.
+    """
+    results = []
+    for raw, label in ((raw_amount, "Amount (kEUR)"), (raw_inflation, "Inflation (%)")):
+        try:
+            v = float(raw)
+            assert_finite_float(v, label=label)
+        except (ValueError, TypeError, NumericGuardError) as exc:
+            raise OpexInvalidAmountError(
+                f"{label} must be a finite number (got {raw!r})."
+            ) from exc
+        results.append(v)
+    return results[0], results[1]
 
 def _check_project_allows(project_record: Any) -> None:
     try:
@@ -274,6 +297,7 @@ def add_opex_line(
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
     _check_group_eligible(parent_group_code)
+    _amount, _inflation = _parse_finite_opex_numerics(amount_keur, inflation_pct)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()
@@ -285,8 +309,8 @@ def add_opex_line(
             project_id=project_id,
             parent_group_code=parent_group_code,
             label=label,
-            amount_keur=float(amount_keur),
-            inflation_pct=float(inflation_pct),
+            amount_keur=_amount,
+            inflation_pct=_inflation,
             comments=notes,
         )
     return result_holder[0], hash_out.value
@@ -316,6 +340,7 @@ def update_opex_line(
     """
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
+    _amount, _inflation = _parse_finite_opex_numerics(amount_keur, inflation_pct)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()
@@ -327,8 +352,8 @@ def update_opex_line(
             project_id=project_id,
             sub_line_id=sub_line_id,
             label=label,
-            amount_keur=float(amount_keur),
-            inflation_pct=float(inflation_pct),
+            amount_keur=_amount,
+            inflation_pct=_inflation,
             comments=notes,
             row_version=row_version,
         )

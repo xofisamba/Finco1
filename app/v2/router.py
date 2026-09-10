@@ -396,7 +396,19 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
                 "Re-select a scenario or reload the page."
             )
 
-    sub_line_override_amounts = _extract_sub_line_overrides(_scenario_overrides_raw)
+    from app.services.capex_sub_lines_integration import SubLineOverrideNonFiniteError
+    try:
+        sub_line_override_amounts = _extract_sub_line_overrides(_scenario_overrides_raw)
+    except SubLineOverrideNonFiniteError as _nf_exc:
+        # R3/F05: a historical persisted override carries NaN/Inf.
+        # Surface an explicit error rather than silently showing Base economics.
+        sub_line_override_amounts = {}
+        if not capex_scenario_error:
+            capex_scenario_error = (
+                f"Scenario contains a non-finite CAPEX sub-line amount "
+                f"and cannot be displayed. Re-select a scenario or contact support. "
+                f"({_nf_exc})"
+            )
     if sub_line_override_amounts:
         adjusted = []
         for sl in sub_lines:
