@@ -19,7 +19,7 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import replace as dc_replace
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from app.input_schema import ProjectInputsSchema
 
@@ -313,6 +313,46 @@ def _zero_financial_capex_subfields(proj: "ProjectInputs") -> "ProjectInputs":
     )
 
 
+# R1: snapshot_key → CapexStructure CapexItem field name (14 editable scalars).
+# Keys match registry binding_label="bound" fields in sections C and D.
+# "contingencies" is formula-derived and excluded.
+_SCALAR_CAPEX_MAP: dict[str, str] = {
+    "capex_epc_contract_keur":        "epc_contract",
+    "capex_production_units_keur":    "production_units",
+    "capex_epc_other_keur":           "epc_other",
+    "capex_grid_connection_keur":     "grid_connection",
+    "capex_ops_prep_keur":            "ops_prep",
+    "capex_insurances_keur":          "insurances",
+    "capex_lease_tax_keur":           "lease_tax",
+    "capex_construction_mgmt_a_keur": "construction_mgmt_a",
+    "capex_commissioning_keur":       "commissioning",
+    "capex_taxes_keur":               "taxes",
+    "capex_project_acquisition_keur": "project_acquisition",
+    "capex_project_rights_keur":      "project_rights",
+    "capex_audit_legal_keur":         "audit_legal",
+    "capex_construction_mgmt_b_keur": "construction_mgmt_b",
+}
+
+
+def _apply_scalar_capex(
+    proj: "ProjectInputs",
+    scalars: dict[str, float],
+) -> "ProjectInputs":
+    """Apply individual scalar CAPEX amounts from ``scalars`` (field_name → kEUR)
+    onto ``proj.capex``, returning a new ProjectInputs.  Only keys present in
+    ``scalars`` are overwritten; absent keys keep their current value.
+
+    ``scalars`` is keyed by CapexStructure field name (e.g. "epc_contract"),
+    NOT the snapshot key.  Values must already be floats.
+    """
+    new_capex = proj.capex
+    for field_name, amount_keur in scalars.items():
+        current_item = getattr(new_capex, field_name)
+        new_item = dc_replace(current_item, amount_keur=float(amount_keur))
+        new_capex = dc_replace(new_capex, **{field_name: new_item})
+    return dc_replace(proj, capex=new_capex)
+
+
 def _apply_capex_total(proj: "ProjectInputs", target: float) -> "ProjectInputs":
     """Scale the epc_contract to hit a user-supplied
     ``target`` total capex, preserving all other
@@ -364,6 +404,22 @@ def _resolve_user_inputs(
     operating_hours_p99_1y: float = None,
     opex_y1_keur: float = None,
     total_capex_keur: float = None,
+    # R1 — individual scalar CAPEX inputs (14 fields, section C + D).
+    # When any key is present, scalars take authority over total_capex_keur.
+    capex_epc_contract_keur: float = None,
+    capex_production_units_keur: float = None,
+    capex_epc_other_keur: float = None,
+    capex_grid_connection_keur: float = None,
+    capex_ops_prep_keur: float = None,
+    capex_insurances_keur: float = None,
+    capex_lease_tax_keur: float = None,
+    capex_construction_mgmt_a_keur: float = None,
+    capex_commissioning_keur: float = None,
+    capex_taxes_keur: float = None,
+    capex_project_acquisition_keur: float = None,
+    capex_project_rights_keur: float = None,
+    capex_audit_legal_keur: float = None,
+    capex_construction_mgmt_b_keur: float = None,
     gearing_pct: float = None,
     interest_rate_pct: float = None,
     tenor_years: int = None,
@@ -504,6 +560,17 @@ def _resolve_user_inputs(
         proj = _set_revenue_merchant_price_curve_json(proj, rev_merchant_price_curve_json)
 
     # ── CAPEX (shared resolver) ──────────────────────────────
+    # R1: collect scalar inputs supplied by the caller (14 individual fields).
+    # When ANY scalar is present, they take authority — each named line is set
+    # directly, giving the user per-component control.  total_capex_keur is used
+    # only as a legacy fallback when NO scalar is supplied (backwards compat for
+    # snapshots that only store the aggregate).
+    _scalar_capex: dict[str, float] = {}
+    for _snap_key, _field_name in _SCALAR_CAPEX_MAP.items():
+        _local_val = locals().get(_snap_key)
+        if _local_val is not None:
+            _scalar_capex[_field_name] = float(_local_val)
+
     # When using a seeded base (TUHO / Oborovo factory), only zero
     # financial sub-fields if the caller explicitly supplies a new
     # total_capex_keur, preserving calibrated IDC / bank-fee values.
@@ -511,7 +578,102 @@ def _resolve_user_inputs(
     # matches the factory total within 0.01 kEUR — preserves the
     # calibrated IDC / bank-fee sub-line breakdown and eliminates
     # UI vs factory CAPEX composition drift.
-    if base_inputs is not None:
+    if _scalar_capex:
+        # R1 scalar authority order (Correction C):
+        #
+        # Establish the pre-edit effective CAPEX baseline, then apply scalars.
+        # Do NOT re-force any aggregate after scalar edits — epc_contract must
+        # never be used as a balancing plug.
+        #
+        # Two sub-cases for the baseline:
+        #
+        # A. Factory project (base_inputs is None):
+        #    If total_capex_keur is present → _apply_capex_total sets epc to
+        #    reproduce the effective CAPEX the user saw before the scalar edit.
+        #
+        # B. Seeded project (base_inputs is not None):
+        #    The seeded factory is the default baseline.  But if a persisted
+        #    total_capex_keur differs materially from the factory total, the
+        #    project's pre-R1 effective CAPEX was already re-normalised to that
+        #    legacy total (zero financial sub-fields + _apply_capex_total).
+        #    We must reconstruct that SAME effective baseline before applying the
+        #    scalar so untouched lines are not silently reverted to the pristine
+        #    seeded factory values (Correction C: backward-compat migration).
+        #
+        # The financing-reset comparison is always vs the pre-edit effective
+        # total (total_capex_keur when it diverged from factory, else factory).
+        _pre_edit_total_for_reset: Optional[float] = None
+
+        if total_capex_keur is not None:
+            if base_inputs is None:
+                # Case A: factory project — normalise from factory.
+                proj = _apply_capex_total(proj, total_capex_keur)
+                _pre_edit_total_for_reset = float(total_capex_keur)
+            else:
+                # Case B: seeded project — reconstruct pre-R1 effective state
+                # only when the legacy total diverges from the seeded factory.
+                _base_factory_total = getattr(base_inputs.capex, "total_capex", None)
+                _legacy_matches_factory = (
+                    _base_factory_total is not None
+                    and abs(float(total_capex_keur) - float(_base_factory_total)) < 0.01
+                )
+                if not _legacy_matches_factory:
+                    # The working copy's legacy aggregate diverged from the
+                    # calibrated factory.  Reproduce the exact pre-edit
+                    # effective state (zero financial sub-fields so IDC/fees
+                    # from the factory do not inflate the total, then scale
+                    # epc_contract to hit total_capex_keur).
+                    proj = _zero_financial_capex_subfields(proj)
+                    proj = _apply_capex_total(proj, total_capex_keur)
+                    _pre_edit_total_for_reset = float(total_capex_keur)
+                    # If the frozen schedule was still True, reset it now
+                    # (same semantics as the no-scalar seeded divergence path).
+                    if getattr(proj.financing, "use_frozen_excel_senior_debt_schedule", False):
+                        proj = dc_replace(
+                            proj,
+                            financing=dc_replace(
+                                proj.financing,
+                                use_frozen_excel_senior_debt_schedule=False,
+                                fixed_debt_keur=0.0,
+                                shl_amount_keur=0.0,
+                                shl_idc_keur=0.0,
+                            ),
+                        )
+
+        # Apply scalar edits on top of the effective baseline.
+        proj = _apply_scalar_capex(proj, _scalar_capex)
+
+        # For seeded projects, determine whether the scalar edit represents a
+        # material CAPEX change vs the pre-edit effective total.  A material
+        # change disables the frozen debt schedule so the engine can re-size.
+        if base_inputs is not None:
+            _new_capex_total = getattr(proj.capex, "total_capex", None)
+            # Compare against pre-edit effective total (legacy-normalised when
+            # applicable, factory total otherwise).
+            _compare_total = (
+                _pre_edit_total_for_reset
+                if _pre_edit_total_for_reset is not None
+                else getattr(base_inputs.capex, "total_capex", None)
+            )
+            _scalar_capex_changed_materially = (
+                _new_capex_total is not None
+                and _compare_total is not None
+                and abs(float(_new_capex_total) - float(_compare_total)) >= 0.01
+            )
+            if _scalar_capex_changed_materially and getattr(
+                proj.financing, "use_frozen_excel_senior_debt_schedule", False
+            ):
+                proj = dc_replace(
+                    proj,
+                    financing=dc_replace(
+                        proj.financing,
+                        use_frozen_excel_senior_debt_schedule=False,
+                        fixed_debt_keur=0.0,
+                        shl_amount_keur=0.0,
+                        shl_idc_keur=0.0,
+                    ),
+                )
+    elif base_inputs is not None:
         if total_capex_keur is not None:
             _base_capex_total = getattr(base_inputs.capex, "total_capex", None)
             _capex_matches_base = (
@@ -720,6 +882,17 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "total_capex_keur": _snapshot_float(
             snapshot, "total_capex_keur", positive=True
         ),
+        # R1 — individual scalar CAPEX snapshot keys (14 fields).
+        # Present values override total_capex_keur (scalar authority).
+        # Absent / zero → None (legacy total fallback or factory default).
+        **{
+            snap_key: (
+                _snapshot_float(snapshot, snap_key, non_negative=True)
+                if str(snapshot.get(snap_key, "") or "").strip()
+                else None
+            )
+            for snap_key in _SCALAR_CAPEX_MAP
+        },
         # gearing_pct is optional: empty/absent means use the template default.
         "gearing_pct": (
             _snapshot_float(snapshot, "gearing_pct", non_negative=True)
