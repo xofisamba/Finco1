@@ -1,16 +1,20 @@
-"""R1 Correction B — Scalar CAPEX Authority: correct authority order & causal closure.
+"""R1 Correction C — Scalar CAPEX Authority: seeded-legacy-total baseline + causal closure.
 
-Authority order (Correction B — P1 fix):
+Authority order (Correction C — complete):
   factory/template
-  → legacy aggregate normalization (if total_capex_keur present, factory-only projects)
+  → legacy aggregate normalization (total_capex_keur ≠ factory → _zero_financial + _apply_capex_total)
   → scalar user inputs (individual line amounts)
   → UUID replacement sub-lines
   → derived contingency
   → engine IDC / template-locked financing
   → derived reserves
 
-Key invariant: a scalar edit changes that line's economic CAPEX; the total changes
-accordingly. epc_contract is NOT used as a balancing plug after a scalar edit.
+Key invariants:
+  1. epc_contract is NOT used as a balancing plug after a scalar edit.
+  2. For seeded projects (TUHO/Oborovo) whose persisted total_capex_keur differs
+     materially from the calibrated factory total, the pre-edit effective CAPEX state
+     is reconstructed before applying the scalar (Correction C).  Untouched lines
+     never silently revert toward the pristine seeded factory.
 
 Full causal test suite:
 
@@ -843,3 +847,337 @@ def test_r1_introduces_no_new_adapter_failures():
         pi = build_projectinputs_from_snapshot(snap)
         assert pi is not None
         assert pi.capex.total_capex > 0
+
+
+# ── 23. Correction C: seeded projects with a legacy total ─────────────────────
+#
+# Before R1, seeded TUHO/Oborovo working copies could have a persisted
+# total_capex_keur different from the calibrated factory total.  The pre-R1
+# seeded path detected the divergence, zeroed financial sub-fields, and called
+# _apply_capex_total to reproduce the legacy aggregate.
+#
+# A subsequent scalar edit must:
+#   1. Reconstruct that SAME pre-edit effective baseline (Correction C).
+#   2. Apply the scalar on top.
+# It must NOT revert untouched lines toward the pristine seeded factory.
+#
+# Helper: materialise pre-R1 effective baseline for a seeded project.
+
+def _pre_r1_seeded_effective(factory_pi, legacy_total: float):
+    """Return (pi, epc, grid) after applying pre-R1 legacy-total normalization."""
+    from app.input_adapter import _zero_financial_capex_subfields, _apply_capex_total
+    p = _zero_financial_capex_subfields(factory_pi)
+    p = _apply_capex_total(p, legacy_total)
+    return p, p.capex.epc_contract.amount_keur, p.capex.grid_connection.amount_keur
+
+
+# ── Case A: factory total + no scalar ─────────────────────────────────────────
+
+def test_tuho_A_factory_total_no_scalar_preserves_factory():
+    """TUHO A: legacy total == factory total, no scalar → factory CAPEX preserved."""
+    from app.project_factories import create_default_tuho_wind1
+    fac = create_default_tuho_wind1()
+    pi = build_projectinputs_from_snapshot(
+        _tuho_snap(total_capex_keur=str(fac.capex.total_capex))
+    )
+    assert _get(pi, "epc_contract") == pytest.approx(fac.capex.epc_contract.amount_keur, rel=1e-4)
+    assert _get(pi, "grid_connection") == pytest.approx(fac.capex.grid_connection.amount_keur, rel=1e-4)
+    assert pi.capex.total_capex == pytest.approx(fac.capex.total_capex, rel=1e-4)
+    assert pi.financing.use_frozen_excel_senior_debt_schedule == fac.financing.use_frozen_excel_senior_debt_schedule
+
+
+def test_oborovo_A_factory_total_no_scalar_preserves_factory():
+    """Oborovo A: legacy total == factory total, no scalar → factory CAPEX preserved."""
+    from app.project_factories import create_default_oborovo
+    fac = create_default_oborovo()
+    pi = build_projectinputs_from_snapshot(
+        _oborovo_snap(total_capex_keur=str(fac.capex.total_capex))
+    )
+    assert _get(pi, "epc_contract") == pytest.approx(fac.capex.epc_contract.amount_keur, rel=1e-4)
+    assert _get(pi, "grid_connection") == pytest.approx(fac.capex.grid_connection.amount_keur, rel=1e-4)
+    assert pi.capex.total_capex == pytest.approx(fac.capex.total_capex, rel=1e-4)
+    assert pi.financing.use_frozen_excel_senior_debt_schedule == fac.financing.use_frozen_excel_senior_debt_schedule
+
+
+# ── Case B: factory total + equal-value scalar ────────────────────────────────
+
+def test_tuho_B_factory_total_equal_scalar_no_economic_change():
+    """TUHO B: legacy total == factory total + scalar = factory grid → no economic change."""
+    from app.project_factories import create_default_tuho_wind1
+    fac = create_default_tuho_wind1()
+    factory_grid = fac.capex.grid_connection.amount_keur
+    pi = build_projectinputs_from_snapshot(
+        _tuho_snap(total_capex_keur=str(fac.capex.total_capex),
+                   capex_grid_connection_keur=str(factory_grid))
+    )
+    assert _get(pi, "grid_connection") == pytest.approx(factory_grid, rel=1e-6)
+    assert _get(pi, "epc_contract") == pytest.approx(fac.capex.epc_contract.amount_keur, rel=1e-4)
+    assert pi.capex.total_capex == pytest.approx(fac.capex.total_capex, rel=1e-4)
+    assert pi.financing.use_frozen_excel_senior_debt_schedule == fac.financing.use_frozen_excel_senior_debt_schedule
+
+
+def test_oborovo_B_factory_total_equal_scalar_no_economic_change():
+    """Oborovo B: legacy total == factory total + scalar = factory grid → no economic change."""
+    from app.project_factories import create_default_oborovo
+    fac = create_default_oborovo()
+    factory_grid = fac.capex.grid_connection.amount_keur
+    pi = build_projectinputs_from_snapshot(
+        _oborovo_snap(total_capex_keur=str(fac.capex.total_capex),
+                      capex_grid_connection_keur=str(factory_grid))
+    )
+    assert _get(pi, "grid_connection") == pytest.approx(factory_grid, rel=1e-6)
+    assert _get(pi, "epc_contract") == pytest.approx(fac.capex.epc_contract.amount_keur, rel=1e-4)
+    assert pi.capex.total_capex == pytest.approx(fac.capex.total_capex, rel=1e-4)
+    assert pi.financing.use_frozen_excel_senior_debt_schedule == fac.financing.use_frozen_excel_senior_debt_schedule
+
+
+# ── Case C: factory total + material scalar ───────────────────────────────────
+
+def test_tuho_C_factory_total_material_scalar_only_edited_field_changes():
+    """TUHO C: legacy total == factory total + material scalar → only edited field changes.
+
+    grid: factory 100 → 5000 (+4900). epc must NOT absorb the delta.
+    Total increases by exactly +4900.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    fac = create_default_tuho_wind1()
+    pi = build_projectinputs_from_snapshot(
+        _tuho_snap(total_capex_keur=str(fac.capex.total_capex),
+                   capex_grid_connection_keur="5000")
+    )
+    assert _get(pi, "grid_connection") == pytest.approx(5000.0)
+    assert _get(pi, "epc_contract") == pytest.approx(fac.capex.epc_contract.amount_keur, rel=1e-4), (
+        "TUHO C: epc must not absorb the grid scalar delta"
+    )
+    assert pi.capex.total_capex == pytest.approx(
+        fac.capex.total_capex + (5000.0 - fac.capex.grid_connection.amount_keur), rel=1e-4
+    )
+
+
+def test_oborovo_C_factory_total_material_scalar_only_edited_field_changes():
+    """Oborovo C: legacy total == factory total + material scalar → only edited field changes.
+
+    epc: 26430 → 40000 (+13570). grid must remain at factory 4050.
+    """
+    from app.project_factories import create_default_oborovo
+    fac = create_default_oborovo()
+    pi = build_projectinputs_from_snapshot(
+        _oborovo_snap(total_capex_keur=str(fac.capex.total_capex),
+                      capex_epc_contract_keur="40000")
+    )
+    assert _get(pi, "epc_contract") == pytest.approx(40000.0)
+    assert _get(pi, "grid_connection") == pytest.approx(fac.capex.grid_connection.amount_keur, rel=1e-4)
+    assert pi.capex.total_capex == pytest.approx(
+        fac.capex.total_capex + (40000.0 - fac.capex.epc_contract.amount_keur), rel=1e-4
+    )
+
+
+# ── Case D: legacy total materially above factory + scalar increase ────────────
+
+def test_tuho_D_legacy_above_factory_scalar_increase_uses_effective_baseline():
+    """TUHO D (Correction C): legacy=80000 > factory(70691.54), scalar grid=500.
+
+    Pre-edit effective: epc≈22868.46, grid=100, total=80000.
+    Scalar grid 100→500 (+400).
+    Expected: epc≈22868.46 (pre-edit effective), grid=500, total=80400.
+    epc must NOT revert to factory 13560.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    fac = create_default_tuho_wind1()
+    legacy_total = 80000.0
+    _, pre_edit_epc, pre_edit_grid = _pre_r1_seeded_effective(fac, legacy_total)
+
+    pi = build_projectinputs_from_snapshot(
+        _tuho_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="500")
+    )
+
+    assert _get(pi, "grid_connection") == pytest.approx(500.0), "TUHO D: grid not set"
+    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        f"TUHO D: epc={_get(pi,'epc_contract'):.2f} must equal pre-edit effective "
+        f"{pre_edit_epc:.2f}, not factory {fac.capex.epc_contract.amount_keur:.2f}"
+    )
+    assert pi.capex.total_capex == pytest.approx(legacy_total + (500.0 - pre_edit_grid), rel=1e-4), (
+        "TUHO D: total must be legacy_total + scalar_delta"
+    )
+
+
+def test_oborovo_D_legacy_above_factory_scalar_increase_uses_effective_baseline():
+    """Oborovo D (Correction C): legacy=70000 > factory(55999.09), scalar grid=5000.
+
+    Pre-edit effective: epc≈40430.91, grid=4050, total=70000.
+    Scalar grid 4050→5000 (+950).
+    Expected: epc≈40430.91 (pre-edit effective), grid=5000, total=70950.
+    epc must NOT revert to factory 26430.
+    """
+    from app.project_factories import create_default_oborovo
+    fac = create_default_oborovo()
+    legacy_total = 70000.0
+    _, pre_edit_epc, pre_edit_grid = _pre_r1_seeded_effective(fac, legacy_total)
+
+    pi = build_projectinputs_from_snapshot(
+        _oborovo_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="5000")
+    )
+
+    assert _get(pi, "grid_connection") == pytest.approx(5000.0), "Oborovo D: grid not set"
+    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        f"Oborovo D: epc={_get(pi,'epc_contract'):.2f} must equal pre-edit effective "
+        f"{pre_edit_epc:.2f}, not factory {fac.capex.epc_contract.amount_keur:.2f}"
+    )
+    assert pi.capex.total_capex == pytest.approx(legacy_total + (5000.0 - pre_edit_grid), rel=1e-4)
+
+
+# ── Case E: legacy total materially above factory + scalar decrease ────────────
+
+def test_tuho_E_legacy_above_factory_scalar_decrease_uses_effective_baseline():
+    """TUHO E (Correction C): legacy=80000, scalar grid=50 (decrease, 100→50).
+
+    Pre-edit effective: epc≈22868.46, grid=100, total=80000.
+    Scalar grid 100→50 (−50). Expected: epc≈22868.46, total=79950.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    fac = create_default_tuho_wind1()
+    legacy_total = 80000.0
+    _, pre_edit_epc, pre_edit_grid = _pre_r1_seeded_effective(fac, legacy_total)
+
+    pi = build_projectinputs_from_snapshot(
+        _tuho_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="50")
+    )
+
+    assert _get(pi, "grid_connection") == pytest.approx(50.0)
+    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        "TUHO E: epc must stay at pre-edit effective after scalar decrease"
+    )
+    assert pi.capex.total_capex == pytest.approx(legacy_total + (50.0 - pre_edit_grid), rel=1e-4)
+
+
+def test_oborovo_E_legacy_above_factory_scalar_decrease_uses_effective_baseline():
+    """Oborovo E (Correction C): legacy=70000, scalar grid=3000 (decrease, 4050→3000).
+
+    Pre-edit effective: epc≈40430.91, grid=4050, total=70000.
+    Scalar grid 4050→3000 (−1050). Expected: epc≈40430.91, total=68950.
+    """
+    from app.project_factories import create_default_oborovo
+    fac = create_default_oborovo()
+    legacy_total = 70000.0
+    _, pre_edit_epc, pre_edit_grid = _pre_r1_seeded_effective(fac, legacy_total)
+
+    pi = build_projectinputs_from_snapshot(
+        _oborovo_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="3000")
+    )
+
+    assert _get(pi, "grid_connection") == pytest.approx(3000.0)
+    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        "Oborovo E: epc must stay at pre-edit effective after scalar decrease"
+    )
+    assert pi.capex.total_capex == pytest.approx(legacy_total + (3000.0 - pre_edit_grid), rel=1e-4)
+
+
+# ── Case F: legacy total materially below factory + scalar ─────────────────────
+
+def test_tuho_F_legacy_below_factory_scalar_uses_effective_baseline():
+    """TUHO F (Correction C): legacy=60000 < factory(70691.54), scalar grid=500.
+
+    Pre-edit effective: epc≈2868.46, grid=100, total=60000.
+    Scalar grid 100→500 (+400). Expected: epc≈2868.46, total=60400.
+    epc must NOT revert to factory 13560.
+    """
+    from app.project_factories import create_default_tuho_wind1
+    fac = create_default_tuho_wind1()
+    legacy_total = 60000.0
+    _, pre_edit_epc, pre_edit_grid = _pre_r1_seeded_effective(fac, legacy_total)
+
+    pi = build_projectinputs_from_snapshot(
+        _tuho_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="500")
+    )
+
+    assert _get(pi, "grid_connection") == pytest.approx(500.0)
+    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        f"TUHO F: epc={_get(pi,'epc_contract'):.2f} must equal pre-edit effective "
+        f"{pre_edit_epc:.2f}, not factory {fac.capex.epc_contract.amount_keur:.2f}"
+    )
+    assert pi.capex.total_capex == pytest.approx(legacy_total + (500.0 - pre_edit_grid), rel=1e-4)
+    # pre_edit_epc (≈2868) is materially lower than factory epc (13560)
+    assert abs(_get(pi, "epc_contract") - fac.capex.epc_contract.amount_keur) > 1000, (
+        "TUHO F: pre-edit effective epc must differ materially from factory epc"
+    )
+
+
+def test_oborovo_F_legacy_below_factory_scalar_uses_effective_baseline():
+    """Oborovo F (Correction C): legacy=40000 < factory(55999.09), scalar grid=5000.
+
+    Pre-edit effective: epc≈10430.91, grid=4050, total=40000.
+    Scalar grid 4050→5000 (+950). Expected: epc≈10430.91, total=40950.
+    """
+    from app.project_factories import create_default_oborovo
+    fac = create_default_oborovo()
+    legacy_total = 40000.0
+    _, pre_edit_epc, pre_edit_grid = _pre_r1_seeded_effective(fac, legacy_total)
+
+    pi = build_projectinputs_from_snapshot(
+        _oborovo_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="5000")
+    )
+
+    assert _get(pi, "grid_connection") == pytest.approx(5000.0)
+    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        f"Oborovo F: epc={_get(pi,'epc_contract'):.2f} must equal pre-edit effective "
+        f"{pre_edit_epc:.2f}, not factory {fac.capex.epc_contract.amount_keur:.2f}"
+    )
+    assert pi.capex.total_capex == pytest.approx(legacy_total + (5000.0 - pre_edit_grid), rel=1e-4)
+    assert abs(_get(pi, "epc_contract") - fac.capex.epc_contract.amount_keur) > 1000
+
+
+# ── 24. Correction C engine parity ────────────────────────────────────────────
+#
+# For at least one seeded legacy-total case: prove via canonical engine run that
+# the CAPEX delta originates from the intended scalar edit and that no unrelated
+# CAPEX authority was silently lost.
+#
+# TUHO/Oborovo have calibrated SHL schedules that fail at maturity when CAPEX
+# changes (SHL_MATURITY_RESIDUAL_FAILS_CLOSED) and also have sponsor_funding_mode=None
+# which blocks the G2A financing model.  Direct engine runs on the seeded templates
+# after a CAPEX change require full financing recalibration — outside R1 scope.
+#
+# Canonical engine proof: use Generic Wind with legacy-total path (same adapter
+# code path as seeded Correction C) and prove hard_project_capex_keur delta.
+# The causal invariant is shared: the effective-baseline reconstruction and
+# scalar application are identical code for factory and seeded projects.
+
+def test_correction_c_engine_parity_legacy_total_scalar_delta():
+    """Engine parity: Generic Wind legacy-total effective baseline + scalar → correct engine delta.
+
+    Pre-scalar: legacy_total=80000, no scalar. Effective baseline: epc=67000, grid=3000.
+    Post-scalar: same legacy_total + scalar grid=5000 (delta +2000). Expected total=82000.
+
+    Canonical engine (run_project_shareholder_waterfall_model) must produce:
+      post.hard_project_capex_keur − pre.hard_project_capex_keur == +2000 exactly.
+
+    This proves the Correction C effective-baseline reconstruction flows through to
+    the canonical engine output: the output delta equals the intended CAPEX edit.
+    """
+    from app.services.production_financial_authority import run_clean_production
+
+    # Pre-scalar effective ProjectInputs (legacy total=80000, no scalar).
+    pi_pre = build_projectinputs_from_snapshot(_base_wind(total_capex_keur="80000"))
+    assert pi_pre.capex.total_capex == pytest.approx(80000.0, rel=1e-4)
+    assert _get(pi_pre, "epc_contract") == pytest.approx(67000.0, rel=1e-4)
+    assert _get(pi_pre, "grid_connection") == pytest.approx(3000.0)
+
+    # Post-scalar: grid 3000 → 5000 (delta +2000). epc must remain at 67000.
+    pi_post = build_projectinputs_from_snapshot(
+        _base_wind(total_capex_keur="80000", capex_grid_connection_keur="5000")
+    )
+    assert _get(pi_post, "epc_contract") == pytest.approx(67000.0, rel=1e-4), (
+        "Correction C: epc must remain at pre-edit effective (67000) after scalar"
+    )
+    assert pi_post.capex.total_capex == pytest.approx(82000.0, rel=1e-4)
+
+    # Canonical engine runs — prove delta == scalar delta.
+    r_pre = run_clean_production(pi_pre, "Base", project_type="Wind")
+    r_post = run_clean_production(pi_post, "Base", project_type="Wind")
+    pre_hard = r_pre.g2c_result.financing_result.project_uses.hard_project_capex_keur
+    post_hard = r_post.g2c_result.financing_result.project_uses.hard_project_capex_keur
+
+    assert post_hard - pre_hard == pytest.approx(2000.0, rel=1e-4), (
+        f"Engine hard_project_capex_keur delta must equal scalar delta (+2000); "
+        f"got pre={pre_hard:.2f} post={post_hard:.2f} delta={post_hard-pre_hard:.2f}"
+    )

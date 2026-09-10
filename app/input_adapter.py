@@ -19,7 +19,7 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import replace as dc_replace
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from app.input_schema import ProjectInputsSchema
 
@@ -579,36 +579,86 @@ def _resolve_user_inputs(
     # calibrated IDC / bank-fee sub-line breakdown and eliminates
     # UI vs factory CAPEX composition drift.
     if _scalar_capex:
-        # R1 scalar authority order (Correction B):
+        # R1 scalar authority order (Correction C):
         #
-        # 1. If a legacy total_capex_keur is present and there is no seeded
-        #    base (factory projects only), first normalise the factory base
-        #    so that epc_contract reflects the pre-edit effective value:
-        #      factory → _apply_capex_total → effective baseline
-        #    This reproduces the exact CAPEX composition the user would have
-        #    seen before they made any scalar edit.
+        # Establish the pre-edit effective CAPEX baseline, then apply scalars.
+        # Do NOT re-force any aggregate after scalar edits — epc_contract must
+        # never be used as a balancing plug.
         #
-        # 2. Apply the explicitly persisted scalar edits on top of that baseline.
+        # Two sub-cases for the baseline:
         #
-        # 3. Derive the resulting total from the final CapexItems.
-        #    Do NOT re-force the old aggregate after the scalar edits —
-        #    epc_contract must NOT be used as a balancing plug.
-        if total_capex_keur is not None and base_inputs is None:
-            # Establish pre-edit effective baseline (legacy normalization).
-            proj = _apply_capex_total(proj, total_capex_keur)
+        # A. Factory project (base_inputs is None):
+        #    If total_capex_keur is present → _apply_capex_total sets epc to
+        #    reproduce the effective CAPEX the user saw before the scalar edit.
+        #
+        # B. Seeded project (base_inputs is not None):
+        #    The seeded factory is the default baseline.  But if a persisted
+        #    total_capex_keur differs materially from the factory total, the
+        #    project's pre-R1 effective CAPEX was already re-normalised to that
+        #    legacy total (zero financial sub-fields + _apply_capex_total).
+        #    We must reconstruct that SAME effective baseline before applying the
+        #    scalar so untouched lines are not silently reverted to the pristine
+        #    seeded factory values (Correction C: backward-compat migration).
+        #
+        # The financing-reset comparison is always vs the pre-edit effective
+        # total (total_capex_keur when it diverged from factory, else factory).
+        _pre_edit_total_for_reset: Optional[float] = None
+
+        if total_capex_keur is not None:
+            if base_inputs is None:
+                # Case A: factory project — normalise from factory.
+                proj = _apply_capex_total(proj, total_capex_keur)
+                _pre_edit_total_for_reset = float(total_capex_keur)
+            else:
+                # Case B: seeded project — reconstruct pre-R1 effective state
+                # only when the legacy total diverges from the seeded factory.
+                _base_factory_total = getattr(base_inputs.capex, "total_capex", None)
+                _legacy_matches_factory = (
+                    _base_factory_total is not None
+                    and abs(float(total_capex_keur) - float(_base_factory_total)) < 0.01
+                )
+                if not _legacy_matches_factory:
+                    # The working copy's legacy aggregate diverged from the
+                    # calibrated factory.  Reproduce the exact pre-edit
+                    # effective state (zero financial sub-fields so IDC/fees
+                    # from the factory do not inflate the total, then scale
+                    # epc_contract to hit total_capex_keur).
+                    proj = _zero_financial_capex_subfields(proj)
+                    proj = _apply_capex_total(proj, total_capex_keur)
+                    _pre_edit_total_for_reset = float(total_capex_keur)
+                    # If the frozen schedule was still True, reset it now
+                    # (same semantics as the no-scalar seeded divergence path).
+                    if getattr(proj.financing, "use_frozen_excel_senior_debt_schedule", False):
+                        proj = dc_replace(
+                            proj,
+                            financing=dc_replace(
+                                proj.financing,
+                                use_frozen_excel_senior_debt_schedule=False,
+                                fixed_debt_keur=0.0,
+                                shl_amount_keur=0.0,
+                                shl_idc_keur=0.0,
+                            ),
+                        )
+
         # Apply scalar edits on top of the effective baseline.
         proj = _apply_scalar_capex(proj, _scalar_capex)
-        # For seeded projects, determine whether the effective new CAPEX total
-        # represents a material change vs the factory base. A material change
-        # disables the frozen debt schedule (if set) so the engine can re-size
-        # debt from gearing/DSCR inputs instead of the calibrated fixed values.
+
+        # For seeded projects, determine whether the scalar edit represents a
+        # material CAPEX change vs the pre-edit effective total.  A material
+        # change disables the frozen debt schedule so the engine can re-size.
         if base_inputs is not None:
             _new_capex_total = getattr(proj.capex, "total_capex", None)
-            _base_capex_total = getattr(base_inputs.capex, "total_capex", None)
+            # Compare against pre-edit effective total (legacy-normalised when
+            # applicable, factory total otherwise).
+            _compare_total = (
+                _pre_edit_total_for_reset
+                if _pre_edit_total_for_reset is not None
+                else getattr(base_inputs.capex, "total_capex", None)
+            )
             _scalar_capex_changed_materially = (
                 _new_capex_total is not None
-                and _base_capex_total is not None
-                and abs(float(_new_capex_total) - float(_base_capex_total)) >= 0.01
+                and _compare_total is not None
+                and abs(float(_new_capex_total) - float(_compare_total)) >= 0.01
             )
             if _scalar_capex_changed_materially and getattr(
                 proj.financing, "use_frozen_excel_senior_debt_schedule", False
