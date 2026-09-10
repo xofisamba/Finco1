@@ -69,6 +69,7 @@ def _f(
     runtime_only: bool = False,
     source_of_truth: SourceOfTruth = SourceOfTruth.INPUT_SET,
     engine_path: str | None = None,
+    engine_path_conditional: str | None = None,
     scenario_policy: ScenarioPolicy = ScenarioPolicy.NOT_ALLOWED,
     binding_status: BindingStatus = BindingStatus.BOUND,
     excel_tuho: str | None = None,
@@ -90,6 +91,7 @@ def _f(
         field_type=field_type, sheet_id=sheet_id, section_id=section_id,
         kind=kind, persisted=persisted, runtime_only=runtime_only,
         source_of_truth=source_of_truth, engine_path=engine_path,
+        engine_path_conditional=engine_path_conditional,
         scenario_policy=scenario_policy, binding_status=binding_status,
         excel_tuho=excel_tuho, excel_oborovo=excel_oborovo,
         export_mapping=export_mapping, dependencies=dependencies,
@@ -793,6 +795,11 @@ _SHEET_DEBT = _sheet(_DT, "Senior Debt", [_dt_senior], icon="🏦", order=4)
 # Canonical mapping:
 #   field_id                           snapshot_key                  engine path
 #   tax.assumptions.cit_rate_pct       tax_corporate_rate_pct        tax.corporate_rate   (stored %→ratio /100)
+#                                                                                — CONDITIONAL (R4/F06): when the project
+#                                                                                has a selected country_tax_policy_id the
+#                                                                                same edit binds to
+#                                                                                tax.corporate_rate_override instead
+#                                                                                (see engine_path_conditional on the field).
 #   tax.assumptions.loss_carryforward_years  tax_loss_carryforward_years  tax.loss_carryforward_years  (int)
 
 _TX = "tax"
@@ -801,10 +808,18 @@ _tx_assumptions = _section("assumptions", "Tax Assumptions", _TX, order=0, field
     _f(f"{_TX}.assumptions.cit_rate_pct", "CIT Rate", "tax_corporate_rate_pct", FieldType.PCT, _TX, "assumptions",
        kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
        engine_path="tax.corporate_rate",
+       engine_path_conditional=(
+           "tax.corporate_rate_override (when tax.country_tax_policy_id is set; "
+           "%→ratio /100; the selected policy stays the jurisdiction/default "
+           "authority and the explicit edit becomes the project-specific rate)"),
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True,
        unit="%", min_value=0, max_value=100, decimals=2,
-       description="Corporate income tax rate stored as % (0–100); input_adapter divides by 100 → domain 0.0–1.0.",
+       description=(
+           "Corporate income tax rate stored as % (0–100); input_adapter divides by 100 "
+           "→ domain 0.0–1.0. Dual-mode authority (R4/F06): without a selected "
+           "country-tax policy the edit binds to tax.corporate_rate; with a selected "
+           "policy it binds to tax.corporate_rate_override over that policy."),
        order=0),
 
     _f(f"{_TX}.assumptions.loss_carryforward_years", "Loss Carryforward Years", "tax_loss_carryforward_years",

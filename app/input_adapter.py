@@ -119,8 +119,28 @@ def _set_financing_target_dscr(proj: "ProjectInputs", value: float) -> "ProjectI
 
 
 def _set_tax_corporate_rate(proj: "ProjectInputs", value: float) -> "ProjectInputs":
-    # Registry stores % (0–100); engine expects ratio (0.0–1.0).
-    return dc_replace(proj, tax=dc_replace(proj.tax, corporate_rate=value / 100.0))
+    """Apply a Workbook CIT-rate edit (human %, e.g. 18.0 == 18%) to the
+    single effective rate authority for the project's typed tax mode
+    (R4/F06 dual-mode contract).
+
+    - Project WITHOUT a selected country_tax_policy_id: the generic
+      project-level authority stays ``TaxParams.corporate_rate`` (ratio);
+      ``corporate_rate_override`` is never fabricated.
+    - Project WITH a selected country_tax_policy_id: the explicit Workbook
+      edit maps to the typed ``TaxParams.corporate_rate_override`` (ratio).
+      The selected policy remains the jurisdiction/default authority and the
+      legacy ``corporate_rate`` keeps its policy-default value, so the clean
+      country-tax adapter never sees a fabricated second authority
+      (COUNTRY_TAX_LEGACY_FIELD_CONFLICT stays reserved for genuinely
+      contradictory historical states).
+
+    The % → ratio conversion happens exactly once, here — no layer duplicates it.
+    """
+    tax = proj.tax
+    if getattr(tax, "country_tax_policy_id", None) is not None:
+        return dc_replace(
+            proj, tax=dc_replace(tax, corporate_rate_override=value / 100.0))
+    return dc_replace(proj, tax=dc_replace(tax, corporate_rate=value / 100.0))
 
 
 def _set_tax_loss_carryforward_years(proj: "ProjectInputs", value: int) -> "ProjectInputs":
