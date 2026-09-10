@@ -140,8 +140,15 @@
         {{ f.value }}
       {%- endif -%}
     </span>
+    {%- if f.binding_label not in ('bound',) -%}
     <span class="v2-binding-badge v2-binding-{{ f.binding_label }}"
-          title="{{ f.binding_label }}">{{ f.binding_label }}</span>
+          title="{% if f.binding_label == 'template_locked' %}This field is locked by the template{% else %}This field is calculated automatically{% endif %}">
+      {%- if f.binding_label in ('display_only', 'computed') -%}Calculated
+      {%- elif f.binding_label == 'template_locked' -%}Locked
+      {%- elif f.binding_label == 'partial' -%}Calculated
+      {%- else -%}Calculated{%- endif -%}
+    </span>
+    {%- endif -%}
   {% endif %}
   </div>{# /v2-fc-value-cell [data-fc-cell] #}
 </div>

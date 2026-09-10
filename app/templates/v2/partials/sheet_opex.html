@@ -307,17 +307,17 @@
         </span>
         <span class="v2-opex-col-status">
           {%- if sg.is_derived -%}
-            <span class="v2-binding-badge v2-opex-badge-derived" data-testid="badge-derived-{{ sg.code }}">DERIVED</span>
+            <span class="v2-binding-badge v2-opex-badge-derived" data-testid="badge-derived-{{ sg.code }}">Calculated</span>
           {%- elif sg.is_engine -%}
-            <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">ENGINE</span>
+            <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">Calculated</span>
           {%- elif not sg.has_vm_data -%}
-            <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">ENGINE</span>
+            <span class="v2-binding-badge v2-opex-badge-engine" data-testid="badge-engine-{{ sg.code }}">Calculated</span>
           {%- elif sg.is_bound -%}
-            <span class="v2-binding-badge v2-opex-badge-bound">BOUND</span>
+            <span class="v2-binding-badge v2-opex-badge-bound">Editable</span>
           {%- elif sg.field and sg.field.binding_label == "partial" -%}
-            <span class="v2-binding-badge v2-opex-badge-partial">PARTIAL</span>
+            <span class="v2-binding-badge v2-opex-badge-partial">Calculated</span>
           {%- elif sg.field -%}
-            <span class="v2-binding-badge v2-opex-badge-engine">ENGINE</span>
+            <span class="v2-binding-badge v2-opex-badge-engine">Calculated</span>
           {%- endif -%}
         </span>
       </summary>
@@ -326,38 +326,35 @@
 
         {# --- Registry / scalar value row --- #}
         {%- if sg.is_derived -%}
-          {# B.13: always DERIVED #}
+          {# Contingency: always calculated by engine #}
           {%- if sg.field -%}
-            {{ opex_ro_row(sg.field.label, sg.field.value, badge="DERIVED") }}
+            {{ opex_ro_row(sg.field.label, sg.field.value, badge="Calculated") }}
           {%- else -%}
-            {{ opex_ro_row(sg.display_name, sg.subtotal_y1 if sg.has_vm_data else none, badge="DERIVED") }}
+            {{ opex_ro_row(sg.display_name, sg.subtotal_y1 if sg.has_vm_data else none, badge="Calculated") }}
           {%- endif -%}
 
         {%- elif sg.is_engine -%}
-          {# No registry BOUND field (B.09) — show subtotal read-only; custom rows below #}
           {%- if sg.has_vm_data -%}
-            {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="ENGINE") }}
+            {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="Calculated") }}
           {%- else -%}
-            {{ opex_ro_row(sg.display_name, none, badge="ENGINE") }}
+            {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
           {%- endif -%}
 
         {%- elif not sg.has_vm_data and not sg.is_custom_eligible -%}
-          {# Group absent from VM and not custom-eligible: ENGINE placeholder #}
-          {{ opex_ro_row(sg.display_name, none, badge="ENGINE") }}
+          {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
 
         {%- elif not sg.has_vm_data -%}
-          {# Group absent from VM but custom-eligible: empty ENGINE label, Add Row below #}
-          {{ opex_ro_row(sg.display_name, none, badge="ENGINE") }}
+          {{ opex_ro_row(sg.display_name, none, badge="Calculated") }}
 
         {%- elif sg.is_bound and project_editable -%}
           {{ render_field(sg.field, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#panel-opex", sheet_id="opex") }}
 
         {%- elif sg.field -%}
-          {{ opex_ro_row(sg.field.label, sg.field.value, badge=sg.field.binding_label | upper) }}
+          {{ opex_ro_row(sg.field.label, sg.field.value, badge="Calculated") }}
 
         {%- elif sg.has_vm_data -%}
-          {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="ENGINE") }}
+          {{ opex_ro_row(sg.display_name, sg.subtotal_y1, badge="Calculated") }}
         {%- endif -%}
 
         {# --- Factory sub-line rows (read-only context, not custom) --- #}

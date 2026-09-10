@@ -121,10 +121,10 @@
          aria-selected="true" id="nav-fs-pnl"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-pnl')"
          onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-pnl')">
-      B. Income Statement
+      Income Statement
       {% if fs_pnl_classification == 'PARTIAL' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
-              data-testid="fs-pnl-classification-badge">Outputs current</span>
+              data-testid="fs-pnl-classification-badge">Results available</span>
       {% elif fs_pnl_classification == 'UNAVAILABLE' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
               data-testid="fs-pnl-classification-badge">Unavailable</span>
@@ -134,10 +134,10 @@
          aria-selected="false" id="nav-fs-pf-cf"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-pf-cf')"
          onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-pf-cf')">
-      C. Cash Waterfall
+      Cash Waterfall
       {% if fs_pf_cf_classification == 'PARTIAL' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
-              data-testid="fs-pf-cf-classification-badge">Outputs current</span>
+              data-testid="fs-pf-cf-classification-badge">Results available</span>
       {% elif fs_pf_cf_classification == 'UNAVAILABLE' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
               data-testid="fs-pf-cf-classification-badge">Unavailable</span>
@@ -147,10 +147,10 @@
          aria-selected="false" id="nav-fs-bs"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-bs')"
          onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-bs')">
-      D. Balance Sheet
+      Balance Sheet
       {% if fs_bs_classification == 'PARTIAL' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
-              data-testid="fs-bs-classification-badge">Outputs current</span>
+              data-testid="fs-bs-classification-badge">Results available</span>
       {% elif fs_bs_classification == 'UNAVAILABLE' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
               data-testid="fs-bs-classification-badge">Unavailable</span>

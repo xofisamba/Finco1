@@ -1062,50 +1062,114 @@ class TestFSBrowserAcceptance:
         SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def test_period_labels_readable(self):
-        # A successful run with financial_statements_payload=None (project_runner.py
-        # line 334, frozen Phase B4) produces state=UNAVAILABLE, not NOT_RUN.
-        # UNAVAILABLE renders data-testid="fs-pnl-unavailable" (income statement
-        # section) and data-testid="fs-unavailable-notice" (top-level bar).
+        # After a successful run with FS data (PR #976), the Income Statement
+        # table renders with readable period header labels (e.g. "Jan 2028").
+        # The fs-pnl-unavailable placeholder must NOT appear.
         p = self.page
-        unavailable = p.locator('[data-testid="fs-pnl-unavailable"]')
-        assert unavailable.count() >= 1, (
-            "Expected fs-pnl-unavailable (UNAVAILABLE state after successful run "
-            "with financial_statements_payload=None). "
-            "Got neither the unavailable placeholder nor a data table."
+        # Annual view is the default; switch to model-period view for labels.
+        p.locator('[data-period-view="model"]').click()
+        p.wait_for_timeout(200)
+        table = p.locator('[data-testid="fs-pnl-table"]')
+        assert table.count() >= 1, (
+            "Expected fs-pnl-table (Income Statement) after a successful run "
+            "with FS data. fs-pnl-unavailable must not appear — FS handoff is wired."
+        )
+        # Period header cells: skip the sticky row-label column (first th), check the rest.
+        headers = p.locator('[data-testid="fs-pnl-table"] thead th').all_inner_texts()
+        # At least one period header beyond the row-label column must be non-empty
+        period_headers = [h.strip() for h in headers[1:] if h.strip()]
+        assert len(period_headers) >= 1, (
+            f"Income Statement has no readable period headers. Headers: {headers!r}"
+        )
+        # Period labels should look like "Jan 2028" or similar (contain a digit for the year)
+        has_year = any(any(c.isdigit() for c in h) for h in period_headers)
+        assert has_year, (
+            f"Period labels do not appear to contain year information: {period_headers!r}"
         )
 
     def test_long_table_has_horizontal_scroll(self):
-        # Phase B4: run completed but FS payload absent → fs_state=UNAVAILABLE.
-        # The top-level FS unavailable notice must be present.
+        # After FS handoff is wired (PR #976), the Income Statement model-period
+        # table is wide (many columns). The scroll container must support overflow-x.
         p = self.page
-        notice = p.locator('[data-testid="fs-unavailable-notice"]')
-        assert notice.count() >= 1, (
-            "Expected fs-unavailable-notice (FS_UNAVAILABLE state) after a "
-            "successful run — financial_statements_payload is None (Phase B4)."
+        p.locator('[data-period-view="model"]').click()
+        p.wait_for_timeout(200)
+        wrapper = p.locator('[data-testid="fs-pnl-table-wrapper"]')
+        assert wrapper.count() >= 1, (
+            "Expected fs-pnl-table-wrapper (scroll container) on the Income "
+            "Statement — FS handoff is wired so the table must be present."
+        )
+        # The wrapper must have overflow-x set to auto or scroll
+        overflow = wrapper.first.evaluate(
+            "el => window.getComputedStyle(el).overflowX"
+        )
+        assert overflow in ("auto", "scroll"), (
+            f"fs-pnl-table-wrapper overflow-x={overflow!r}; "
+            "expected 'auto' or 'scroll' for wide multi-column table."
         )
 
     def test_annual_revenue_equals_sum_of_model_periods(self):
-        # Phase B4: successful run, financial_statements_payload=None →
-        # UNAVAILABLE. Income Statement section shows fs-pnl-unavailable.
-        # Revenue aggregation comparison is N/A until FS runtime handoff is wired.
+        # With FS data present (PR #976), annual revenue_keur in the Income
+        # Statement must equal the sum of the corresponding model-period values.
         p = self.page
-        unavailable = p.locator('[data-testid="fs-pnl-unavailable"]')
-        assert unavailable.count() >= 1, (
-            "Expected fs-pnl-unavailable (UNAVAILABLE) after successful run. "
-            "FS revenue comparison is N/A while Phase B4 constraint holds."
+        # Collect model-period revenue values
+        p.locator('[data-period-view="model"]').click()
+        p.wait_for_timeout(200)
+        model_cells = p.locator(
+            '[data-testid="fs-pnl-table"] [data-testid="fs-pnl-row-revenues_keur"] td'
+        ).all_inner_texts()
+
+        p.locator('[data-period-view="annual"]').click()
+        p.wait_for_timeout(300)
+        annual_cells = p.locator(
+            '[data-testid="fs-pnl-annual-table"] [data-testid="fs-pnl-annual-row-revenues_keur"] td'
+        ).all_inner_texts()
+
+        def _parse(cells):
+            vals = []
+            for c in cells[1:]:  # skip row-label column
+                c = c.strip().replace(",", "").replace("—", "")
+                try:
+                    vals.append(float(c))
+                except (ValueError, AttributeError):
+                    pass
+            return vals
+
+        model_vals = _parse(model_cells)
+        annual_vals = _parse(annual_cells)
+
+        # Only assert when both sets are populated (guard against empty-row edge case)
+        assert len(model_vals) >= 1, (
+            "No parseable model-period revenue values found in Income Statement. "
+            f"Raw cells: {model_cells!r}"
+        )
+        assert len(annual_vals) >= 1, (
+            "No parseable annual revenue values found in Income Statement. "
+            f"Raw cells: {annual_cells!r}"
+        )
+        # Sum of all model periods must approximately equal sum of annual values
+        # (tolerance: 1 kEUR to allow rounding in display)
+        assert abs(sum(model_vals) - sum(annual_vals)) < 1.0, (
+            f"Annual revenue total ({sum(annual_vals):.0f}) does not match "
+            f"sum of model-period revenue ({sum(model_vals):.0f}). "
+            "Annual aggregation may be incorrect."
         )
 
     def test_annual_pf_cf_table_present(self):
-        # Phase B4: CF waterfall payload is None → UNAVAILABLE.
-        # CF waterfall section renders fs-pf-cf-unavailable.
+        # With FS handoff wired (PR #976), the Cash Waterfall panel must render
+        # a data table, not the fs-pf-cf-unavailable placeholder.
         p = self.page
         p.locator('[data-panel="fs-inner-panel-pf-cf"]').click()
         p.wait_for_timeout(200)
         p.screenshot(path=str(SCREENSHOTS_DIR / "fs_annual_cash_waterfall.png"))
-        unavailable = p.locator('[data-testid="fs-pf-cf-unavailable"]')
-        assert unavailable.count() >= 1, (
-            "Expected fs-pf-cf-unavailable (UNAVAILABLE) in CF waterfall panel "
-            "after successful run with financial_statements_payload=None."
+        table = p.locator('[data-testid="fs-pf-cf-annual-table"]')
+        assert table.count() >= 1, (
+            "Expected fs-pf-cf-annual-table (Cash Waterfall annual view) after a "
+            "successful run. fs-pf-cf-unavailable must not appear — FS handoff is wired."
+        )
+        # Table must contain at least one data row (tbody tr)
+        rows = p.locator('[data-testid="fs-pf-cf-annual-table"] tbody tr').count()
+        assert rows >= 1, (
+            f"Cash Waterfall annual table is present but has no data rows (rows={rows})."
         )
 
     def test_bs_annual_uses_year_end_not_sum(self):
