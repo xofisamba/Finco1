@@ -2182,6 +2182,46 @@ def _build_capex_detail_items(
             ),
         }
 
+    # ── R2: canonical group amounts via CAPEX_CATEGORY_TO_FIELD ─────────────
+    # Use the single authoritative C.xx → field mapping (same registry the
+    # router and R1 use) to build per-group canonical amounts from the live
+    # CapexStructure.  This replaces the broken _APP_MAP amounts which
+    # disagree with the registry and produce the F03 divergence.
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD as _CAT_FIELD_MAP
+
+    def _cat_field_amount(fname: str) -> float | None:
+        if not hasattr(capex, fname):
+            return None
+        actual = getattr(capex, fname)
+        if hasattr(actual, "amount_keur"):
+            return float(actual.amount_keur)
+        if isinstance(actual, (int, float)):
+            return float(actual)
+        return None
+
+    _seen_cat_fields: set[str] = set()
+    _canonical_amount_by_group: dict[str, float | None] = {}
+    _r2_alias_groups: set[str] = set()
+    for _ccode, _fname in _CAT_FIELD_MAP.items():
+        _amt = _cat_field_amount(_fname)
+        if _fname in _seen_cat_fields:
+            _r2_alias_groups.add(_ccode)
+        else:
+            _seen_cat_fields.add(_fname)
+        _canonical_amount_by_group[_ccode] = _amt
+
+    # C.17 Financing (backend-calculated): sum of capex float fields
+    _c17 = sum(
+        float(getattr(capex, f, 0.0) or 0.0)
+        for f in ("idc_keur", "bank_fees_keur", "commitment_fees_keur",
+                  "other_financial_keur", "vat_costs_keur")
+    )
+    _canonical_amount_by_group["C.17"] = _c17 if _c17 > 0 else 0.0
+    # C.18 Reserve accounts (backend-calculated)
+    _canonical_amount_by_group["C.18"] = float(
+        getattr(capex, "reserve_accounts_keur", 0.0) or 0.0
+    )
+
     # ── Build categories ──────────────────────────────────────────────────
     categories = []
     grand_total = 0.0
@@ -2239,6 +2279,9 @@ def _build_capex_detail_items(
             "comments": cat_data.get("comments", ""),
             "children": tuple(children),
             "authority_summary": dict(_STATUS_COUNTS),
+            # R2 canonical display projection
+            "app_group_amount_keur": _canonical_amount_by_group.get(cat_data["code"]),
+            "is_alias_group": cat_data["code"] in _r2_alias_groups,
         }
         categories.append(cat)
 
@@ -2540,6 +2583,15 @@ def build_project_context_for_record(
     else:
         opex_items = _scaled_opex_items(base.opex_items, opex_y1_total_keur)
 
+    # R2: rebuild capex_detail_items from canonical pi.capex so display values
+    # align with CAPEX_CATEGORY_TO_FIELD — not the factory template amounts.
+    if effective_project_inputs is not None and getattr(effective_project_inputs, "capex", None):
+        canonical_capex_detail_items = _build_capex_detail_items(
+            effective_project_inputs.capex, construction_months=construction_months
+        )["categories"]
+    else:
+        canonical_capex_detail_items = base.capex_detail_items
+
     return replace(
         base,
         code=project_code.upper(),
@@ -2557,6 +2609,7 @@ def build_project_context_for_record(
         opex_items=opex_items,
         opex_y1_total_keur=opex_y1_total_keur,
         capex_items=base.capex_items,
+        capex_detail_items=canonical_capex_detail_items,
         total_capex_keur=total_capex_keur,
         interest_rate_pct=interest_rate_fraction,
         senior_tenor_years=senior_tenor_years,

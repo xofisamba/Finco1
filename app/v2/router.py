@@ -318,8 +318,10 @@ def _build_capex_vm_ctx(project_record, pis) -> dict:
     No field lists, formulas, or aggregation are computed here.
     """
     from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+    from app.input_adapter import build_projectinputs_from_snapshot
 
     snapshot = pis.to_snapshot()
+    effective_pi = build_projectinputs_from_snapshot(snapshot)
     project_ctx = build_project_context_for_record(
         project_code=project_record.project_code,
         project_name=project_record.project_name,
@@ -327,6 +329,7 @@ def _build_capex_vm_ctx(project_record, pis) -> dict:
         project_origin=project_record.project_origin,
         template_source=project_record.template_source,
         baseline_snapshot=snapshot,
+        effective_project_inputs=effective_pi,
     )
     is_user = not (
         project_record.project_origin == "factory_template"

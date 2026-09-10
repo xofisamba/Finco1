@@ -126,6 +126,7 @@ class CapexGroupVM:
     is_contingency: bool    # True for C.13
     is_financing: bool      # True for C.17
     is_reserve: bool        # True for C.18
+    is_alias: bool = False  # True for alias groups (e.g. C.11 shares audit_legal with C.08)
 
 
 # ---------------------------------------------------------------------------
@@ -262,11 +263,18 @@ def build_capex_view_model(
         group_is_contingency = group_code == _CONTINGENCY_CODE
         group_is_financing = group_code == _FINANCING_CODE
         group_is_reserve = group_code == _RESERVE_CODE
+        # R2: canonical group amount from CapexStructure (set by _build_capex_detail_items)
+        app_group_amount: float | None = cat.get("app_group_amount_keur")
+        is_alias_group: bool = cat.get("is_alias_group", False)
 
         lines: list[CapexLineVM] = []
         for order, child in enumerate(cat.get("children", ()), start=1):
             child_code: str = child["code"]
-            amount_keur: float = float(child.get("amount_keur") or 0.0)
+            # R2: prefer canonical app_amount_keur; fall back to Excel ref (reference display)
+            _canon_child = child.get("app_amount_keur")
+            amount_keur: float = float(
+                _canon_child if _canon_child is not None else child.get("amount_keur") or 0.0
+            )
             per_mw: float = _safe_per_mw(amount_keur, capacity_mw)
 
             child_backend: bool = child.get("is_backend_calculated", False)
@@ -341,7 +349,13 @@ def build_capex_view_model(
                 ))
 
         active_lines = [ln for ln in lines if ln.is_active]
-        subtotal_keur = sum(ln.amount_keur for ln in active_lines)
+        custom_subtotal = sum(ln.amount_keur for ln in active_lines if ln.is_custom)
+        # R2: canonical subtotal — group-level CapexStructure amount + user custom rows.
+        # Sub-line ref rows are informational only and do not drive the subtotal.
+        if app_group_amount is not None:
+            subtotal_keur = app_group_amount + custom_subtotal
+        else:
+            subtotal_keur = sum(ln.amount_keur for ln in active_lines)
         subtotal_per_mw = _safe_per_mw(subtotal_keur, capacity_mw)
 
         groups.append(CapexGroupVM(
@@ -354,12 +368,16 @@ def build_capex_view_model(
             is_contingency=group_is_contingency,
             is_financing=group_is_financing,
             is_reserve=group_is_reserve,
+            is_alias=is_alias_group,
         ))
 
     # Aggregate totals
+    # R2: exclude readonly groups (C.17, C.18) AND alias groups (C.11) from hard_capex.
+    # Alias groups display the same canonical field as their owner — counting them
+    # would double-count audit_legal (and any future shared field).
     hard_capex_keur = sum(
         g.subtotal_keur for g in groups
-        if g.code not in _READONLY_GROUP_CODES
+        if g.code not in _READONLY_GROUP_CODES and not g.is_alias
     )
     financing_keur = next(
         (g.subtotal_keur for g in groups if g.code == _FINANCING_CODE), 0.0
