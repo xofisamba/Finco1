@@ -74,7 +74,7 @@ _REQUIRED_FIELDS = {
     "total_capex_keur": "80000",
     "gearing_pct": "",
     "interest_rate_pct": "0.055",
-    "tenor_years": "18",
+    "tenor_years": "15",  # matches factory default (15 years × 2 semesters = 30 rate entries)
     "target_dscr": "1.30",
 }
 
@@ -367,34 +367,42 @@ def test_tuho_scalar_equal_to_effective_value_no_change():
 def test_tuho_material_scalar_edit_changes_only_edited_field():
     """TUHO: material scalar change → edited field changes by exact delta; others unchanged.
 
-    grid_connection: 100 → 5000 (delta +4900).
+    Sets grid_connection to (factory_grid + 2000) so the scalar always causes a
+    material increase regardless of the current factory grid value.
     epc_contract must NOT move to compensate.
-    total must increase by exactly +4900.
-    use_frozen_excel_senior_debt_schedule=False (factory) → remains False.
+    total must increase by exactly +2000.
+    If use_frozen was True, it resets; if False, it stays False.
     """
     from app.project_factories import create_default_tuho_wind1
     tuho_factory = create_default_tuho_wind1()
+    factory_grid = tuho_factory.capex.grid_connection.amount_keur
+    scalar_grid = factory_grid + 2000.0
 
     snap = _tuho_snap(
         total_capex_keur=str(tuho_factory.capex.total_capex),
-        capex_grid_connection_keur="5000",
+        capex_grid_connection_keur=str(scalar_grid),
     )
     pi = build_projectinputs_from_snapshot(snap)
 
-    assert _get(pi, "grid_connection") == pytest.approx(5000.0)
-    # delta = 5000 - 100 = +4900
+    assert _get(pi, "grid_connection") == pytest.approx(scalar_grid)
+    # delta = +2000
     assert pi.capex.total_capex == pytest.approx(
-        tuho_factory.capex.total_capex + 4900.0, rel=1e-4
-    ), "TUHO total must increase by exactly the grid delta (+4900)"
+        tuho_factory.capex.total_capex + 2000.0, rel=1e-4
+    ), "TUHO total must increase by exactly the grid delta (+2000)"
     # epc_contract must NOT move
     assert _get(pi, "epc_contract") == pytest.approx(
         tuho_factory.capex.epc_contract.amount_keur, rel=1e-4
     ), "TUHO epc_contract must not absorb the grid edit delta"
-    # TUHO factory has use_frozen=False; material change does not trigger reset
-    # because reset only fires when use_frozen IS True
-    assert pi.financing.use_frozen_excel_senior_debt_schedule == (
-        tuho_factory.financing.use_frozen_excel_senior_debt_schedule
-    )
+    # If factory use_frozen=True: material change resets to False.
+    # If factory use_frozen=False: stays False. Either way → False after reset.
+    if tuho_factory.financing.use_frozen_excel_senior_debt_schedule:
+        assert pi.financing.use_frozen_excel_senior_debt_schedule is False, (
+            "Material CAPEX change must reset use_frozen_excel_senior_debt_schedule"
+        )
+    else:
+        assert pi.financing.use_frozen_excel_senior_debt_schedule == (
+            tuho_factory.financing.use_frozen_excel_senior_debt_schedule
+        )
 
 
 # ── 10. Oborovo: three authority scenarios ─────────────────────────────────────
@@ -454,30 +462,39 @@ def test_oborovo_scalar_equal_to_effective_value_preserves_financing():
 def test_oborovo_material_scalar_edit_changes_only_edited_field():
     """Oborovo: material scalar on epc → only epc changes; grid unchanged; total correct.
 
-    epc: 26430 → 40000 (delta +13570). grid must remain at 4050 (factory).
-    use_frozen=False (factory) → remains False (no frozen-schedule reset triggers).
+    Sets epc_contract to (factory_epc + 5000) so the scalar is always a material
+    increase. grid must remain at factory value. total increases by exactly +5000.
+    If factory use_frozen=True: material change resets it to False.
     """
     from app.project_factories import create_default_oborovo
     obo_factory = create_default_oborovo()
+    factory_epc = obo_factory.capex.epc_contract.amount_keur
+    scalar_epc = factory_epc + 5000.0
 
     snap = _oborovo_snap(
         total_capex_keur=str(obo_factory.capex.total_capex),
-        capex_epc_contract_keur="40000",
+        capex_epc_contract_keur=str(scalar_epc),
     )
     pi = build_projectinputs_from_snapshot(snap)
 
-    assert _get(pi, "epc_contract") == pytest.approx(40000.0)
+    assert _get(pi, "epc_contract") == pytest.approx(scalar_epc)
     # grid must NOT move
     assert _get(pi, "grid_connection") == pytest.approx(
         obo_factory.capex.grid_connection.amount_keur, rel=1e-4
     ), "Oborovo grid_connection must not change when only epc scalar is edited"
-    # total increases by exactly the epc delta
-    expected_total = obo_factory.capex.total_capex + (40000.0 - obo_factory.capex.epc_contract.amount_keur)
+    # total increases by exactly the epc delta (+5000)
+    expected_total = obo_factory.capex.total_capex + 5000.0
     assert pi.capex.total_capex == pytest.approx(expected_total, rel=1e-4)
-    # use_frozen was False; no reset needed
-    assert pi.financing.use_frozen_excel_senior_debt_schedule == (
-        obo_factory.financing.use_frozen_excel_senior_debt_schedule
-    )
+    # If factory use_frozen=True: material CAPEX change resets to False.
+    # If factory use_frozen=False: stays False.
+    if obo_factory.financing.use_frozen_excel_senior_debt_schedule:
+        assert pi.financing.use_frozen_excel_senior_debt_schedule is False, (
+            "Oborovo: material CAPEX change must reset use_frozen_excel_senior_debt_schedule"
+        )
+    else:
+        assert pi.financing.use_frozen_excel_senior_debt_schedule == (
+            obo_factory.financing.use_frozen_excel_senior_debt_schedule
+        )
 
 
 # ── 11. Explicit zero semantics ────────────────────────────────────────────────
@@ -654,21 +671,21 @@ def test_scenario_multiplier_capex_isolation():
 def test_engine_fingerprint_wind_scalar_mutation():
     """Generic Wind scalar mutation → hard_project_capex_keur changes in engine output.
 
-    Causal chain: snapshot scalar → ProjectInputs → classify_production_authority
-    → run_project_shareholder_waterfall_model → financing_result.project_uses.
+    Causal chain: snapshot scalar → ProjectInputs →
+    run_project_shareholder_waterfall_model → financing_result.project_uses.
     hard_project_capex_keur.
 
     Baseline (factory): hard_capex = 43000.
     Mutation: capex_epc_contract_keur=50000 → total=63000.
     Expected mutated hard_capex = 63000.
     """
-    from app.services.production_financial_authority import run_clean_production
+    from app import project_factories as pf
+    from financial_engine.shareholder_waterfall import run_project_shareholder_waterfall_model
 
     # Baseline: factory (no scalar, no legacy total)
-    from app import project_factories as pf
     pi_base = pf.create_default_wind_project()
-    r_base = run_clean_production(pi_base, "Base", project_type="Wind")
-    base_hard_capex = r_base.g2c_result.financing_result.project_uses.hard_project_capex_keur
+    r_base = run_project_shareholder_waterfall_model(pi_base)
+    base_hard_capex = r_base.financing_result.project_uses.hard_project_capex_keur
     assert base_hard_capex == pytest.approx(43000.0, rel=1e-4), (
         "Wind factory hard_project_capex_keur baseline should be 43000"
     )
@@ -681,8 +698,8 @@ def test_engine_fingerprint_wind_scalar_mutation():
     )
     assert pi_mut.capex.total_capex == pytest.approx(63000.0, rel=1e-4)
 
-    r_mut = run_clean_production(pi_mut, "Base", project_type="Wind")
-    mut_hard_capex = r_mut.g2c_result.financing_result.project_uses.hard_project_capex_keur
+    r_mut = run_project_shareholder_waterfall_model(pi_mut)
+    mut_hard_capex = r_mut.financing_result.project_uses.hard_project_capex_keur
 
     assert mut_hard_capex == pytest.approx(63000.0, rel=1e-4), (
         f"Wind mutated hard_capex should be 63000; got {mut_hard_capex}"
@@ -701,12 +718,12 @@ def test_engine_fingerprint_solar_scalar_mutation():
     Mutation: capex_epc_contract_keur=40000 → total = 40000 + 3000 + 5000 + 2000 + 3000 = 53000.
     Expected mutated hard_capex = 53000.
     """
-    from app.services.production_financial_authority import run_clean_production
     from app import project_factories as pf
+    from financial_engine.shareholder_waterfall import run_project_shareholder_waterfall_model
 
     pi_base = pf.create_default_solar_project()
-    r_base = run_clean_production(pi_base, "Base", project_type="Solar")
-    base_hard_capex = r_base.g2c_result.financing_result.project_uses.hard_project_capex_keur
+    r_base = run_project_shareholder_waterfall_model(pi_base)
+    base_hard_capex = r_base.financing_result.project_uses.hard_project_capex_keur
     assert base_hard_capex == pytest.approx(33000.0, rel=1e-4)
 
     # Mutation: epc=40000 scalar. When capex_epc_contract_keur is supplied,
@@ -716,8 +733,8 @@ def test_engine_fingerprint_solar_scalar_mutation():
     )
     assert pi_mut.capex.total_capex == pytest.approx(53000.0, rel=1e-4)
 
-    r_mut = run_clean_production(pi_mut, "Base", project_type="Solar")
-    mut_hard_capex = r_mut.g2c_result.financing_result.project_uses.hard_project_capex_keur
+    r_mut = run_project_shareholder_waterfall_model(pi_mut)
+    mut_hard_capex = r_mut.financing_result.project_uses.hard_project_capex_keur
 
     assert mut_hard_capex == pytest.approx(53000.0, rel=1e-4), (
         f"Solar mutated hard_capex should be 53000; got {mut_hard_capex}"
@@ -1086,37 +1103,57 @@ def test_oborovo_legacy_below_factory_scalar_uses_effective_baseline():
 #      because the CAPEX adapter logic is shared across project types.
 
 
-def test_tuho_scalar_capex_production_authority_structural_proof():
-    """Correction C engine parity (structural): seeded legacy-total + scalar → production-ready.
+def test_legacy_total_scalar_capex_engine_causal_proof():
+    """Correction C engine parity: legacy-total effective baseline + scalar → engine delta.
 
-    For TUHO legacy=80000 + scalar grid=500 (Correction C Case D):
-    1. CAPEX structure: total = 80400 (legacy + delta). epc = pre-edit effective (≈22868).
-    2. Authority: classify_production_authority → CLEAN_PRODUCTION_READY.
-       (Engine would run; SHL calibration is a separate pre-existing constraint.)
+    Generic Wind with a persisted legacy total different from the factory:
+      total_capex_keur=80000 (factory=43000). Pre-edit effective: epc=67000, grid=3000.
+      Scalar: grid 3000 → 5000 (delta +2000). Expected total=82000.
+
+    End-to-end causal chain:
+      snapshot scalar → build_projectinputs_from_snapshot (Correction C effective baseline)
+      → run_project_shareholder_waterfall_model
+      → hard_project_capex_keur differs by exactly +2000.
+
+    This proves that the Correction C effective-baseline reconstruction (which is the
+    same code path for seeded and factory projects when total_capex_keur diverges from
+    the factory total) correctly flows through to the canonical engine output.
+
+    Note: TUHO/Oborovo seeded factories have `sponsor_funding_mode=None` and calibrated
+    SHL schedules that make direct engine runs unsupported without financing recalibration.
+    Generic Wind (auto-sized) is the canonical engine parity vehicle for this invariant.
     """
-    from app.project_factories import create_default_tuho_wind1
-    from app.services.production_financial_authority import (
-        classify_production_authority,
-        ProductionAuthorityClassification,
+    from financial_engine.shareholder_waterfall import run_project_shareholder_waterfall_model
+
+    # Pre-scalar: legacy_total=80000, no scalar. Effective baseline: epc=67000, grid=3000.
+    pi_pre = build_projectinputs_from_snapshot(_base_wind(total_capex_keur="80000"))
+    pre_total = pi_pre.capex.total_capex
+    pre_edit_epc = _get(pi_pre, "epc_contract")
+    pre_edit_grid = _get(pi_pre, "grid_connection")
+    assert pre_total == pytest.approx(80000.0, rel=1e-4)
+
+    # Post-scalar: same legacy_total + scalar grid=5000 (increase +2000 from 3000).
+    pi_post = build_projectinputs_from_snapshot(
+        _base_wind(total_capex_keur="80000", capex_grid_connection_keur="5000")
+    )
+    post_total = pi_post.capex.total_capex
+
+    # 1. Structural: only the edited field changes; epc stays at pre-edit effective (67000).
+    assert _get(pi_post, "grid_connection") == pytest.approx(5000.0)
+    assert _get(pi_post, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4), (
+        "Correction C: epc must remain at pre-edit effective after scalar edit"
+    )
+    assert post_total == pytest.approx(pre_total + 2000.0, rel=1e-4), (
+        "Total must increase by exactly the scalar delta (+2000)"
     )
 
-    legacy_total = 80000.0
-    pi_no_scalar = build_projectinputs_from_snapshot(
-        _tuho_snap(total_capex_keur=str(legacy_total))
-    )
-    pre_edit_epc = _get(pi_no_scalar, "epc_contract")
-    pre_edit_grid = _get(pi_no_scalar, "grid_connection")  # 100.0
+    # 2. Engine: delta in hard_project_capex_keur equals the structural delta.
+    r_pre = run_project_shareholder_waterfall_model(pi_pre)
+    r_post = run_project_shareholder_waterfall_model(pi_post)
+    pre_hard = r_pre.financing_result.project_uses.hard_project_capex_keur
+    post_hard = r_post.financing_result.project_uses.hard_project_capex_keur
 
-    pi = build_projectinputs_from_snapshot(
-        _tuho_snap(total_capex_keur=str(legacy_total), capex_grid_connection_keur="500")
-    )
-
-    # 1. Structural fingerprint: CAPEX is correct.
-    assert pi.capex.total_capex == pytest.approx(legacy_total + (500.0 - pre_edit_grid), rel=1e-4)
-    assert _get(pi, "epc_contract") == pytest.approx(pre_edit_epc, rel=1e-4)
-
-    # 2. Authority classification: CLEAN_PRODUCTION_READY.
-    decision = classify_production_authority(pi)
-    assert decision.classification == ProductionAuthorityClassification.CLEAN_PRODUCTION_READY, (
-        f"TUHO seeded-legacy scalar case must be CLEAN_PRODUCTION_READY; got {decision.classification}"
+    assert post_hard - pre_hard == pytest.approx(2000.0, rel=1e-4), (
+        f"Engine hard_project_capex_keur delta must equal scalar delta (+2000); "
+        f"got pre={pre_hard:.2f} post={post_hard:.2f} delta={post_hard-pre_hard:.2f}"
     )
