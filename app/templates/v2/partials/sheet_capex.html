@@ -171,6 +171,13 @@
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
 
+  {% if capex_scenario_error %}
+    <div class="v2-capex-scenario-error" role="alert" data-testid="capex-scenario-error">
+      ⚠ Scenario CAPEX unavailable — {{ capex_scenario_error }}
+      Amounts shown are Base economics.
+    </div>
+  {% endif %}
+
   {# ── Summary totals bar ──────────────────────────────────────────── #}
   <div class="v2-capex-totals-bar" data-testid="capex-totals-bar">
     <div class="v2-capex-total-item">
@@ -219,7 +226,7 @@
   {% for group in capex_vm.groups %}
     {% set gf = capex_group_to_field.get(group.code) %}
     {% set alias = capex_alias_groups.get(group.code) %}
-    {% set is_eligible = project_editable and not group.is_readonly and not group.is_contingency and not alias %}
+    {% set is_eligible = project_editable and not group.is_readonly and not group.is_contingency %}
     <details class="v2-capex-group{% if group.is_readonly %} v2-capex-group-engine{% endif %}{% if alias %} v2-capex-group-alias{% endif %}"
              open
              data-group-code="{{ group.code }}">

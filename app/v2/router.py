@@ -310,16 +310,22 @@ def _render_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
-def _build_capex_vm_ctx(project_record, pis) -> dict:
+def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") -> dict:
     """Build CapexViewModel context for the CAPEX sheet.
 
     Returns capex_vm, capex_group_to_field, and capex_section_fields.
     All CAPEX financial totals come exclusively from CapexViewModel.
     No field lists, formulas, or aggregation are computed here.
+
+    ``ws`` (workspace state) is optional; when supplied, the active scenario's
+    ``_capex_sub_line_overrides`` are applied to sub-line amounts so the
+    display matches the same effective economics as the Run path.
     """
     from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+    from app.input_adapter import build_projectinputs_from_snapshot
 
     snapshot = pis.to_snapshot()
+    effective_pi = build_projectinputs_from_snapshot(snapshot)
     project_ctx = build_project_context_for_record(
         project_code=project_record.project_code,
         project_name=project_record.project_name,
@@ -327,16 +333,81 @@ def _build_capex_vm_ctx(project_record, pis) -> dict:
         project_origin=project_record.project_origin,
         template_source=project_record.template_source,
         baseline_snapshot=snapshot,
+        effective_project_inputs=effective_pi,
     )
     is_user = not (
         project_record.project_origin == "factory_template"
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
     )
 
-    # Load active user-added sub-lines and inject into CapexViewModel so that
-    # group subtotals, hard CAPEX, and total CAPEX reflect custom rows.
+    # Load active user-added sub-lines and apply any active scenario's
+    # _capex_sub_line_overrides so the display matches the Run path exactly.
     from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
-    sub_lines = get_active_sub_lines_for_project(project_record.project_id)
+    from app.services.capex_sub_lines_integration import _extract_sub_line_overrides
+    import dataclasses as _dc
+
+    sub_lines = list(get_active_sub_lines_for_project(project_record.project_id))
+
+    # Resolve scenario overrides using the same contract as the Run path (Step 8).
+    # Unlike the Run path which returns an HTTP error on failure, the display path
+    # must still render — but it MUST NOT silently show Base economics when a
+    # scenario is active and resolution fails.  Instead we surface an explicit
+    # capex_scenario_error that the template renders as a visible warning.
+    _scenario_overrides_raw = None
+    capex_scenario_error: str = ""
+
+    if ws is not None and getattr(ws, "active_scenario_id", None):
+        _effective_owner = workspace_owner or project_record.project_code
+        _active_scenario_id = ws.active_scenario_id
+        try:
+            from app.persistence.scenarios_repository import get_scenario as _get_sc
+            _sc_rec = _get_sc(scenario_id=_active_scenario_id, user_id=_effective_owner)
+            if _sc_rec is None:
+                capex_scenario_error = (
+                    f"Active scenario could not be found (id={_active_scenario_id!r}). "
+                    "Re-select a scenario to see scenario economics."
+                )
+            elif _sc_rec.archived:
+                capex_scenario_error = (
+                    "Active scenario has been archived. "
+                    "Re-select a scenario to see scenario economics."
+                )
+            elif _sc_rec.project_id != project_record.project_id:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "_build_capex_vm_ctx: scenario project_id mismatch "
+                    "scenario=%s scenario.project_id=%s expected=%s",
+                    _active_scenario_id, _sc_rec.project_id, project_record.project_id,
+                )
+                capex_scenario_error = (
+                    "Active scenario does not belong to this project. "
+                    "Re-select a scenario to see scenario economics."
+                )
+            else:
+                _scenario_overrides_raw = _sc_rec.overrides
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "_build_capex_vm_ctx: scenario repository lookup failed scenario=%s",
+                _active_scenario_id,
+            )
+            capex_scenario_error = (
+                "Scenario data could not be loaded. "
+                "Re-select a scenario or reload the page."
+            )
+
+    sub_line_override_amounts = _extract_sub_line_overrides(_scenario_overrides_raw)
+    if sub_line_override_amounts:
+        adjusted = []
+        for sl in sub_lines:
+            if sl.sub_line_id in sub_line_override_amounts:
+                try:
+                    sl = _dc.replace(sl, amount_keur=float(sub_line_override_amounts[sl.sub_line_id]))
+                except Exception:
+                    pass
+            adjusted.append(sl)
+        sub_lines = adjusted
+
     capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user, sub_lines=sub_lines)
 
     # Registry field list for capex; keyed by short name for group mapping
@@ -376,6 +447,7 @@ def _build_capex_vm_ctx(project_record, pis) -> dict:
         "capex_group_to_field": capex_group_to_field,
         "capex_section_fields": capex_section_fields,
         "capex_alias_groups": capex_alias_groups,
+        "capex_scenario_error": capex_scenario_error,
     }
 
 
@@ -386,10 +458,11 @@ def _render_capex_htmx_sheet(
     project_record,
     project: str,
     field_error: str = "",
+    workspace_owner: str = "",
 ) -> HTMLResponse:
     """Render the CAPEX sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
-    ctx.update(_build_capex_vm_ctx(project_record, pis))
+    ctx.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
     sheet_html = _templates.get_template("partials/sheet_capex.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -899,7 +972,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "scenario_url": f"/scenarios?project={urllib.parse.quote(project, safe='')}",
         "library_url": "/library",
     }
-    context.update(_build_capex_vm_ctx(project_record, pis))
+    context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
     context.update(_build_opex_vm_ctx(project_record, pis))
     # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
@@ -1161,6 +1234,7 @@ async def v2_workbook_update(
             return _render_capex_htmx_sheet(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
+                workspace_owner=_workspace_owner,
             )
         if sheet_id == "opex":
             return _render_opex_htmx_sheet(
@@ -1251,6 +1325,7 @@ async def v2_workbook_update(
         elif sheet_id == "capex":
             resp = _render_capex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
+                workspace_owner=_workspace_owner,
             )
         elif sheet_id == "opex":
             resp = _render_opex_htmx_sheet(

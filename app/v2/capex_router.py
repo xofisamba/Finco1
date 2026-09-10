@@ -54,11 +54,15 @@ def _get_current_user(request: Request):
 
 
 def _render_capex_sheet(
-    request: Request, project_record, pis, ws, project: str, field_error: str = ""
+    request: Request, project_record, pis, ws, project: str, field_error: str = "",
+    workspace_owner: str = "",
 ) -> HTMLResponse:
     """Delegate to the main V2 router's CAPEX partial renderer."""
     from app.v2.router import _render_capex_htmx_sheet
-    return _render_capex_htmx_sheet(request, pis, ws, project_record, project, field_error=field_error)
+    return _render_capex_htmx_sheet(
+        request, pis, ws, project_record, project,
+        field_error=field_error, workspace_owner=workspace_owner,
+    )
 
 
 def _load_project_and_ws(user, project: str):
