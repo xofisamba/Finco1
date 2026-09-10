@@ -582,19 +582,40 @@ def _resolve_user_inputs(
         # R1 scalar path: apply named line amounts directly.
         # Financial sub-fields (IDC, bank fees, etc.) are preserved from base.
         proj = _apply_scalar_capex(proj, _scalar_capex)
-        # Frozen debt schedule was calibrated for the original capex structure;
-        # disable it so the engine can size debt from gearing/DSCR.
-        if base_inputs is not None and getattr(proj.financing, "use_frozen_excel_senior_debt_schedule", False):
-            proj = dc_replace(
-                proj,
-                financing=dc_replace(
-                    proj.financing,
-                    use_frozen_excel_senior_debt_schedule=False,
-                    fixed_debt_keur=0.0,
-                    shl_amount_keur=0.0,
-                    shl_idc_keur=0.0,
-                ),
+        # Partial-scalar + total fallback (Correction A):
+        # When total_capex_keur is also present AND capex_epc_contract_keur was
+        # NOT explicitly set by the caller, use total_capex_keur to scale
+        # epc_contract as the "remainder" — preserving the user's total intent
+        # when they edit individual lines without touching epc_contract.
+        # This avoids resetting epc_contract to the factory default when only
+        # other CAPEX lines are changed via scalars.
+        if total_capex_keur is not None and "epc_contract" not in _scalar_capex:
+            proj = _apply_capex_total(proj, total_capex_keur)
+        # For seeded projects, determine whether the effective new CAPEX total
+        # represents a material change vs the factory base. A material change
+        # disables the frozen debt schedule (if set) so the engine can re-size
+        # debt from gearing/DSCR inputs instead of the calibrated fixed values.
+        if base_inputs is not None:
+            _new_capex_total = getattr(proj.capex, "total_capex", None)
+            _base_capex_total = getattr(base_inputs.capex, "total_capex", None)
+            _scalar_capex_changed_materially = (
+                _new_capex_total is not None
+                and _base_capex_total is not None
+                and abs(float(_new_capex_total) - float(_base_capex_total)) >= 0.01
             )
+            if _scalar_capex_changed_materially and getattr(
+                proj.financing, "use_frozen_excel_senior_debt_schedule", False
+            ):
+                proj = dc_replace(
+                    proj,
+                    financing=dc_replace(
+                        proj.financing,
+                        use_frozen_excel_senior_debt_schedule=False,
+                        fixed_debt_keur=0.0,
+                        shl_amount_keur=0.0,
+                        shl_idc_keur=0.0,
+                    ),
+                )
     elif base_inputs is not None:
         if total_capex_keur is not None:
             _base_capex_total = getattr(base_inputs.capex, "total_capex", None)
