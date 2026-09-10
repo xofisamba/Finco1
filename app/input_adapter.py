@@ -280,6 +280,46 @@ def _zero_financial_capex_subfields(proj: "ProjectInputs") -> "ProjectInputs":
     )
 
 
+# R1: snapshot_key → CapexStructure CapexItem field name (14 editable scalars).
+# Keys match registry binding_label="bound" fields in sections C and D.
+# "contingencies" is formula-derived and excluded.
+_SCALAR_CAPEX_MAP: dict[str, str] = {
+    "capex_epc_contract_keur":        "epc_contract",
+    "capex_production_units_keur":    "production_units",
+    "capex_epc_other_keur":           "epc_other",
+    "capex_grid_connection_keur":     "grid_connection",
+    "capex_ops_prep_keur":            "ops_prep",
+    "capex_insurances_keur":          "insurances",
+    "capex_lease_tax_keur":           "lease_tax",
+    "capex_construction_mgmt_a_keur": "construction_mgmt_a",
+    "capex_commissioning_keur":       "commissioning",
+    "capex_taxes_keur":               "taxes",
+    "capex_project_acquisition_keur": "project_acquisition",
+    "capex_project_rights_keur":      "project_rights",
+    "capex_audit_legal_keur":         "audit_legal",
+    "capex_construction_mgmt_b_keur": "construction_mgmt_b",
+}
+
+
+def _apply_scalar_capex(
+    proj: "ProjectInputs",
+    scalars: dict[str, float],
+) -> "ProjectInputs":
+    """Apply individual scalar CAPEX amounts from ``scalars`` (field_name → kEUR)
+    onto ``proj.capex``, returning a new ProjectInputs.  Only keys present in
+    ``scalars`` are overwritten; absent keys keep their current value.
+
+    ``scalars`` is keyed by CapexStructure field name (e.g. "epc_contract"),
+    NOT the snapshot key.  Values must already be floats.
+    """
+    new_capex = proj.capex
+    for field_name, amount_keur in scalars.items():
+        current_item = getattr(new_capex, field_name)
+        new_item = dc_replace(current_item, amount_keur=float(amount_keur))
+        new_capex = dc_replace(new_capex, **{field_name: new_item})
+    return dc_replace(proj, capex=new_capex)
+
+
 def _apply_capex_total(proj: "ProjectInputs", target: float) -> "ProjectInputs":
     """Scale the epc_contract to hit a user-supplied
     ``target`` total capex, preserving all other
@@ -331,6 +371,22 @@ def _resolve_user_inputs(
     operating_hours_p99_1y: float = None,
     opex_y1_keur: float = None,
     total_capex_keur: float = None,
+    # R1 — individual scalar CAPEX inputs (14 fields, section C + D).
+    # When any key is present, scalars take authority over total_capex_keur.
+    capex_epc_contract_keur: float = None,
+    capex_production_units_keur: float = None,
+    capex_epc_other_keur: float = None,
+    capex_grid_connection_keur: float = None,
+    capex_ops_prep_keur: float = None,
+    capex_insurances_keur: float = None,
+    capex_lease_tax_keur: float = None,
+    capex_construction_mgmt_a_keur: float = None,
+    capex_commissioning_keur: float = None,
+    capex_taxes_keur: float = None,
+    capex_project_acquisition_keur: float = None,
+    capex_project_rights_keur: float = None,
+    capex_audit_legal_keur: float = None,
+    capex_construction_mgmt_b_keur: float = None,
     gearing_pct: float = None,
     interest_rate_pct: float = None,
     tenor_years: int = None,
@@ -471,6 +527,17 @@ def _resolve_user_inputs(
         proj = _set_revenue_merchant_price_curve_json(proj, rev_merchant_price_curve_json)
 
     # ── CAPEX (shared resolver) ──────────────────────────────
+    # R1: collect scalar inputs supplied by the caller (14 individual fields).
+    # When ANY scalar is present, they take authority — each named line is set
+    # directly, giving the user per-component control.  total_capex_keur is used
+    # only as a legacy fallback when NO scalar is supplied (backwards compat for
+    # snapshots that only store the aggregate).
+    _scalar_capex: dict[str, float] = {}
+    for _snap_key, _field_name in _SCALAR_CAPEX_MAP.items():
+        _local_val = locals().get(_snap_key)
+        if _local_val is not None:
+            _scalar_capex[_field_name] = float(_local_val)
+
     # When using a seeded base (TUHO / Oborovo factory), only zero
     # financial sub-fields if the caller explicitly supplies a new
     # total_capex_keur, preserving calibrated IDC / bank-fee values.
@@ -478,7 +545,24 @@ def _resolve_user_inputs(
     # matches the factory total within 0.01 kEUR — preserves the
     # calibrated IDC / bank-fee sub-line breakdown and eliminates
     # UI vs factory CAPEX composition drift.
-    if base_inputs is not None:
+    if _scalar_capex:
+        # R1 scalar path: apply named line amounts directly.
+        # Financial sub-fields (IDC, bank fees, etc.) are preserved from base.
+        proj = _apply_scalar_capex(proj, _scalar_capex)
+        # Frozen debt schedule was calibrated for the original capex structure;
+        # disable it so the engine can size debt from gearing/DSCR.
+        if base_inputs is not None and getattr(proj.financing, "use_frozen_excel_senior_debt_schedule", False):
+            proj = dc_replace(
+                proj,
+                financing=dc_replace(
+                    proj.financing,
+                    use_frozen_excel_senior_debt_schedule=False,
+                    fixed_debt_keur=0.0,
+                    shl_amount_keur=0.0,
+                    shl_idc_keur=0.0,
+                ),
+            )
+    elif base_inputs is not None:
         if total_capex_keur is not None:
             _base_capex_total = getattr(base_inputs.capex, "total_capex", None)
             _capex_matches_base = (
@@ -687,6 +771,17 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "total_capex_keur": _snapshot_float(
             snapshot, "total_capex_keur", positive=True
         ),
+        # R1 — individual scalar CAPEX snapshot keys (14 fields).
+        # Present values override total_capex_keur (scalar authority).
+        # Absent / zero → None (legacy total fallback or factory default).
+        **{
+            snap_key: (
+                _snapshot_float(snapshot, snap_key, non_negative=True)
+                if str(snapshot.get(snap_key, "") or "").strip()
+                else None
+            )
+            for snap_key in _SCALAR_CAPEX_MAP
+        },
         # gearing_pct is optional: empty/absent means use the template default.
         "gearing_pct": (
             _snapshot_float(snapshot, "gearing_pct", non_negative=True)
