@@ -310,12 +310,16 @@ def _render_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
-def _build_capex_vm_ctx(project_record, pis) -> dict:
+def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "") -> dict:
     """Build CapexViewModel context for the CAPEX sheet.
 
     Returns capex_vm, capex_group_to_field, and capex_section_fields.
     All CAPEX financial totals come exclusively from CapexViewModel.
     No field lists, formulas, or aggregation are computed here.
+
+    ``ws`` (workspace state) is optional; when supplied, the active scenario's
+    ``_capex_sub_line_overrides`` are applied to sub-line amounts so the
+    display matches the same effective economics as the Run path.
     """
     from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
     from app.input_adapter import build_projectinputs_from_snapshot
@@ -336,10 +340,42 @@ def _build_capex_vm_ctx(project_record, pis) -> dict:
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
     )
 
-    # Load active user-added sub-lines and inject into CapexViewModel so that
-    # group subtotals, hard CAPEX, and total CAPEX reflect custom rows.
+    # Load active user-added sub-lines and apply any active scenario's
+    # _capex_sub_line_overrides so the display matches the Run path exactly.
     from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
-    sub_lines = get_active_sub_lines_for_project(project_record.project_id)
+    from app.services.capex_sub_lines_integration import _extract_sub_line_overrides
+    import dataclasses as _dc
+
+    sub_lines = list(get_active_sub_lines_for_project(project_record.project_id))
+
+    # Resolve scenario overrides the same way the Run path does.
+    _scenario_overrides_raw = None
+    if ws is not None and getattr(ws, "active_scenario_id", None):
+        try:
+            from app.persistence.scenarios_repository import get_scenario as _get_sc
+            workspace_owner = getattr(ws, "user_id", None) or workspace_owner or project_record.project_code
+            _sc_rec = _get_sc(
+                scenario_id=ws.active_scenario_id,
+                user_id=workspace_owner,
+            )
+            if _sc_rec is not None and not _sc_rec.archived:
+                if _sc_rec.project_id == project_record.project_id:
+                    _scenario_overrides_raw = _sc_rec.overrides
+        except Exception:
+            pass  # display must never fail due to scenario resolution error
+
+    sub_line_override_amounts = _extract_sub_line_overrides(_scenario_overrides_raw)
+    if sub_line_override_amounts:
+        adjusted = []
+        for sl in sub_lines:
+            if sl.sub_line_id in sub_line_override_amounts:
+                try:
+                    sl = _dc.replace(sl, amount_keur=float(sub_line_override_amounts[sl.sub_line_id]))
+                except Exception:
+                    pass
+            adjusted.append(sl)
+        sub_lines = adjusted
+
     capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user, sub_lines=sub_lines)
 
     # Registry field list for capex; keyed by short name for group mapping
@@ -389,10 +425,11 @@ def _render_capex_htmx_sheet(
     project_record,
     project: str,
     field_error: str = "",
+    workspace_owner: str = "",
 ) -> HTMLResponse:
     """Render the CAPEX sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
-    ctx.update(_build_capex_vm_ctx(project_record, pis))
+    ctx.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
     sheet_html = _templates.get_template("partials/sheet_capex.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -902,7 +939,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "scenario_url": f"/scenarios?project={urllib.parse.quote(project, safe='')}",
         "library_url": "/library",
     }
-    context.update(_build_capex_vm_ctx(project_record, pis))
+    context.update(_build_capex_vm_ctx(project_record, pis, ws=ws, workspace_owner=workspace_owner))
     context.update(_build_opex_vm_ctx(project_record, pis))
     # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
@@ -1164,6 +1201,7 @@ async def v2_workbook_update(
             return _render_capex_htmx_sheet(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
+                workspace_owner=_workspace_owner,
             )
         if sheet_id == "opex":
             return _render_opex_htmx_sheet(
@@ -1254,6 +1292,7 @@ async def v2_workbook_update(
         elif sheet_id == "capex":
             resp = _render_capex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
+                workspace_owner=_workspace_owner,
             )
         elif sheet_id == "opex":
             resp = _render_opex_htmx_sheet(

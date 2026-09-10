@@ -219,7 +219,7 @@
   {% for group in capex_vm.groups %}
     {% set gf = capex_group_to_field.get(group.code) %}
     {% set alias = capex_alias_groups.get(group.code) %}
-    {% set is_eligible = project_editable and not group.is_readonly and not group.is_contingency and not alias %}
+    {% set is_eligible = project_editable and not group.is_readonly and not group.is_contingency %}
     <details class="v2-capex-group{% if group.is_readonly %} v2-capex-group-engine{% endif %}{% if alias %} v2-capex-group-alias{% endif %}"
              open
              data-group-code="{{ group.code }}">

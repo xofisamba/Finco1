@@ -535,7 +535,7 @@ class TestC11Lifecycle(unittest.TestCase):
                 "last_runtime_snapshot_json, last_runtime_summary_json, "
                 "governance_state_json, dirty, created_at, updated_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,0,?,?)",
-                (workspace_id, project_id, "test-unit-user", project_code,
+                (workspace_id, project_id, "1", project_code,
                  "{}", "{}", "{}", "{}", "{}", now, now),
             )
 
@@ -561,7 +561,7 @@ class TestC11Lifecycle(unittest.TestCase):
         pr = self._make_pr()
         try:
             identity = assemble_consistent_for_get(
-                user_id="test-unit-user",
+                user_id="1",
                 project_id=self.project_id,
                 workbook_version=WORKBOOK.version,
             )
@@ -571,7 +571,7 @@ class TestC11Lifecycle(unittest.TestCase):
 
         result, _hash = add_capex_line(
             project_record=pr,
-            user_id="test-unit-user",
+            user_id="1",
             label="C.11 Audit Custom",
             parent_category_code="C.11",
             amount_keur=300.0,
@@ -596,7 +596,7 @@ class TestC11Lifecycle(unittest.TestCase):
         pr = self._make_pr()
         try:
             identity = assemble_consistent_for_get(
-                user_id="test-unit-user",
+                user_id="1",
                 project_id=self.project_id,
                 workbook_version=WORKBOOK.version,
             )
@@ -605,7 +605,7 @@ class TestC11Lifecycle(unittest.TestCase):
             content_hash = "0" * 64
 
         add_capex_line(
-            project_record=pr, user_id="test-unit-user",
+            project_record=pr, user_id="1",
             label="C11 Legal", parent_category_code="C.11",
             amount_keur=500.0, workbook_version=WORKBOOK.version,
             expected_content_hash=content_hash,
@@ -631,7 +631,7 @@ class TestC11Lifecycle(unittest.TestCase):
         pr = self._make_pr()
         try:
             identity = assemble_consistent_for_get(
-                user_id="test-unit-user", project_id=self.project_id,
+                user_id="1", project_id=self.project_id,
                 workbook_version=WORKBOOK.version,
             )
             content_hash = identity.composite_hash
@@ -639,7 +639,7 @@ class TestC11Lifecycle(unittest.TestCase):
             content_hash = "0" * 64
 
         add_capex_line(
-            project_record=pr, user_id="test-unit-user",
+            project_record=pr, user_id="1",
             label="C11 Legal", parent_category_code="C.11",
             amount_keur=700.0, workbook_version=WORKBOOK.version,
             expected_content_hash=content_hash,
@@ -666,7 +666,7 @@ class TestC11Lifecycle(unittest.TestCase):
         pr = self._make_pr()
         try:
             identity = assemble_consistent_for_get(
-                user_id="test-unit-user", project_id=self.project_id,
+                user_id="1", project_id=self.project_id,
                 workbook_version=WORKBOOK.version,
             )
             content_hash = identity.composite_hash
@@ -674,7 +674,7 @@ class TestC11Lifecycle(unittest.TestCase):
             content_hash = "0" * 64
 
         result, new_hash = add_capex_line(
-            project_record=pr, user_id="test-unit-user",
+            project_record=pr, user_id="1",
             label="C11 To Deactivate", parent_category_code="C.11",
             amount_keur=600.0, workbook_version=WORKBOOK.version,
             expected_content_hash=content_hash,
@@ -682,7 +682,7 @@ class TestC11Lifecycle(unittest.TestCase):
 
         # Deactivate
         deactivate_capex_line(
-            project_record=pr, user_id="test-unit-user",
+            project_record=pr, user_id="1",
             sub_line_id=result.sub_line_id,
             row_version=result.updated_at or "",
             workbook_version=WORKBOOK.version,
@@ -869,7 +869,7 @@ class TestRealPersistenceReload(unittest.TestCase):
             "/v2/workbook/update",
             data={
                 "project": self.project_code,
-                "field_id": "capex.D.epc_contract",
+                "field_id": "capex.C.epc_contract",
                 "value": edit_amount,
                 "workbook_version": wv,
                 "content_hash": ch,
@@ -878,16 +878,16 @@ class TestRealPersistenceReload(unittest.TestCase):
             headers={"HX-Request": "true"},
             follow_redirects=False,
         )
-        if resp.status_code not in (200, 204):
-            self.skipTest(f"CAPEX scalar update returned {resp.status_code}")
+        self.assertIn(
+            resp.status_code, (200, 204),
+            f"CAPEX scalar update must succeed; got {resp.status_code}: {resp.text[:300]}"
+        )
 
         # Reload workspace state and rebuild CAPEX VM
-        pr = get_project_record(user_id="test-unit-user", project_code=self.project_code)
-        if pr is None:
-            self.skipTest("project record not found")
-        ws = get_workspace_state(user_id="test-unit-user", project_id=pr.project_id)
-        if ws is None:
-            self.skipTest("workspace state not found")
+        pr = get_project_record(user_id="1", project_code=self.project_code)
+        self.assertIsNotNone(pr, "project record not found after scalar edit")
+        ws = get_workspace_state(user_id="1", project_id=pr.project_id)
+        self.assertIsNotNone(ws, "workspace state not found after scalar edit")
 
         snap = dict(ws.draft_snapshot or ws.saved_snapshot or {})
         pi = build_projectinputs_from_snapshot(snap)
@@ -933,12 +933,13 @@ class TestRealPersistenceReload(unittest.TestCase):
             headers={"HX-Request": "true"},
             follow_redirects=False,
         )
-        if resp.status_code not in (200,):
-            self.skipTest(f"Custom row add returned {resp.status_code}")
+        self.assertIn(
+            resp.status_code, (200,),
+            f"Custom row add must succeed; got {resp.status_code}: {resp.text[:300]}"
+        )
 
-        pr = get_project_record(user_id="test-unit-user", project_code=self.project_code)
-        if pr is None:
-            self.skipTest("project record not found")
+        pr = get_project_record(user_id="1", project_code=self.project_code)
+        self.assertIsNotNone(pr, "project record not found after custom row add")
 
         sub_lines = get_active_sub_lines_for_project(pr.project_id)
         c05_customs = [sl for sl in sub_lines if sl.parent_category_code == "C.05"]
@@ -946,7 +947,7 @@ class TestRealPersistenceReload(unittest.TestCase):
 
         ws_snap = {}
         from app.persistence.workspace_repository import get_workspace_state
-        ws = get_workspace_state(user_id="test-unit-user", project_id=pr.project_id)
+        ws = get_workspace_state(user_id="1", project_id=pr.project_id)
         if ws:
             ws_snap = dict(ws.draft_snapshot or ws.saved_snapshot or {})
 
@@ -992,7 +993,7 @@ class TestRealRunParity(unittest.TestCase):
     def _post_run(self):
         ch, wv = self._get_content_hash()
         return self.client.post(
-            "/v2/run",
+            "/v2/workbook/run",
             data={"project": self.project_code, "content_hash": ch,
                   "workbook_version": wv},
             headers={"HX-Request": "true"},
@@ -1011,7 +1012,7 @@ class TestRealRunParity(unittest.TestCase):
         ch, wv = self._get_content_hash()
         self.client.post(
             "/v2/workbook/update",
-            data={"project": self.project_code, "field_id": "capex.D.epc_contract",
+            data={"project": self.project_code, "field_id": "capex.C.epc_contract",
                   "value": "48000", "workbook_version": wv, "content_hash": ch,
                   "sheet_id": "capex"},
             headers={"HX-Request": "true"}, follow_redirects=False,
@@ -1027,21 +1028,22 @@ class TestRealRunParity(unittest.TestCase):
         ch2, wv2 = self._get_content_hash()
         with patch("app.api.project_runner.run_project", side_effect=capture_run):
             resp = self.client.post(
-                "/v2/run",
+                "/v2/workbook/run",
                 data={"project": self.project_code, "content_hash": ch2,
                       "workbook_version": wv2},
                 headers={"HX-Request": "true"}, follow_redirects=False,
             )
-        if resp.status_code not in (200, 204):
-            self.skipTest(f"Run returned {resp.status_code}")
-        if not captured:
-            self.skipTest("run_project was not called")
+        self.assertIn(
+            resp.status_code, (200, 204),
+            f"Run must succeed; got {resp.status_code}: {resp.text[:300]}"
+        )
+        self.assertTrue(captured, "run_project was not called — patch did not intercept the run")
 
         pi_run = captured[0]
 
         # Build display VM from the same state
-        pr = get_project_record(user_id="test-unit-user", project_code=self.project_code)
-        ws = get_workspace_state(user_id="test-unit-user", project_id=pr.project_id)
+        pr = get_project_record(user_id="1", project_code=self.project_code)
+        ws = get_workspace_state(user_id="1", project_id=pr.project_id)
         snap = dict(ws.draft_snapshot or ws.saved_snapshot or {})
         pi = build_projectinputs_from_snapshot(snap)
         ctx = build_project_context_for_record(
