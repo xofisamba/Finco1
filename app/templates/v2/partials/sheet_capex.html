@@ -171,6 +171,13 @@
     <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
   {% endif %}
 
+  {% if capex_scenario_error %}
+    <div class="v2-capex-scenario-error" role="alert" data-testid="capex-scenario-error">
+      ⚠ Scenario CAPEX unavailable — {{ capex_scenario_error }}
+      Amounts shown are Base economics.
+    </div>
+  {% endif %}
+
   {# ── Summary totals bar ──────────────────────────────────────────── #}
   <div class="v2-capex-totals-bar" data-testid="capex-totals-bar">
     <div class="v2-capex-total-item">

@@ -348,21 +348,53 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
 
     sub_lines = list(get_active_sub_lines_for_project(project_record.project_id))
 
-    # Resolve scenario overrides the same way the Run path does.
+    # Resolve scenario overrides using the same contract as the Run path (Step 8).
+    # Unlike the Run path which returns an HTTP error on failure, the display path
+    # must still render — but it MUST NOT silently show Base economics when a
+    # scenario is active and resolution fails.  Instead we surface an explicit
+    # capex_scenario_error that the template renders as a visible warning.
     _scenario_overrides_raw = None
+    capex_scenario_error: str = ""
+
     if ws is not None and getattr(ws, "active_scenario_id", None):
+        _effective_owner = workspace_owner or project_record.project_code
+        _active_scenario_id = ws.active_scenario_id
         try:
             from app.persistence.scenarios_repository import get_scenario as _get_sc
-            workspace_owner = getattr(ws, "user_id", None) or workspace_owner or project_record.project_code
-            _sc_rec = _get_sc(
-                scenario_id=ws.active_scenario_id,
-                user_id=workspace_owner,
-            )
-            if _sc_rec is not None and not _sc_rec.archived:
-                if _sc_rec.project_id == project_record.project_id:
-                    _scenario_overrides_raw = _sc_rec.overrides
+            _sc_rec = _get_sc(scenario_id=_active_scenario_id, user_id=_effective_owner)
+            if _sc_rec is None:
+                capex_scenario_error = (
+                    f"Active scenario could not be found (id={_active_scenario_id!r}). "
+                    "Re-select a scenario to see scenario economics."
+                )
+            elif _sc_rec.archived:
+                capex_scenario_error = (
+                    "Active scenario has been archived. "
+                    "Re-select a scenario to see scenario economics."
+                )
+            elif _sc_rec.project_id != project_record.project_id:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "_build_capex_vm_ctx: scenario project_id mismatch "
+                    "scenario=%s scenario.project_id=%s expected=%s",
+                    _active_scenario_id, _sc_rec.project_id, project_record.project_id,
+                )
+                capex_scenario_error = (
+                    "Active scenario does not belong to this project. "
+                    "Re-select a scenario to see scenario economics."
+                )
+            else:
+                _scenario_overrides_raw = _sc_rec.overrides
         except Exception:
-            pass  # display must never fail due to scenario resolution error
+            import logging as _log
+            _log.getLogger(__name__).exception(
+                "_build_capex_vm_ctx: scenario repository lookup failed scenario=%s",
+                _active_scenario_id,
+            )
+            capex_scenario_error = (
+                "Scenario data could not be loaded. "
+                "Re-select a scenario or reload the page."
+            )
 
     sub_line_override_amounts = _extract_sub_line_overrides(_scenario_overrides_raw)
     if sub_line_override_amounts:
@@ -415,6 +447,7 @@ def _build_capex_vm_ctx(project_record, pis, ws=None, workspace_owner: str = "")
         "capex_group_to_field": capex_group_to_field,
         "capex_section_fields": capex_section_fields,
         "capex_alias_groups": capex_alias_groups,
+        "capex_scenario_error": capex_scenario_error,
     }
 
 
