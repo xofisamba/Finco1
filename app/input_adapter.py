@@ -579,18 +579,25 @@ def _resolve_user_inputs(
     # calibrated IDC / bank-fee sub-line breakdown and eliminates
     # UI vs factory CAPEX composition drift.
     if _scalar_capex:
-        # R1 scalar path: apply named line amounts directly.
-        # Financial sub-fields (IDC, bank fees, etc.) are preserved from base.
-        proj = _apply_scalar_capex(proj, _scalar_capex)
-        # Partial-scalar + total fallback (Correction A):
-        # When total_capex_keur is also present AND capex_epc_contract_keur was
-        # NOT explicitly set by the caller, use total_capex_keur to scale
-        # epc_contract as the "remainder" — preserving the user's total intent
-        # when they edit individual lines without touching epc_contract.
-        # This avoids resetting epc_contract to the factory default when only
-        # other CAPEX lines are changed via scalars.
-        if total_capex_keur is not None and "epc_contract" not in _scalar_capex:
+        # R1 scalar authority order (Correction B):
+        #
+        # 1. If a legacy total_capex_keur is present and there is no seeded
+        #    base (factory projects only), first normalise the factory base
+        #    so that epc_contract reflects the pre-edit effective value:
+        #      factory → _apply_capex_total → effective baseline
+        #    This reproduces the exact CAPEX composition the user would have
+        #    seen before they made any scalar edit.
+        #
+        # 2. Apply the explicitly persisted scalar edits on top of that baseline.
+        #
+        # 3. Derive the resulting total from the final CapexItems.
+        #    Do NOT re-force the old aggregate after the scalar edits —
+        #    epc_contract must NOT be used as a balancing plug.
+        if total_capex_keur is not None and base_inputs is None:
+            # Establish pre-edit effective baseline (legacy normalization).
             proj = _apply_capex_total(proj, total_capex_keur)
+        # Apply scalar edits on top of the effective baseline.
+        proj = _apply_scalar_capex(proj, _scalar_capex)
         # For seeded projects, determine whether the effective new CAPEX total
         # represents a material change vs the factory base. A material change
         # disables the frozen debt schedule (if set) so the engine can re-size
