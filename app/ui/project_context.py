@@ -2092,17 +2092,14 @@ def _build_capex_detail_items(
             app_amt = _get_field_value(fname)
             runtime_field = fname
             affects_runtime = afrt
-        elif cat_code in _app_amount_by_cat:
-            # Single-field categories: C.13, C.15, C.16
-            # (categories where the category row IS the child)
-            if cat_code in ("C.13", "C.15", "C.16"):
-                app_amt = _app_amount_by_cat.get(cat_code)
-                if cat_code in _EXCEL_CODE_TO_APP_FIELD:
-                    fname, afrt = _EXCEL_CODE_TO_APP_FIELD[cat_code]
-                    runtime_field = fname
-                    affects_runtime = afrt
-            # C.09 maps two app fields (ops_prep + construction_mgmt_a) →
-            # category total would be misleading per sub-item; skip
+        elif cat_code in ("C.13", "C.15", "C.16"):
+            # Single-field categories where the category row IS the child.
+            # Use canonical registry amount (same source as group subtotal).
+            app_amt = _canonical_amount_by_group.get(cat_code)
+            if cat_code in _EXCEL_CODE_TO_APP_FIELD:
+                fname, afrt = _EXCEL_CODE_TO_APP_FIELD[cat_code]
+                runtime_field = fname
+                affects_runtime = afrt
 
         status = _resolve_status(excel_amt, app_amt, is_backend)
         delta = (round(app_amt - excel_amt, 2)) if (app_amt is not None and excel_amt != 0) else None
@@ -2205,10 +2202,14 @@ def _build_capex_detail_items(
     for _ccode, _fname in _CAT_FIELD_MAP.items():
         _amt = _cat_field_amount(_fname)
         if _fname in _seen_cat_fields:
+            # Alias group: the canonical base belongs to the first (owner) group.
+            # Setting 0.0 here prevents double-counting the base in hard_capex.
+            # Custom sub-lines under this group still contribute their own amounts.
             _r2_alias_groups.add(_ccode)
+            _canonical_amount_by_group[_ccode] = 0.0
         else:
             _seen_cat_fields.add(_fname)
-        _canonical_amount_by_group[_ccode] = _amt
+            _canonical_amount_by_group[_ccode] = _amt
 
     # C.17 Financing (backend-calculated): sum of capex float fields
     _c17 = sum(

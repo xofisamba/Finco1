@@ -30,6 +30,17 @@ if TYPE_CHECKING:
     from app.ui.project_context import ProjectContext
     from app.persistence.capex_sub_lines import CapexSubLine
 
+# Lazy import cache — populated on first call to build_capex_view_model
+_CAPEX_CATEGORY_TO_FIELD: "dict[str, str] | None" = None
+
+
+def _get_cat_field_map() -> "dict[str, str]":
+    global _CAPEX_CATEGORY_TO_FIELD
+    if _CAPEX_CATEGORY_TO_FIELD is None:
+        from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+        _CAPEX_CATEGORY_TO_FIELD = CAPEX_CATEGORY_TO_FIELD
+    return _CAPEX_CATEGORY_TO_FIELD
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -244,6 +255,31 @@ def build_capex_view_model(
     project_code: str = project_ctx.code
     groups: list[CapexGroupVM] = []
 
+    # ── R2: sub-line field tracking ──────────────────────────────────────────
+    # Mirrors the logic in apply_user_sub_lines_replacing_base: when any
+    # active sub-line exists for a CapexStructure field, that field's base
+    # is zeroed in the canonical run-input (REPLACE semantics).  The display
+    # must agree: base = 0 for those fields, amounts come from custom rows.
+    _cat_field_map = _get_cat_field_map()
+    _fields_with_sub_lines: set[str] = set()
+    if sub_lines:
+        for _sl in sub_lines:
+            if getattr(_sl, "is_active", True):
+                _fn = _cat_field_map.get(_sl.parent_category_code)
+                if _fn:
+                    _fields_with_sub_lines.add(_fn)
+
+    # Field-owner map: first group code that maps to each field = owner.
+    # Any later group mapping the same field is an alias.
+    _field_owner: dict[str, str] = {}
+    for _code, _fname in _cat_field_map.items():
+        if _fname not in _field_owner:
+            _field_owner[_fname] = _code
+
+    def _is_alias(group_code: str) -> bool:
+        fn = _cat_field_map.get(group_code)
+        return fn is not None and _field_owner.get(fn) != group_code
+
     # Index sub-lines by parent_category_code for O(1) lookup per group.
     sub_lines_by_group: dict[str, list[CapexSubLine]] = {}
     if sub_lines:
@@ -265,7 +301,7 @@ def build_capex_view_model(
         group_is_reserve = group_code == _RESERVE_CODE
         # R2: canonical group amount from CapexStructure (set by _build_capex_detail_items)
         app_group_amount: float | None = cat.get("app_group_amount_keur")
-        is_alias_group: bool = cat.get("is_alias_group", False)
+        is_alias_group: bool = _is_alias(group_code)
 
         lines: list[CapexLineVM] = []
         for order, child in enumerate(cat.get("children", ()), start=1):
@@ -318,7 +354,8 @@ def build_capex_view_model(
             ))
 
         # Inject user-added custom sub-lines for this group.
-        # Only eligible (non-readonly, non-contingency) groups accept custom rows.
+        # C.11 is a valid persisted parent; alias status only affects base-amount
+        # computation, NOT eligibility for custom sub-lines.
         if not group_is_readonly and not group_is_contingency:
             for sl in sub_lines_by_group.get(group_code, []):
                 sl_amount = float(sl.amount_keur or 0.0)
@@ -350,10 +387,29 @@ def build_capex_view_model(
 
         active_lines = [ln for ln in lines if ln.is_active]
         custom_subtotal = sum(ln.amount_keur for ln in active_lines if ln.is_custom)
-        # R2: canonical subtotal — group-level CapexStructure amount + user custom rows.
-        # Sub-line ref rows are informational only and do not drive the subtotal.
-        if app_group_amount is not None:
-            subtotal_keur = app_group_amount + custom_subtotal
+
+        # R2: effective canonical base for this group's subtotal.
+        #
+        # Rule 1 (alias): Alias groups (e.g. C.11 sharing audit_legal with C.08)
+        #   have canonical base = 0.  The owner group (C.08) holds the base.
+        #   Custom rows under C.11 still contribute their own amounts.
+        #
+        # Rule 2 (sub-lines replace base): When any active sub-line exists for
+        #   the field mapped to this group (REPLACE semantics in
+        #   apply_user_sub_lines_replacing_base), the base is zeroed in the run
+        #   path.  The display must agree: base = 0, custom rows are the total.
+        #
+        # Rule 3 (no sub-lines, owner): Use app_group_amount_keur (canonical
+        #   registry amount from _build_capex_detail_items).
+        field_name = _cat_field_map.get(group_code)
+        field_has_sub_lines = field_name in _fields_with_sub_lines if field_name else False
+        if is_alias_group or field_has_sub_lines:
+            effective_base: float | None = 0.0
+        else:
+            effective_base = app_group_amount
+
+        if effective_base is not None:
+            subtotal_keur = effective_base + custom_subtotal
         else:
             subtotal_keur = sum(ln.amount_keur for ln in active_lines)
         subtotal_per_mw = _safe_per_mw(subtotal_keur, capacity_mw)
@@ -372,12 +428,14 @@ def build_capex_view_model(
         ))
 
     # Aggregate totals
-    # R2: exclude readonly groups (C.17, C.18) AND alias groups (C.11) from hard_capex.
-    # Alias groups display the same canonical field as their owner — counting them
-    # would double-count audit_legal (and any future shared field).
+    # R2: exclude only readonly groups (C.17, C.18) from hard_capex.
+    # Alias groups (C.11) are included — their subtotal = 0 base + C.11 custom
+    # sub-lines, which are real economics distinct from C.08 custom sub-lines.
+    # Double-counting is prevented by Rule 1 above (alias base = 0) and by
+    # Rule 2 (owner base = 0 when sub-lines exist for the shared field).
     hard_capex_keur = sum(
         g.subtotal_keur for g in groups
-        if g.code not in _READONLY_GROUP_CODES and not g.is_alias
+        if g.code not in _READONLY_GROUP_CODES
     )
     financing_keur = next(
         (g.subtotal_keur for g in groups if g.code == _FINANCING_CODE), 0.0
