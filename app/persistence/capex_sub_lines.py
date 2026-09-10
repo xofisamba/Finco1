@@ -548,8 +548,19 @@ def resolve_effective_sub_line_amount(
         True
     """
     if scenario_override_amount_keur is None:
-        return float(default_amount_keur)
-    return float(scenario_override_amount_keur)
+        result = float(default_amount_keur)
+    else:
+        result = float(scenario_override_amount_keur)
+    # Defense-in-depth: the effective amount must always be finite.
+    # _extract_sub_line_overrides guards before this point; this guard
+    # catches any remaining path (e.g. non-finite default_amount_keur).
+    import math
+    if not math.isfinite(result):
+        raise ValueError(
+            f"resolve_effective_sub_line_amount: computed non-finite amount "
+            f"({result!r}); refusing to use as CAPEX economics."
+        )
+    return result
 
 
 def fold_sub_lines_into_capex(

@@ -589,6 +589,24 @@ def update_scenario_overrides(
         {"_capex_sub_line_overrides", "_capex_sub_line_overrides_metadata"}
     )
 
+    # R3/F05 — Validate _capex_sub_line_overrides before persistence.
+    # Each amount value in the map must be a finite float.  NaN / +Inf / -Inf
+    # are rejected here so they can never reach the DB.  The metadata key is
+    # NOT subjected to amount-map validation.
+    if "_capex_sub_line_overrides" in overrides:
+        from app.workbook.numeric_guard import NumericGuardError, assert_finite_float
+        raw_map = overrides["_capex_sub_line_overrides"]
+        if isinstance(raw_map, dict):
+            for sub_line_id, amount in raw_map.items():
+                try:
+                    v = float(amount)
+                    assert_finite_float(v, label=f"Sub-line amount ({sub_line_id})")
+                except (ValueError, TypeError, NumericGuardError) as exc:
+                    raise ValueError(
+                        f"_capex_sub_line_overrides: non-finite amount for "
+                        f"sub_line_id {sub_line_id!r}: {exc}"
+                    ) from exc
+
     # Merge: existing overrides + new ones (new ones win)
     merged = dict(record.overrides)
     for key, value in overrides.items():

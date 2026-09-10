@@ -1096,5 +1096,322 @@ class TestValidInputRegression(unittest.TestCase):
         self.assertEqual(failed, [], f"Valid inputs regressed:\n" + "\n".join(failed))
 
 
+# ---------------------------------------------------------------------------
+# 20. Typed with_value() integer contract — fractional typed values rejected
+# ---------------------------------------------------------------------------
+
+class TestWithValueTypedIntegerContract(unittest.TestCase):
+    """C — Typed with_value() integer contract.
+
+    INT/YEARS/MONTHS fields must reject fractional typed floats.
+    No round/floor/ceil/truncate.
+    """
+
+    def _pis(self):
+        return ProjectInputSet.from_snapshot({}, workbook=WORKBOOK)
+
+    def test_with_value_int_field_fractional_float_rejected(self):
+        pis = self._pis()
+        with self.assertRaises(ProjectInputSetError):
+            pis.with_value(_YEARS_FIELD.field_id, 18.9)
+
+    def test_with_value_int_field_1_point_5_rejected(self):
+        pis = self._pis()
+        with self.assertRaises(ProjectInputSetError):
+            pis.with_value(_MONTHS_FIELD.field_id, 1.5)
+
+    def test_with_value_int_field_exact_integer_float_accepted(self):
+        # 18.0 must be accepted and stored as int 18
+        pis = self._pis()
+        new_pis = pis.with_value(_YEARS_FIELD.field_id, 18.0)
+        stored = new_pis.values[_YEARS_FIELD.field_id]
+        self.assertEqual(stored, 18)
+        self.assertIsInstance(stored, int)
+
+    def test_with_value_int_field_int_accepted(self):
+        pis = self._pis()
+        new_pis = pis.with_value(_YEARS_FIELD.field_id, 20)
+        self.assertEqual(new_pis.values[_YEARS_FIELD.field_id], 20)
+
+    def test_with_value_int_field_nan_float_rejected(self):
+        pis = self._pis()
+        with self.assertRaises(ProjectInputSetError):
+            pis.with_value(_YEARS_FIELD.field_id, float("nan"))
+
+    def test_with_value_int_field_inf_float_rejected(self):
+        pis = self._pis()
+        with self.assertRaises(ProjectInputSetError):
+            pis.with_value(_YEARS_FIELD.field_id, float("inf"))
+
+    def test_with_value_float_field_still_accepts_finite(self):
+        # Verify float-typed fields are unaffected by the int contract
+        pis = self._pis()
+        new_pis = pis.with_value(_MW_FIELD.field_id, 100.5)
+        self.assertAlmostEqual(new_pis.values[_MW_FIELD.field_id], 100.5)
+
+
+# ---------------------------------------------------------------------------
+# 21–22. Scenario sub-line override persistence validation (A)
+# ---------------------------------------------------------------------------
+
+class TestScenarioSubLineOverridePersistenceValidation(unittest.TestCase):
+    """A — update_scenario_overrides must reject non-finite amounts.
+
+    Uses unittest.mock to exercise the validation logic in
+    update_scenario_overrides without requiring a real DB scenario row.
+    The validation gate fires BEFORE the cursor write, so rejection
+    guarantees no DB mutation.
+    """
+
+    def _make_fake_scenario(self, existing_overrides: dict):
+        """Build a mock ScenarioRecord with is_base_case=False."""
+        from unittest.mock import MagicMock
+        sc = MagicMock()
+        sc.is_base_case = False
+        sc.overrides = dict(existing_overrides)
+        sc.base_input_set = {}
+        sc.snapshot = {}
+        return sc
+
+    def _run_update(self, scenario, new_overrides: dict):
+        """Call update_scenario_overrides with a mocked get_scenario."""
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        with patch("app.persistence.scenarios_repository.get_scenario",
+                   return_value=scenario):
+            with patch("app.persistence.scenarios_repository.resolve_scenario_snapshot",
+                       return_value={}):
+                with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                    mock_cur.return_value.__enter__ = lambda s: MagicMock()
+                    mock_cur.return_value.__exit__ = MagicMock(return_value=False)
+                    return update_scenario_overrides(
+                        user_id="test-user",
+                        scenario_id="test-scenario-id",
+                        overrides={"_capex_sub_line_overrides": new_overrides},
+                    )
+
+    def test_valid_finite_amount_accepted(self):
+        from unittest.mock import MagicMock
+        sc = self._make_fake_scenario({})
+        # Should not raise
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.resolve_scenario_snapshot",
+                       return_value={}):
+                with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                    ctx = MagicMock()
+                    ctx.__enter__ = lambda s: MagicMock()
+                    ctx.__exit__ = MagicMock(return_value=False)
+                    mock_cur.return_value = ctx
+                    # Should not raise
+                    try:
+                        from app.persistence.scenarios_repository import update_scenario_overrides
+                        update_scenario_overrides(
+                            user_id="u", scenario_id="s",
+                            overrides={"_capex_sub_line_overrides": {"uuid": 1000.0}},
+                        )
+                    except Exception as e:
+                        self.fail(f"Valid amount raised unexpectedly: {e}")
+
+    def test_zero_amount_accepted(self):
+        # Explicit zero is a valid override (replaces default)
+        self._run_update_no_raise({"uuid": 0.0})
+
+    def test_negative_finite_amount_accepted(self):
+        self._run_update_no_raise({"uuid": -500.0})
+
+    def _run_update_no_raise(self, override_map: dict):
+        from unittest.mock import MagicMock
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({})
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.resolve_scenario_snapshot",
+                       return_value={}):
+                with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                    ctx = MagicMock()
+                    ctx.__enter__ = lambda s: MagicMock()
+                    ctx.__exit__ = MagicMock(return_value=False)
+                    mock_cur.return_value = ctx
+                    try:
+                        update_scenario_overrides(
+                            user_id="u", scenario_id="s",
+                            overrides={"_capex_sub_line_overrides": override_map},
+                        )
+                    except Exception as e:
+                        self.fail(f"Valid map raised unexpectedly: {e}")
+
+    def test_nan_amount_rejected_before_db(self):
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({"_capex_sub_line_overrides": {"uuid": 1000.0}})
+        db_called = []
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                mock_cur.side_effect = lambda: db_called.append(True) or MagicMock()
+                with self.assertRaises(ValueError):
+                    update_scenario_overrides(
+                        user_id="u", scenario_id="s",
+                        overrides={"_capex_sub_line_overrides": {"uuid": float("nan")}},
+                    )
+        # DB cursor must NOT have been opened — validation fired before any write
+        self.assertEqual(db_called, [],
+                         "DB cursor was opened despite NaN validation failure "
+                         "(partial persistence risk)")
+
+    def test_pos_inf_rejected_before_db(self):
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({})
+        db_called = []
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                mock_cur.side_effect = lambda: db_called.append(True) or MagicMock()
+                with self.assertRaises(ValueError):
+                    update_scenario_overrides(
+                        user_id="u", scenario_id="s",
+                        overrides={"_capex_sub_line_overrides": {"uuid": float("inf")}},
+                    )
+        self.assertEqual(db_called, [])
+
+    def test_neg_inf_rejected_before_db(self):
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({})
+        db_called = []
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                mock_cur.side_effect = lambda: db_called.append(True) or MagicMock()
+                with self.assertRaises(ValueError):
+                    update_scenario_overrides(
+                        user_id="u", scenario_id="s",
+                        overrides={"_capex_sub_line_overrides": {"uuid": float("-inf")}},
+                    )
+        self.assertEqual(db_called, [])
+
+    def test_nan_string_amount_rejected(self):
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({})
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with self.assertRaises(ValueError):
+                update_scenario_overrides(
+                    user_id="u", scenario_id="s",
+                    overrides={"_capex_sub_line_overrides": {"uuid": "nan"}},
+                )
+
+    def test_infinity_string_amount_rejected(self):
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({})
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with self.assertRaises(ValueError):
+                update_scenario_overrides(
+                    user_id="u", scenario_id="s",
+                    overrides={"_capex_sub_line_overrides": {"uuid": "Infinity"}},
+                )
+
+    def test_partial_map_nan_key_rejects_entire_update(self):
+        # A map with one valid key and one NaN key must be entirely rejected
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({"_capex_sub_line_overrides": {"uuid-a": 500.0}})
+        db_called = []
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                mock_cur.side_effect = lambda: db_called.append(True) or MagicMock()
+                with self.assertRaises(ValueError):
+                    update_scenario_overrides(
+                        user_id="u", scenario_id="s",
+                        overrides={"_capex_sub_line_overrides":
+                                   {"uuid-a": 500.0, "uuid-b": float("nan")}},
+                    )
+        self.assertEqual(db_called, [],
+                         "Partial persistence: DB cursor opened even though NaN was present")
+
+    def test_metadata_key_not_subjected_to_amount_validation(self):
+        # _capex_sub_line_overrides_metadata is opaque and must NOT be validated
+        # as an amount map — it's a different reserved key
+        from app.persistence.scenarios_repository import update_scenario_overrides
+        sc = self._make_fake_scenario({})
+        with patch("app.persistence.scenarios_repository.get_scenario", return_value=sc):
+            with patch("app.persistence.scenarios_repository.resolve_scenario_snapshot",
+                       return_value={}):
+                with patch("app.persistence.scenarios_repository.get_cursor") as mock_cur:
+                    from unittest.mock import MagicMock
+                    ctx = MagicMock()
+                    ctx.__enter__ = lambda s: MagicMock()
+                    ctx.__exit__ = MagicMock(return_value=False)
+                    mock_cur.return_value = ctx
+                    try:
+                        update_scenario_overrides(
+                            user_id="u", scenario_id="s",
+                            overrides={"_capex_sub_line_overrides_metadata":
+                                       {"some": "opaque_blob"}},
+                        )
+                    except Exception as e:
+                        self.fail(f"Metadata key incorrectly validated as amount map: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 23. Historical malformed override consumption guard (B)
+# ---------------------------------------------------------------------------
+
+class TestHistoricalNonFiniteOverrideConsumption(unittest.TestCase):
+    """B — Defense in depth at consumption boundary.
+
+    A historical persisted NaN/Inf must NOT silently become model economics.
+    _extract_sub_line_overrides must raise SubLineOverrideNonFiniteError.
+    """
+
+    def test_extract_raises_on_nan_amount(self):
+        from app.services.capex_sub_lines_integration import (
+            SubLineOverrideNonFiniteError, _extract_sub_line_overrides,
+        )
+        # Simulate a historical record with a NaN override
+        overrides = {"_capex_sub_line_overrides": {"uuid-nan": float("nan")}}
+        with self.assertRaises(SubLineOverrideNonFiniteError):
+            _extract_sub_line_overrides(overrides)
+
+    def test_extract_raises_on_pos_inf_amount(self):
+        from app.services.capex_sub_lines_integration import (
+            SubLineOverrideNonFiniteError, _extract_sub_line_overrides,
+        )
+        overrides = {"_capex_sub_line_overrides": {"uuid-inf": float("inf")}}
+        with self.assertRaises(SubLineOverrideNonFiniteError):
+            _extract_sub_line_overrides(overrides)
+
+    def test_extract_raises_on_neg_inf_amount(self):
+        from app.services.capex_sub_lines_integration import (
+            SubLineOverrideNonFiniteError, _extract_sub_line_overrides,
+        )
+        overrides = {"_capex_sub_line_overrides": {"uuid-ninf": float("-inf")}}
+        with self.assertRaises(SubLineOverrideNonFiniteError):
+            _extract_sub_line_overrides(overrides)
+
+    def test_extract_finite_values_pass(self):
+        from app.services.capex_sub_lines_integration import _extract_sub_line_overrides
+        overrides = {"_capex_sub_line_overrides": {"uuid-ok": 1000.0, "uuid-zero": 0.0}}
+        result = _extract_sub_line_overrides(overrides)
+        self.assertEqual(result, {"uuid-ok": 1000.0, "uuid-zero": 0.0})
+
+    def test_extract_empty_map_is_valid(self):
+        from app.services.capex_sub_lines_integration import _extract_sub_line_overrides
+        result = _extract_sub_line_overrides({"_capex_sub_line_overrides": {}})
+        self.assertEqual(result, {})
+
+    def test_resolve_effective_rejects_non_finite_default(self):
+        from app.persistence.capex_sub_lines import resolve_effective_sub_line_amount
+        with self.assertRaises(ValueError):
+            resolve_effective_sub_line_amount(float("nan"), None)
+
+    def test_resolve_effective_rejects_non_finite_override(self):
+        from app.persistence.capex_sub_lines import resolve_effective_sub_line_amount
+        with self.assertRaises(ValueError):
+            resolve_effective_sub_line_amount(100.0, float("inf"))
+
+    def test_resolve_effective_finite_accepted(self):
+        from app.persistence.capex_sub_lines import resolve_effective_sub_line_amount
+        self.assertAlmostEqual(resolve_effective_sub_line_amount(50.0, 999.0), 999.0)
+        self.assertAlmostEqual(resolve_effective_sub_line_amount(50.0, None), 50.0)
+        self.assertAlmostEqual(resolve_effective_sub_line_amount(50.0, 0.0), 0.0)
+
+    def test_sublineoverride_nonfinite_is_valueerror(self):
+        from app.services.capex_sub_lines_integration import SubLineOverrideNonFiniteError
+        # Must be a ValueError so it propagates through Run paths that catch ValueError
+        self.assertTrue(issubclass(SubLineOverrideNonFiniteError, ValueError))
+
+
 if __name__ == "__main__":
     unittest.main()

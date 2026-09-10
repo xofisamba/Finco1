@@ -97,6 +97,11 @@ _NON_EDITABLE_SOURCES: frozenset[SourceOfTruth] = frozenset({
     SourceOfTruth.DERIVED_UI,
 })
 
+# FieldType values that require whole-number semantics.
+_INT_FIELD_TYPES: frozenset[FieldType] = frozenset({
+    FieldType.INT, FieldType.YEARS, FieldType.MONTHS,
+})
+
 
 class ProjectInputSetError(ValueError):
     """Raised when a ProjectInputSet cannot be built from a snapshot,
@@ -464,6 +469,16 @@ class ProjectInputSet:
                     assert_finite_float(value, label=spec.label)
                 except NumericGuardError as exc:
                     raise ProjectInputSetError(str(exc)) from exc
+                # INT/YEARS/MONTHS fields must not receive fractional floats —
+                # no silent truncation.  Exact integer-valued floats (18.0) are
+                # coerced to int; fractional floats (18.9) are rejected.
+                if spec.field_type in _INT_FIELD_TYPES:
+                    from math import floor
+                    if value != floor(value):
+                        raise ProjectInputSetError(
+                            f"{spec.label} must be a whole number (got {value!r})."
+                        )
+                    value = int(value)
             new_values[field_id] = value
             # Encode back to string for the snapshot origin.
             if isinstance(value, date):
