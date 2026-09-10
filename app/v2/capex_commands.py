@@ -64,6 +64,7 @@ from app.persistence.capex_sub_lines import (
 )
 from app.persistence.db import get_connection
 from app.persistence.workspace_repository import update_composite_hash_cursor
+from app.workbook.numeric_guard import NumericGuardError, assert_finite_float
 from app.workbook.registry import WORKBOOK
 
 # Groups that are derived/computed — no custom rows allowed even though the
@@ -109,9 +110,28 @@ class CapexRowNotFoundError(CapexCommandError):
     """Sub-line not found or not active for this project."""
 
 
+class CapexInvalidAmountError(CapexCommandError):
+    """amount_keur is non-finite (NaN, +Inf, -Inf, or overflow)."""
+
+
 # ---------------------------------------------------------------------------
 # Guard helpers
 # ---------------------------------------------------------------------------
+
+
+def _parse_finite_amount_keur(raw: Any) -> float:
+    """Convert *raw* to a finite float for amount_keur.
+
+    Raises CapexInvalidAmountError for NaN, +Inf, -Inf, or overflow.
+    """
+    try:
+        v = float(raw)
+        assert_finite_float(v, label="Amount (kEUR)")
+    except (ValueError, TypeError, NumericGuardError) as exc:
+        raise CapexInvalidAmountError(
+            f"Amount (kEUR) must be a finite number (got {raw!r})."
+        ) from exc
+    return v
 
 def _check_project_allows(project_record: Any) -> None:
     try:
@@ -316,6 +336,7 @@ def add_capex_line(
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
     _check_group_eligible(parent_category_code)
+    _amount = _parse_finite_amount_keur(amount_keur)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()
@@ -326,7 +347,7 @@ def add_capex_line(
             project_id=project_id,
             parent_category_code=parent_category_code,
             label=label,
-            amount_keur=float(amount_keur),
+            amount_keur=_amount,
             comments=notes,
         )
     return result_holder[0], hash_out.value
@@ -355,6 +376,7 @@ def update_capex_line(
     """
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
+    _amount = _parse_finite_amount_keur(amount_keur)
 
     project_id: str = project_record.project_id
     hash_out = _HashOut()
@@ -366,7 +388,7 @@ def update_capex_line(
             project_id=project_id,
             sub_line_id=sub_line_id,
             label=label,
-            amount_keur=float(amount_keur),
+            amount_keur=_amount,
             comments=notes,
             row_version=row_version,
         )

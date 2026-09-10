@@ -202,10 +202,11 @@ class WorkbookUpdateService:
         try:
             typed = _coerce_value(stripped, spec)
         except ProjectInputSetError as exc:
+            # exc.args[0] is already a user-displayable message (no snapshot internals).
             return FieldValidationResult(
                 field_id=field_id, raw_value=raw_value, typed_value=None,
                 spec=spec,
-                error=f"{spec.label}: invalid value {raw_value!r} — {exc}"
+                error=str(exc),
             )
 
         # --- 4. Options validation (SELECT) ------------------------------

@@ -51,6 +51,12 @@ from datetime import date
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Mapping, Optional
 
+from app.workbook.numeric_guard import (
+    NumericGuardError,
+    assert_finite_float,
+    parse_finite_float,
+    parse_strict_int,
+)
 from app.workbook.registry import WORKBOOK
 from app.workbook.specs import (
     BindingStatus,
@@ -116,9 +122,16 @@ def _coerce_value(raw: str, spec: FieldSpec) -> Any:
             FieldType.FLOAT, FieldType.MW, FieldType.MWH,
             FieldType.KEUR, FieldType.PCT,
         ):
-            return float(stripped)
+            try:
+                return parse_finite_float(stripped, label=spec.label)
+            except NumericGuardError as exc:
+                # Surface user-displayable message directly, without snapshot internals.
+                raise ProjectInputSetError(str(exc)) from exc
         if spec.field_type in (FieldType.INT, FieldType.YEARS, FieldType.MONTHS):
-            return int(float(stripped))
+            try:
+                return parse_strict_int(stripped, label=spec.label)
+            except NumericGuardError as exc:
+                raise ProjectInputSetError(str(exc)) from exc
         if spec.field_type == FieldType.DATE:
             return date.fromisoformat(stripped)
         if spec.field_type == FieldType.BOOL:
@@ -443,6 +456,14 @@ class ProjectInputSet:
             new_values.pop(field_id, None)
             new_origin[spec.snapshot_key] = ""
         else:
+            # Guard: typed floats must also be finite — prevents callers from
+            # bypassing numeric safety by passing float("nan")/float("inf")
+            # directly as an already-typed value.
+            if isinstance(value, float):
+                try:
+                    assert_finite_float(value, label=spec.label)
+                except NumericGuardError as exc:
+                    raise ProjectInputSetError(str(exc)) from exc
             new_values[field_id] = value
             # Encode back to string for the snapshot origin.
             if isinstance(value, date):
