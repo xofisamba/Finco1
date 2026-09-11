@@ -117,10 +117,84 @@ def build_values_only_export_for_project(
 
 # ── Runtime Summary CSV export ────────────────────────────────────────────────
 
+def resolve_snapshot_authoritative_project_inputs(project_record, user_id):
+    """R5/F04 — resolve the persisted working-copy inputs for export.
+
+    Returns the canonical effective ProjectInputs built from the user's
+    persisted draft snapshot (the SAME materialization Workbook V2 Run uses,
+    including the active-scenario CAPEX/OPEX overlays), or ``None`` when the
+    project is factory-authoritative (no record / protected reference /
+    template origin) so callers keep the historical factory path.
+
+    Raises ValueError (fail-closed, handled by the routes' 400 error page)
+    when a user-owned project has no usable persisted state — the export
+    must never silently substitute factory economics for a user project.
+    """
+    if project_record is None or user_id is None:
+        return None
+    origin = getattr(project_record, "project_origin", "") or ""
+    if origin != "user_created":
+        # factory_template / saved_baseline references: the factory (or the
+        # reference's own baseline) remains the authoritative economics.
+        return None
+    from app.persistence.workspace_repository import get_workspace_state
+
+    ws = get_workspace_state(user_id, project_record.project_id)
+    if ws is None or not ws.draft_snapshot:
+        raise ValueError(
+            "No saved working-copy state exists for this project yet. "
+            "Open the workbook and save before exporting."
+        )
+    # ONE authority path: the exact materialization Workbook V2 Run uses
+    # (ProjectInputSet.from_snapshot on the draft -> to_projectinputs()).
+    from app.workbook.service import WorkbookService
+
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    project_inputs = pis.to_projectinputs()
+
+    # Scenario overlay — mirror V2 Run steps 9-10 (same helpers, same order):
+    # active scenario CAPEX replace-fold and OPEX additive-fold.
+    if ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+
+        sc = get_scenario(scenario_id=ws.active_scenario_id, user_id=user_id)
+        if (
+            sc is not None
+            and not getattr(sc, "archived", False)
+            and getattr(sc, "project_id", None) == project_record.project_id
+        ):
+            import dataclasses as _dc
+
+            from app.services.capex_sub_lines_integration import (
+                apply_user_sub_lines_replacing_base,
+            )
+            from app.services.opex_sub_lines_integration import (
+                apply_user_sub_lines_to_opex,
+            )
+
+            folded_capex = apply_user_sub_lines_replacing_base(
+                project_inputs.capex,
+                project_id=project_record.project_id,
+                scenario_overrides=sc.overrides,
+            )
+            if folded_capex is not project_inputs.capex:
+                project_inputs = _dc.replace(project_inputs, capex=folded_capex)
+            folded_opex = apply_user_sub_lines_to_opex(
+                project_inputs.opex,
+                project_id=project_record.project_id,
+                scenario_overrides=sc.overrides,
+            )
+            if folded_opex is not project_inputs.opex:
+                project_inputs = _dc.replace(project_inputs, opex=folded_opex)
+    return project_inputs
+
+
 def build_runtime_summary_csv_export(
     runtime_project_code: str,
     *,
     safe_project: str | None = None,
+    project_record=None,
+    user_id=None,
 ) -> ExportResponse:
     """Build runtime summary CSV bytes.
 
@@ -137,7 +211,17 @@ def build_runtime_summary_csv_export(
         # PR-8 single-calculation contract: ONE production execution → rows
         # once → the SAME rows are serialized to CSV. The serialization layer
         # is financial-calculation-free.
-        runtime_rows = build_runtime_summary_rows(runtime_project_code)
+        saved_inputs = resolve_snapshot_authoritative_project_inputs(
+            project_record, user_id
+        )
+        if saved_inputs is not None:
+            # R5/F04: the user's persisted working copy is the authority.
+            runtime_rows = build_runtime_summary_rows(
+                runtime_project_code, _project_inputs=saved_inputs,
+                runtime_origin="saved_state",
+            )
+        else:
+            runtime_rows = build_runtime_summary_rows(runtime_project_code)
         first_row = runtime_rows[0]
         csv_text = build_runtime_summary_csv(
             runtime_project_code,
@@ -181,6 +265,8 @@ def build_institutional_workbook_export(
     runtime_project_code: str,
     *,
     safe_project: str | None = None,
+    project_record=None,
+    user_id=None,
 ) -> ExportResponse:
     """Build institutional workbook bytes.
 
@@ -201,7 +287,16 @@ def build_institutional_workbook_export(
         # bundle (which already contains runtime_rows, runtime_result and
         # authority metadata) → pure serialization to workbook bytes. No
         # second model run, no separately rebuilt runtime rows.
-        bundle = _build_export_bundle(runtime_project_code)
+        saved_inputs = resolve_snapshot_authoritative_project_inputs(
+            project_record, user_id
+        )
+        bundle = _build_export_bundle(
+            runtime_project_code,
+            project_inputs=saved_inputs,
+            runtime_origin="saved_state" if saved_inputs is not None else None,
+            project_record=project_record,
+            user_id=user_id,
+        )
         first_row = bundle.runtime_rows[0]
         workbook_bytes = export_institutional_workbook_from_bundle(bundle)
     except ValueError as exc:

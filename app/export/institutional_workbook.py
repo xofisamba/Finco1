@@ -332,7 +332,14 @@ def write_runtime_workbook_binding_status_csv(path: str | Path) -> Path:
     return output_path
 
 
-def _build_export_bundle(project: str) -> WorkbookExportBundle:
+def _build_export_bundle(
+    project: str,
+    *,
+    project_inputs=None,
+    runtime_origin: str | None = None,
+    project_record=None,
+    user_id=None,
+) -> WorkbookExportBundle:
     project_key = (project or "tuho").strip().lower()
     # PR-8 correction pass: the institutional workbook obeys PROJECT-LEVEL
     # authority. Clean-ready projects (Generic Solar/Wind) consume the clean
@@ -341,15 +348,22 @@ def _build_export_bundle(project: str) -> WorkbookExportBundle:
     # calibration run — also exactly one — with legacy authority metadata.
     # SAME_PROJECT_SAME_SNAPSHOT_SAME_AUTHORITY: a Solar/Wind Run followed
     # by this export never changes authority.
+    # R5/F04: when the caller resolves the persisted working-copy inputs
+    # (resolve_snapshot_authoritative_project_inputs), those are the export
+    # authority — the factory is NEVER substituted for a user project.
     from app.services.production_waterfall_seam import execute_production_waterfall
 
-    project_inputs = PROJECT_FACTORIES[project_key]()
+    saved_state_authoritative = project_inputs is not None
+    if project_inputs is None:
+        project_inputs = PROJECT_FACTORIES[project_key]()
     execution = execute_production_waterfall(project_inputs)
     runtime_result = execution.result
     authority_metadata = execution.authority_metadata or {}
 
     runtime_rows = build_runtime_summary_rows(
-        project_key, _precomputed=(execution.project_inputs, runtime_result)
+        project_key,
+        _precomputed=(execution.project_inputs, runtime_result),
+        runtime_origin=runtime_origin,
     )
     if execution.clean_run is not None:
         # Clean runtime: financial-statements assembly intentionally
@@ -357,7 +371,24 @@ def _build_export_bundle(project: str) -> WorkbookExportBundle:
         statements = None
     else:
         statements = assemble_financial_statements(runtime_result)
+    # R5/F04: the workbook context must describe the exported project. For a
+    # user-owned working copy the record/snapshot context is authoritative —
+    # the factory context registry would describe the template (e.g. TUHO
+    # 35 MW), not the user's project. Factory-template references keep the
+    # factory context.
     context = get_project_context(project_key)
+    if saved_state_authoritative and project_record is not None:
+        from app.ui.project_context import build_project_context_for_record
+
+        context = build_project_context_for_record(
+            project_code=getattr(project_record, "project_code", "") or project_key,
+            project_name=getattr(project_record, "project_name", "") or project_key,
+            project_type=getattr(project_record, "project_type", None),
+            project_origin=getattr(project_record, "project_origin", "") or "",
+            template_source=getattr(project_record, "template_source", None),
+            baseline_snapshot=getattr(project_record, "baseline_snapshot", None),
+            effective_project_inputs=project_inputs,
+        )
     return WorkbookExportBundle(
         project_key=project_key,
         project_name=runtime_rows[0]["project"],
@@ -579,8 +610,22 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Runtime/evidence boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
     ]
     next_row = _write_key_value_section(sheet, 6, "OPEX summary", rows, include_format=True)
+    def _opex_cell(item, key, attr):
+        # R5/F04: the record-authoritative context carries typed OpexItem
+        # objects while the factory context registry carries plain dicts —
+        # the OPEX line-item table supports both shapes.
+        if isinstance(item, dict):
+            return item.get(key)
+        return getattr(item, attr, None)
+
     item_rows = [
-        (item["name"], item["y1_keur"], item["inflation_pct"], "template assumption", "Template OPEX item")
+        (
+            _opex_cell(item, "name", "name"),
+            _opex_cell(item, "y1_keur", "y1_amount_keur"),
+            _opex_cell(item, "inflation_pct", "annual_inflation"),
+            "template assumption",
+            "Template OPEX item",
+        )
         for item in bundle.context.opex_items
     ]
     _write_simple_table(

@@ -72,13 +72,16 @@ def _project_key(project: str) -> str:
     return key
 
 
-def _run_project(project: str):
+def _run_project(project: str, *, project_inputs=None):
     # PR-8 final correction: the runtime-summary module no longer implements
     # its own authority router — it resolves the factory input and executes
     # through the ONE shared production seam (clean G2C for promoted
     # projects, explicitly classified legacy for blocked projects). No
     # WaterfallRunner / run_clean_production / classifier references here.
-    project_inputs = PROJECT_FACTORIES[_project_key(project)]()
+    # R5/F04: callers may pass the snapshot-authoritative inputs for a user's
+    # persisted working copy; without one the factory remains the authority.
+    if project_inputs is None:
+        project_inputs = PROJECT_FACTORIES[_project_key(project)]()
     from app.services.production_waterfall_seam import execute_production_waterfall
 
     execution = execute_production_waterfall(project_inputs)
@@ -99,6 +102,8 @@ def build_runtime_summary_rows(
     generated_at: str | None = None,
     source_branch: str | None = None,
     _precomputed=None,
+    _project_inputs=None,
+    runtime_origin: str | None = None,
 ) -> list[dict[str, str]]:
     if _precomputed is not None:
         # PR-8: single-calculation reuse — a caller that already ran the
@@ -106,7 +111,8 @@ def build_runtime_summary_rows(
         # only; no second financial calculation).
         project_inputs, result = _precomputed
     else:
-        project_inputs, result = _run_project(project)
+        project_inputs, result = _run_project(
+            project, project_inputs=_project_inputs)
     project_name = project_inputs.info.name
     runtime_timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     timestamp = generated_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -125,7 +131,7 @@ def build_runtime_summary_rows(
         export_timestamp=timestamp,
         export_type="runtime_summary_csv",
         active_project=_project_key(project),
-        runtime_origin="factory_base_runtime",
+        runtime_origin=runtime_origin or "factory_base_runtime",
     )
 
     values = [
