@@ -181,10 +181,15 @@ def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
     project_inputs = pis.to_projectinputs()
 
-    # Scenario overlay — mirror V2 Run (resolve_active_scenario_runtime_snapshot +
-    # CAPEX/OPEX sub-line folds).  Fail closed when active_scenario_id is set
-    # but the scenario cannot be resolved, is archived, or belongs to a
-    # different project.
+    # Scenario overlay — EXACT parity with the live /v2/workbook/run path
+    # (R5 Correction D): Run materialises the persisted pis_draft via
+    # WorkbookService.to_projectinputs, validates the active scenario
+    # (fail-closed on missing/archived/cross-project), and passes
+    # sc.overrides ONLY to the CAPEX replace-fold and OPEX additive-fold.
+    # select_scenario() does NOT rewrite draft_snapshot with scalar
+    # overrides, so the export must not invent scalar scenario economics
+    # that Run does not apply.  Scalar scenario overrides remain a separate,
+    # not-yet-supported remediation — out of R5 scope.
     if ws.active_scenario_id:
         from app.persistence.scenarios_repository import get_scenario
 
@@ -205,23 +210,6 @@ def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority
                 "belongs to a different project; export aborted."
             )
 
-        # Step 1: apply scalar field overrides from sc.overrides into the
-        # draft_snapshot BEFORE materializing ProjectInputs.  This mirrors
-        # resolve_scenario_snapshot in scenarios_repository, which V2 Run uses
-        # via resolve_active_scenario_runtime_snapshot → Branch A.
-        # Without this step, tariff_eur_mwh and other SCENARIO_INPUT_FIELDS
-        # overrides would be silently ignored.
-        from app.persistence.scenarios_repository import resolve_scenario_snapshot
-
-        scenario_merged_snapshot = resolve_scenario_snapshot(
-            current_snapshot, sc.overrides or {},
-        )
-        from app.workbook.input_set import ProjectInputSet
-
-        pis_scenario = ProjectInputSet.from_snapshot(scenario_merged_snapshot)
-        project_inputs = pis_scenario.to_projectinputs()
-
-        # Step 2: CAPEX/OPEX sub-line folds on top of the scalar-merged inputs.
         import dataclasses as _dc
 
         from app.services.capex_sub_lines_integration import (

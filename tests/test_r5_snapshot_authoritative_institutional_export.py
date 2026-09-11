@@ -340,52 +340,144 @@ class TestOborovo:
         )
 
 
-class TestScenarioAuthority:
-    def test_h_base_scenario_base_no_stale_state(self, tuho_code):
-        """§7-H: Base export → Scenario export (scalar tariff override) →
-        Base export again. The scenario export must differ (overlay applied),
-        and returning to Base must reproduce the original Base economics
-        with no stale overlay."""
+class TestScenarioRunExportParity:
+    """R5 Correction D — REAL Run-vs-export scenario parity.
+
+    The live /v2/workbook/run materialises the persisted pis_draft and
+    passes sc.overrides ONLY to the CAPEX replace-fold and OPEX
+    additive-fold; select_scenario() does NOT rewrite draft_snapshot with
+    scalar overrides.  Export must do exactly the same.
+
+    Acceptance: Base Run == Base Export; Scenario Run == Scenario Export;
+    return to Base == original Base economics; no stale state.
+    """
+
+    def _run_and_evidence(self, client, code: str) -> tuple[dict, dict]:
+        """POST /v2/workbook/run (real route) and return
+        (persisted runtime summary kpis, export Runtime Summary dict)."""
+        _run(client, code)
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.workspace_repository import get_workspace_state
+
+        rec = get_project_by_code(_USER_ID, code)
+        ws = get_workspace_state(_USER_ID, rec.project_id)
+        kpis = dict(ws.last_runtime_summary or {})
+        assert kpis, "run persisted no runtime summary"
+        wb = _export_workbook(client, code)
+        return kpis, _runtime_summary(wb)
+
+    @staticmethod
+    def _add_scenario(code: str, name: str, overrides: dict):
         from app.persistence.projects_repository import get_project_by_code
         from app.persistence.scenarios_repository import (
-            add_scenario, select_scenario, update_scenario_overrides,
+            add_scenario, update_scenario_overrides,
         )
         from app.persistence.workspace_repository import get_workspace_state
 
-        client = _client()
-        base_wb = _export_workbook(client, tuho_code)
-        base_rs = _runtime_summary(base_wb)
-
-        rec = get_project_by_code(_USER_ID, tuho_code)
+        rec = get_project_by_code(_USER_ID, code)
         ws = get_workspace_state(_USER_ID, rec.project_id)
-        scen_name = "R5 Scenario A"
         sc = add_scenario(
             user_id=_USER_ID, project_id=rec.project_id,
-            project_code=rec.project_code, scenario_name=scen_name,
+            project_code=rec.project_code, scenario_name=name,
             parent_scenario_id=ws.active_scenario_id or "",
             base_input_set=dict(ws.draft_snapshot),
         )
-        # Scalar tariff override: raise tariff by +20 EUR/MWh so IRR differs.
-        # A reduction risks SHL_MATURITY_RESIDUAL_FAILS_CLOSED; raising is safe.
-        base_tariff = float(ws.draft_snapshot.get("tariff_eur_mwh", 60) or 60)
-        overrides = {"tariff_eur_mwh": str(base_tariff + 20.0)}
-        update_scenario_overrides(_USER_ID, sc.scenario_id, overrides)
-        assert select_scenario(_USER_ID, rec.project_id, sc.scenario_id)
+        if overrides:
+            update_scenario_overrides(_USER_ID, sc.scenario_id, overrides)
+        return sc
 
-        scen_wb = _export_workbook(client, tuho_code)
-        scen_rs = _runtime_summary(scen_wb)
-        assert scen_rs["Project IRR"] != pytest.approx(
-            base_rs["Project IRR"], rel=1e-9)
+    def test_h1_scalar_only_scenario_run_export_parity(self, tuho_code):
+        """Scalar-only tariff scenario: under CURRENT application semantics
+        /v2/workbook/run ignores scalar overrides (only CAPEX/OPEX sub-line
+        folds are supported), so the export must ignore them too and
+        reconcile with the SAME run.  Fails on Correction C HEAD
+        d6333316 where the export invented scalar scenario economics."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import select_scenario
+        from app.persistence.workspace_repository import get_workspace_state
 
-        # back to Base: clear active scenario so export reverts to draft base.
+        client = _client()
+        base_kpis, base_rs = self._run_and_evidence(client, tuho_code)
+        assert base_rs["Project IRR"] == pytest.approx(
+            base_kpis["project_irr"], rel=1e-9), (
+            "Base Run and Base Export must reconcile")
+
+        sc = self._add_scenario(
+            tuho_code, "R5 Scalar Scenario",
+            overrides={"tariff_eur_mwh": "80.0"},  # scalar-only override
+        )
+        assert select_scenario(
+            _USER_ID, get_project_by_code(_USER_ID, tuho_code).project_id,
+            sc.scenario_id)
+
+        scen_kpis, scen_rs = self._run_and_evidence(client, tuho_code)
+        # PARITY: export economics == the REAL run's economics for the same
+        # workspace state (both ignore the unsupported scalar override).
+        assert scen_rs["Project IRR"] == pytest.approx(
+            scen_kpis["project_irr"], rel=1e-9), (
+            "Scenario export must not invent economics that "
+            "/v2/workbook/run does not produce (scalar override)")
+        assert scen_rs["Total revenue"] == pytest.approx(
+            scen_kpis["total_revenue_keur"], rel=1e-9)
+
+        # back to Base: clear the active scenario (Run and Export both treat
+        # "no active scenario" as Base)
+        rec = get_project_by_code(_USER_ID, tuho_code)
         _force_active_scenario_id(rec.project_id, None)
-
-        restored_wb = _export_workbook(client, tuho_code)
-        restored_rs = _runtime_summary(restored_wb)
+        restored_kpis, restored_rs = self._run_and_evidence(client, tuho_code)
         assert restored_rs["Project IRR"] == pytest.approx(
             base_rs["Project IRR"], rel=1e-9)
-        assert restored_rs["Total EBITDA"] == pytest.approx(
-            base_rs["Total EBITDA"], rel=1e-9)
+        assert restored_kpis["project_irr"] == pytest.approx(
+            base_kpis["project_irr"], rel=1e-9)
+
+    def test_h2_supported_subline_scenario_run_export_parity(self, tuho_code):
+        """Supported override type (CAPEX user sub-line scenario override):
+        Run and Export must BOTH apply the fold — Scenario Run equals
+        Scenario Export, both differ from Base — and returning to Base
+        restores the original economics."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import select_scenario
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.v2.capex_commands import add_capex_line
+        from app.workbook.registry import WORKBOOK as _WB
+
+        client = _client()
+        rec = get_project_by_code(_USER_ID, tuho_code)
+        wv = _WB.version
+        ch = _hash(client, tuho_code)[0]
+        sub, _new_hash = add_capex_line(
+            project_record=rec, user_id=_USER_ID,
+            label="R5 parity sub-line", parent_category_code="C.05",
+            amount_keur=500.0, workbook_version=wv,
+            expected_content_hash=ch,
+        )
+        base_kpis, base_rs = self._run_and_evidence(client, tuho_code)
+
+        sc = self._add_scenario(
+            tuho_code, "R5 Subline Scenario",
+            overrides={"_capex_sub_line_overrides": {
+                sub.sub_line_id: 5000.0,  # 10x the base amount
+            }},
+        )
+        assert select_scenario(_USER_ID, rec.project_id, sc.scenario_id)
+
+        scen_kpis, scen_rs = self._run_and_evidence(client, tuho_code)
+        # fold is genuinely supported by Run -> economics differ from Base
+        assert scen_kpis["project_irr"] != pytest.approx(
+            base_kpis["project_irr"], abs=1e-9)
+        # PARITY: export == the real run on the same workspace state
+        assert scen_rs["Project IRR"] == pytest.approx(
+            scen_kpis["project_irr"], rel=1e-9)
+        assert scen_rs["Total revenue"] == pytest.approx(
+            scen_kpis["total_revenue_keur"], rel=1e-9)
+
+        # return to Base: clear the active scenario
+        _force_active_scenario_id(rec.project_id, None)
+        restored_kpis, restored_rs = self._run_and_evidence(client, tuho_code)
+        assert restored_rs["Project IRR"] == pytest.approx(
+            base_rs["Project IRR"], rel=1e-9)
+        assert restored_kpis["project_irr"] == pytest.approx(
+            base_kpis["project_irr"], rel=1e-9)
 
 
 class TestNegativeFactoryFallback:
