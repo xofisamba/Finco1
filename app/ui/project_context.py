@@ -2533,6 +2533,7 @@ def build_project_context_for_record(
     template_source: str | None,
     baseline_snapshot: dict[str, Any] | None = None,
     effective_project_inputs=None,
+    current_snapshot: dict[str, Any] | None = None,
 ) -> ProjectContext:
     seed_key = (template_source or "").strip().lower()
     if seed_key == "tuho":
@@ -2555,16 +2556,22 @@ def build_project_context_for_record(
     if seed_key in ("tuho", "oborovo"):
         opex_detail_items_for_user_project = base.opex_detail_items
 
-    snapshot = dict(baseline_snapshot or {})
+    # current_snapshot (persisted draft) takes priority over baseline_snapshot for
+    # user working-copy exports; baseline_snapshot remains the fallback for legacy
+    # callers and factory-template references.
+    snapshot = dict(current_snapshot if current_snapshot is not None else (baseline_snapshot or {}))
     resolved_project_type = (snapshot.get("project_type") or project_type or "").strip().lower()
     technology = "Solar PV" if resolved_project_type == "solar" else "Wind"
 
     # R5/F04-A: when effective_project_inputs is provided it is the ONE causal
     # authority — the same persisted draft that drove the production run.  Read
-    # every scalar display field from it directly so workbook presentation and
-    # runtime economics share identical provenance.  baseline_snapshot is only
-    # consulted as a last-resort fallback when no effective inputs are supplied
-    # (legacy callers, factory-template references).
+    # every engine-bound scalar from it using explicit is-None checks (never
+    # truthiness) so that valid falsy values (0.0 interest, 0 gearing) are not
+    # silently replaced by the baseline.  baseline_snapshot / current_snapshot is
+    # only consulted for metadata-only fields (country, COD string, project type)
+    # that have no ProjectInputs representation, and as a last-resort fallback
+    # when no effective inputs are supplied (legacy callers, factory-template
+    # references).
     if effective_project_inputs is not None:
         _pi = effective_project_inputs
         _info = getattr(_pi, "info", None)
@@ -2572,36 +2579,63 @@ def build_project_context_for_record(
         _rev = getattr(_pi, "revenue", None)
         _fin = getattr(_pi, "financing", None)
         _tax_pi = getattr(_pi, "tax", None)
-        capacity_mw = getattr(_tech, "capacity_mw", None) or _snapshot_float(snapshot, "capacity_mw", base.capacity_mw)
-        operating_hours_p50 = getattr(_tech, "operating_hours_p50", None) or _snapshot_float(snapshot, "p50_hours", base.operating_hours_p50)
+
+        _cap = getattr(_tech, "capacity_mw", None)
+        capacity_mw = _cap if _cap is not None else _snapshot_float(snapshot, "capacity_mw", base.capacity_mw)
+
+        _p50 = getattr(_tech, "operating_hours_p50", None)
+        operating_hours_p50 = _p50 if _p50 is not None else _snapshot_float(snapshot, "p50_hours", base.operating_hours_p50)
+
         ppa_tariff_eur_mwh = getattr(_rev, "ppa_base_tariff", None) if _rev is not None else None
         if ppa_tariff_eur_mwh is None:
             ppa_tariff_eur_mwh = _snapshot_float(snapshot, "tariff_eur_mwh", base.ppa_tariff_eur_mwh)
-        ppa_term_years_raw = getattr(_rev, "ppa_term_years", None) if _rev is not None else None
-        ppa_term_years = int(ppa_term_years_raw) if ppa_term_years_raw is not None else _snapshot_int(snapshot, "ppa_term_years", base.ppa_term_years)
-        construction_months = getattr(_info, "construction_months", None) or _snapshot_int(snapshot, "construction_months", base.construction_months)
-        horizon_years = getattr(_info, "horizon_years", None) or _snapshot_int(snapshot, "horizon_years", base.horizon_years)
+
+        _ppa_term = getattr(_rev, "ppa_term_years", None) if _rev is not None else None
+        ppa_term_years = int(_ppa_term) if _ppa_term is not None else _snapshot_int(snapshot, "ppa_term_years", base.ppa_term_years)
+
+        _cm = getattr(_info, "construction_months", None)
+        construction_months = _cm if _cm is not None else _snapshot_int(snapshot, "construction_months", base.construction_months)
+
+        _hy = getattr(_info, "horizon_years", None)
+        horizon_years = _hy if _hy is not None else _snapshot_int(snapshot, "horizon_years", base.horizon_years)
+
         cod_date_raw = getattr(_info, "cod_date", None)
         cod_date = str(cod_date_raw) if cod_date_raw is not None else ((snapshot.get("cod_date") or base.cod_date or "").strip() or base.cod_date)
-        # Aggregate scalars: derive from effective_project_inputs where possible
+
         _capex_obj = getattr(_pi, "capex", None)
         try:
             total_capex_keur = float(_capex_obj.total_capex) if _capex_obj is not None else _snapshot_float(snapshot, "total_capex_keur", base.total_capex_keur)
         except Exception:
             total_capex_keur = _snapshot_float(snapshot, "total_capex_keur", base.total_capex_keur)
+
         opex_list = getattr(_pi, "opex", None)
         if opex_list:
             opex_y1_total_keur = sum(getattr(item, "y1_amount_keur", 0.0) or 0.0 for item in opex_list)
         else:
             opex_y1_total_keur = _snapshot_float(snapshot, "opex_y1_keur", base.opex_y1_total_keur)
-        target_dscr = getattr(_fin, "target_dscr", None) or _snapshot_float(snapshot, "target_dscr", base.target_dscr)
-        interest_rate_fraction = getattr(_fin, "all_in_rate", None) or _snapshot_float(snapshot, "interest_rate_pct", base.interest_rate_pct * 100.0) / 100.0
-        senior_tenor_years = getattr(_fin, "senior_tenor_years", None) or _snapshot_int(snapshot, "tenor_years", base.senior_tenor_years)
-        gearing_ratio = _snapshot_float(
-            snapshot,
-            "gearing_pct",
-            (base.gearing_pct * 100.0) if base.gearing_pct is not None else 0.0,
-        ) / 100.0
+
+        _dscr = getattr(_fin, "target_dscr", None)
+        target_dscr = _dscr if _dscr is not None else _snapshot_float(snapshot, "target_dscr", base.target_dscr)
+
+        # Explicit is-None check: 0.0 is a valid authoritative interest rate.
+        _rate = getattr(_fin, "all_in_rate", None)
+        interest_rate_fraction = _rate if _rate is not None else _snapshot_float(snapshot, "interest_rate_pct", base.interest_rate_pct * 100.0) / 100.0
+
+        _tenor = getattr(_fin, "senior_tenor_years", None)
+        senior_tenor_years = _tenor if _tenor is not None else _snapshot_int(snapshot, "tenor_years", base.senior_tenor_years)
+
+        # Gearing: engine_path="financing.gearing_ratio" (fraction, not pct).
+        # Explicit is-None check: 0.0 gearing is financially valid.
+        _gr = getattr(_fin, "gearing_ratio", None)
+        if _gr is not None:
+            gearing_ratio = float(_gr)
+        else:
+            gearing_ratio = _snapshot_float(
+                snapshot,
+                "gearing_pct",
+                (base.gearing_pct * 100.0) if base.gearing_pct is not None else 0.0,
+            ) / 100.0
+
         country_market = (snapshot.get("country_market") or base.country_iso or "").strip() or base.country_iso
     else:
         capacity_mw = _snapshot_float(snapshot, "capacity_mw", base.capacity_mw)

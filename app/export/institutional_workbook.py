@@ -380,6 +380,21 @@ def _build_export_bundle(
     if saved_state_authoritative and project_record is not None:
         from app.ui.project_context import build_project_context_for_record
 
+        # R5/F04-A Correction B: pass the CURRENT persisted draft snapshot as
+        # current_snapshot so field values edited post-creation (gearing, interest
+        # rate, etc.) reach the workbook context — not the creation-time baseline.
+        # The draft snapshot is already loaded by resolve_snapshot_authoritative_project_inputs;
+        # fetch it here to avoid passing stale baseline data to the context builder.
+        _current_draft_snapshot: dict | None = None
+        if user_id is not None:
+            try:
+                from app.persistence.workspace_repository import get_workspace_state as _gws
+                _ws = _gws(user_id, getattr(project_record, "project_id", None))
+                if _ws is not None and _ws.draft_snapshot:
+                    _current_draft_snapshot = dict(_ws.draft_snapshot)
+            except Exception:
+                pass
+
         context = build_project_context_for_record(
             project_code=getattr(project_record, "project_code", "") or project_key,
             project_name=getattr(project_record, "project_name", "") or project_key,
@@ -387,6 +402,7 @@ def _build_export_bundle(
             project_origin=getattr(project_record, "project_origin", "") or "",
             template_source=getattr(project_record, "template_source", None),
             baseline_snapshot=getattr(project_record, "baseline_snapshot", None),
+            current_snapshot=_current_draft_snapshot,
             effective_project_inputs=project_inputs,
         )
     return WorkbookExportBundle(
