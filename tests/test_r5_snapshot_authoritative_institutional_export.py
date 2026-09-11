@@ -135,6 +135,31 @@ def _runtime_summary(wb: openpyxl.Workbook) -> dict[str, object]:
     return _sheet_values(wb, "Runtime Summary")
 
 
+def _force_active_scenario_id(project_id: str, scenario_id: str | None) -> None:
+    """Overwrite the workspace's active_scenario_id bypassing normal select flow.
+    Used to inject invalid scenario IDs for fail-closed tests."""
+    from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+
+    ws = get_workspace_state(_USER_ID, project_id)
+    assert ws is not None
+    save_workspace_state(
+        user_id=_USER_ID,
+        project_id=project_id,
+        project_code=ws.project_code,
+        draft_snapshot=dict(ws.draft_snapshot),
+        saved_snapshot=dict(ws.saved_snapshot),
+        governance_state=dict(ws.governance_state or {}),
+        active_scenario_id=scenario_id,
+        active_scenario_name=ws.active_scenario_name if scenario_id is not None else None,
+        last_runtime_snapshot=dict(ws.last_runtime_snapshot or {}),
+        last_runtime_summary=dict(ws.last_runtime_summary or {}),
+        last_runtime_snapshot_id=ws.last_runtime_snapshot_id,
+        last_runtime_origin=ws.last_runtime_origin,
+        last_runtime_scenario_id=ws.last_runtime_scenario_id,
+        replay_metadata=dict(ws.replay_metadata or {}),
+    )
+
+
 def _saved_inputs(code: str):
     from app.persistence.projects_repository import get_project_by_code
     from app.services.export_service import (
@@ -419,3 +444,333 @@ class TestCsvExportAuthority:
             "CSV export reconstructed the factory project — F04 regression")
         assert float(data["project_irr"]) == pytest.approx(
             result["project_irr"], rel=1e-9)
+
+
+# ── R5/F04 Correction A: post-creation scalar edits reach XLSX context ────────
+
+CAPACITY_FIELD = "project_setup.technical.capacity_mw"
+TARIFF_FIELD = "revenue.ppa.base_tariff"
+
+
+class TestScalarEditReachesXlsxContext:
+    """R5/F04-A: the institutional workbook context must consume the SAME
+    persisted draft authority that produced the effective ProjectInputs.
+    A post-creation edit to a scalar field (capacity, tariff) must appear
+    in both the Inputs sheet and the runtime economics of the XLSX export."""
+
+    def test_k_capacity_edit_reaches_inputs_sheet(self):
+        """Create project at 53 MW, edit capacity to 60 MW via V2 pipeline.
+        The Inputs sheet of the XLSX must show 60 MW, not 53 MW (baseline)."""
+        client = _client()
+        code = _create(client, "R5A Capacity Edit", "tuho")
+        _run(client, code)
+        wb_before = _export_workbook(client, code)
+        inputs_before = _sheet_values(wb_before, "Inputs")
+        assert inputs_before.get("Capacity MW") == 53, (
+            f"Expected baseline 53, got {inputs_before.get('Capacity MW')}")
+
+        # Edit capacity AFTER project creation
+        _edit(client, code, CAPACITY_FIELD, "60", "inputs")
+        _run(client, code)
+        wb_after = _export_workbook(client, code)
+        inputs_after = _sheet_values(wb_after, "Inputs")
+
+        assert inputs_after.get("Capacity MW") == 60, (
+            f"Inputs sheet still shows baseline value "
+            f"({inputs_after.get('Capacity MW')}) — Gap A not closed")
+
+        # Runtime economics must also reflect the edited capacity (not baseline)
+        result_after, pi_after = _canonical_run(code)
+        assert pi_after.technical.capacity_mw == pytest.approx(60.0), (
+            "canonical run does not see the edited capacity")
+        rs = _runtime_summary(wb_after)
+        assert rs["Project IRR"] == pytest.approx(result_after["project_irr"], rel=1e-9)
+
+    def test_l_tariff_edit_reaches_revenue_sheet(self):
+        """Create project at 60 EUR/MWh, edit tariff to 75 EUR/MWh.
+        Both XLSX context (Revenue sheet) and runtime economics must reflect 75, not baseline."""
+        client = _client()
+        code = _create(client, "R5A Tariff Edit", "tuho")
+        _run(client, code)
+
+        # Record baseline tariff visible in XLSX Revenue sheet
+        wb_before = _export_workbook(client, code)
+        revenue_before = _sheet_values(wb_before, "Revenue")
+        # TUHO created at tariff_eur_mwh=60, expect 60 before edit
+        assert revenue_before.get("PPA tariff EUR/MWh") == pytest.approx(60.0, abs=1.0), (
+            f"Unexpected baseline tariff: {revenue_before.get('PPA tariff EUR/MWh')}")
+
+        # Edit tariff to 75 AFTER project creation
+        _edit(client, code, TARIFF_FIELD, "75", "inputs")
+        _run(client, code)
+        wb_after = _export_workbook(client, code)
+        revenue_after = _sheet_values(wb_after, "Revenue")
+
+        assert revenue_after.get("PPA tariff EUR/MWh") == pytest.approx(75.0, abs=1.0), (
+            f"Revenue sheet still shows baseline tariff "
+            f"({revenue_after.get('PPA tariff EUR/MWh')}) — Gap A not closed")
+
+        result_after, pi_after = _canonical_run(code)
+        assert pi_after.revenue.ppa_base_tariff == pytest.approx(75.0), (
+            "canonical run does not see edited tariff")
+        rs = _runtime_summary(wb_after)
+        assert rs["Project IRR"] == pytest.approx(result_after["project_irr"], rel=1e-9)
+
+    def test_m_baseline_value_differs_from_edited_draft(self):
+        """Prove baseline_snapshot != edited draft for the tariff field,
+        establishing the defect condition this correction closes."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client = _client()
+        code = _create(client, "R5A Baseline Proof", "tuho")
+        # Edit tariff to 80 after creation (baseline stays at 60)
+        _edit(client, code, TARIFF_FIELD, "80", "inputs")
+        _run(client, code)
+
+        rec = get_project_by_code(_USER_ID, code)
+        ws = get_workspace_state(_USER_ID, rec.project_id)
+        baseline = dict(rec.baseline_snapshot or {})
+        draft_tariff_key = "rev_ppa_base_tariff"
+        baseline_tariff = float(baseline.get("tariff_eur_mwh") or baseline.get("rev_ppa_base_tariff") or 60)
+        draft_tariff = float(ws.draft_snapshot.get(draft_tariff_key) or ws.draft_snapshot.get("tariff_eur_mwh") or 0)
+
+        # This proves the defect condition (baseline ≠ draft)
+        assert baseline_tariff != pytest.approx(80.0), (
+            "baseline_snapshot already holds the edited value — test setup error")
+        assert draft_tariff == pytest.approx(80.0, abs=2.0), (
+            f"draft_snapshot does not hold edited tariff: {draft_tariff}")
+
+        # Correction A must close this: Revenue sheet shows 80, not baseline
+        wb = _export_workbook(client, code)
+        revenue = _sheet_values(wb, "Revenue")
+        tariff_shown = revenue.get("PPA tariff EUR/MWh")
+        assert tariff_shown == pytest.approx(80.0, abs=1.0), (
+            f"XLSX Revenue sheet shows baseline tariff ({tariff_shown}) instead of edited draft (80) — Gap A not closed")
+
+    def test_n_close_reload_export_preserves_scalar_edits(self):
+        """A fresh client session (close/reload) must still see the edited
+        tariff in the XLSX — proving that persistence survives the round-trip."""
+        client = _client()
+        code = _create(client, "R5A Round-trip", "tuho")
+        _edit(client, code, TARIFF_FIELD, "72", "inputs")
+        _run(client, code)
+
+        fresh = _client()  # new HTTP session
+        wb = _export_workbook(fresh, code)
+        revenue = _sheet_values(wb, "Revenue")
+        assert revenue.get("PPA tariff EUR/MWh") == pytest.approx(72.0, abs=1.0), (
+            f"Reloaded XLSX Revenue sheet shows stale tariff: {revenue.get('PPA tariff EUR/MWh')}")
+
+
+# ── R5/F04 Correction B: scenario fail-closed matrix ─────────────────────────
+
+class TestScenarioFailClosedMatrix:
+    """R5/F04-B: export must mirror Workbook V2 Run's scenario validation.
+    When active_scenario_id is set to an invalid scenario the export must
+    fail closed with an HTTP error, never silently substitute Base economics."""
+
+    def _setup_project_with_active_scenario(self, client: TestClient, name: str):
+        """Create a project, add a scenario, make it active, return (code, scenario_id)."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.persistence.workspace_repository import get_workspace_state
+
+        code = _create(client, name, "tuho")
+        _edit(client, code, CIT_FIELD, "15", "tax")
+        _run(client, code)
+        rec = get_project_by_code(_USER_ID, code)
+        ws = get_workspace_state(_USER_ID, rec.project_id)
+        sc = add_scenario(
+            user_id=_USER_ID, project_id=rec.project_id,
+            project_code=rec.project_code, scenario_name=f"{name} Sc",
+            parent_scenario_id=ws.active_scenario_id or "",
+            base_input_set=dict(ws.draft_snapshot),
+        )
+        assert select_scenario(_USER_ID, rec.project_id, sc.scenario_id)
+        return code, sc.scenario_id
+
+    def test_o_valid_active_scenario_export_succeeds(self):
+        """A valid active scenario must not cause the export to fail.
+        Both CSV and XLSX exports must return 200 (not 400) when a valid
+        scenario is active — the scenario path is exercised without error."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client = _client()
+        code = _create(client, "R5B Valid Scenario", "tuho")
+        _run(client, code)
+
+        rec = get_project_by_code(_USER_ID, code)
+        ws = get_workspace_state(_USER_ID, rec.project_id)
+        sc = add_scenario(
+            user_id=_USER_ID, project_id=rec.project_id,
+            project_code=rec.project_code, scenario_name="R5B Valid Sc",
+            parent_scenario_id=ws.active_scenario_id or "",
+            base_input_set=dict(ws.draft_snapshot),
+        )
+        assert select_scenario(_USER_ID, rec.project_id, sc.scenario_id)
+
+        # Both exports must succeed (200) with a valid active scenario
+        resp_wb = client.get(f"/exports/institutional-workbook.xlsx?project={code}")
+        assert resp_wb.status_code == 200, (
+            f"Institutional workbook export failed with active valid scenario: {resp_wb.text[:300]}")
+
+        resp_csv = client.get(f"/exports/runtime-summary.csv?project={code}")
+        assert resp_csv.status_code == 200, (
+            f"Runtime CSV export failed with active valid scenario: {resp_csv.text[:300]}")
+
+    def test_p_missing_active_scenario_cannot_export_base_silently(self):
+        """When active_scenario_id references a non-existent scenario
+        the export must return 400, not silently export Base economics."""
+        from app.persistence.projects_repository import get_project_by_code
+
+        client = _client()
+        code = _create(client, "R5B Missing Scenario", "tuho")
+        _run(client, code)
+
+        rec = get_project_by_code(_USER_ID, code)
+        # Force an invalid scenario_id into workspace state
+        _force_active_scenario_id(rec.project_id, "nonexistent-scenario-uuid-r5b")
+
+        resp = client.get(f"/exports/institutional-workbook.xlsx?project={code}")
+        assert resp.status_code == 400, (
+            f"Export silently returned {resp.status_code} for missing scenario — Gap B not closed")
+
+        csv_resp = client.get(f"/exports/runtime-summary.csv?project={code}")
+        assert csv_resp.status_code == 400, (
+            f"CSV export silently returned {csv_resp.status_code} for missing scenario — Gap B not closed")
+
+    def test_q_archived_active_scenario_cannot_export_base_silently(self):
+        """When the active scenario is archived the export must return 400."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.persistence.scenarios_repository import archive_scenario
+
+        client = _client()
+        code = _create(client, "R5B Archived Scenario", "tuho")
+        _run(client, code)
+
+        rec = get_project_by_code(_USER_ID, code)
+        ws = get_workspace_state(_USER_ID, rec.project_id)
+        sc = add_scenario(
+            user_id=_USER_ID, project_id=rec.project_id,
+            project_code=rec.project_code, scenario_name="R5B Archived Sc",
+            parent_scenario_id=ws.active_scenario_id or "",
+            base_input_set=dict(ws.draft_snapshot),
+        )
+        assert select_scenario(_USER_ID, rec.project_id, sc.scenario_id)
+        # Archive the now-active scenario
+        archive_scenario(_USER_ID, sc.scenario_id)
+
+        resp = client.get(f"/exports/institutional-workbook.xlsx?project={code}")
+        assert resp.status_code == 400, (
+            f"Export silently returned {resp.status_code} for archived scenario — Gap B not closed")
+
+        csv_resp = client.get(f"/exports/runtime-summary.csv?project={code}")
+        assert csv_resp.status_code == 400, (
+            f"CSV export silently returned {csv_resp.status_code} for archived scenario — Gap B not closed")
+
+    def test_r_cross_project_active_scenario_cannot_export_base_silently(self):
+        """When the active scenario belongs to a different project the export must
+        return 400, not silently export Base economics for the wrong project."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import add_scenario
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client = _client()
+        # Project A
+        code_a = _create(client, "R5B CrossProject A", "tuho")
+        _run(client, code_a)
+        # Project B — its scenario will be injected into Project A's workspace
+        code_b = _create(client, "R5B CrossProject B", "tuho")
+        _run(client, code_b)
+
+        rec_b = get_project_by_code(_USER_ID, code_b)
+        ws_b = get_workspace_state(_USER_ID, rec_b.project_id)
+        sc_b = add_scenario(
+            user_id=_USER_ID, project_id=rec_b.project_id,
+            project_code=rec_b.project_code, scenario_name="R5B Cross Sc",
+            parent_scenario_id=ws_b.active_scenario_id or "",
+            base_input_set=dict(ws_b.draft_snapshot),
+        )
+
+        # Inject B's scenario into A's workspace
+        rec_a = get_project_by_code(_USER_ID, code_a)
+        _force_active_scenario_id(rec_a.project_id, sc_b.scenario_id)
+
+        resp = client.get(f"/exports/institutional-workbook.xlsx?project={code_a}")
+        assert resp.status_code == 400, (
+            f"Export silently returned {resp.status_code} for cross-project scenario — Gap B not closed")
+
+        csv_resp = client.get(f"/exports/runtime-summary.csv?project={code_a}")
+        assert csv_resp.status_code == 400, (
+            f"CSV export silently returned {csv_resp.status_code} for cross-project scenario — Gap B not closed")
+
+    def test_s_base_scenario_base_no_stale_state_correction_b(self):
+        """Valid active scenario → Base: selecting then deselecting a scenario
+        must not leave stale state — the export returns to Base economics.
+        Regression gate for Gap B fix."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.scenarios_repository import (
+            add_scenario, list_scenarios, select_scenario,
+        )
+        from app.persistence.workspace_repository import get_workspace_state
+
+        client = _client()
+        code = _create(client, "R5B Round-trip Base", "tuho")
+        _run(client, code)
+
+        base_wb = _export_workbook(client, code)
+        base_rs = _runtime_summary(base_wb)
+
+        rec = get_project_by_code(_USER_ID, code)
+        ws = get_workspace_state(_USER_ID, rec.project_id)
+        sc = add_scenario(
+            user_id=_USER_ID, project_id=rec.project_id,
+            project_code=rec.project_code, scenario_name="R5B Round-trip Sc",
+            parent_scenario_id=ws.active_scenario_id or "",
+            base_input_set=dict(ws.draft_snapshot),
+        )
+        assert select_scenario(_USER_ID, rec.project_id, sc.scenario_id)
+
+        # Scenario export must succeed (valid scenario)
+        scen_resp = client.get(f"/exports/institutional-workbook.xlsx?project={code}")
+        assert scen_resp.status_code == 200, (
+            f"Scenario export failed unexpectedly: {scen_resp.text[:300]}")
+
+        # Return to Base by clearing active scenario
+        base_candidates = [
+            s for s in list_scenarios(_USER_ID, rec.project_id)
+            if getattr(s, "is_base", False)
+        ]
+        if base_candidates:
+            assert select_scenario(_USER_ID, rec.project_id, base_candidates[0].scenario_id)
+        else:
+            _force_active_scenario_id(rec.project_id, None)
+
+        restored_wb = _export_workbook(client, code)
+        restored_rs = _runtime_summary(restored_wb)
+        assert restored_rs["Project IRR"] == pytest.approx(base_rs["Project IRR"], rel=1e-9), (
+            "Returning to Base produced different economics — stale scenario state regression")
+
+    def test_t_both_xlsx_and_csv_share_fail_closed_contract(self):
+        """Both institutional XLSX and runtime-summary CSV share the same
+        fail-closed scenario authority contract (not just XLSX)."""
+        from app.persistence.projects_repository import get_project_by_code
+
+        client = _client()
+        code = _create(client, "R5B CSV Fail Closed", "tuho")
+        _run(client, code)
+
+        rec = get_project_by_code(_USER_ID, code)
+        _force_active_scenario_id(rec.project_id, "csv-fail-closed-missing-uuid")
+
+        xlsx_resp = client.get(f"/exports/institutional-workbook.xlsx?project={code}")
+        csv_resp = client.get(f"/exports/runtime-summary.csv?project={code}")
+        assert xlsx_resp.status_code == 400, (
+            f"XLSX: expected 400, got {xlsx_resp.status_code}")
+        assert csv_resp.status_code == 400, (
+            f"CSV: expected 400, got {csv_resp.status_code}")

@@ -154,38 +154,52 @@ def resolve_snapshot_authoritative_project_inputs(project_record, user_id):
 
     # Scenario overlay — mirror V2 Run steps 9-10 (same helpers, same order):
     # active scenario CAPEX replace-fold and OPEX additive-fold.
+    # R5/F04-B: fail closed when active_scenario_id is set but the scenario
+    # cannot be resolved, is archived, or belongs to a different project.
+    # This mirrors the Workbook V2 Run contract exactly — the export must
+    # never silently substitute Base economics when a scenario is active.
     if ws.active_scenario_id:
         from app.persistence.scenarios_repository import get_scenario
 
         sc = get_scenario(scenario_id=ws.active_scenario_id, user_id=user_id)
-        if (
-            sc is not None
-            and not getattr(sc, "archived", False)
-            and getattr(sc, "project_id", None) == project_record.project_id
-        ):
-            import dataclasses as _dc
+        if sc is None:
+            raise ValueError(
+                f"Active scenario {ws.active_scenario_id!r} cannot be found; "
+                "export aborted. Select a valid scenario or deselect the active scenario."
+            )
+        if getattr(sc, "archived", False):
+            raise ValueError(
+                f"Active scenario {getattr(sc, 'scenario_name', ws.active_scenario_id)!r} "
+                "is archived; export aborted. Select a valid scenario or deselect the active scenario."
+            )
+        if getattr(sc, "project_id", None) != project_record.project_id:
+            raise ValueError(
+                f"Active scenario {getattr(sc, 'scenario_name', ws.active_scenario_id)!r} "
+                "belongs to a different project; export aborted."
+            )
+        import dataclasses as _dc
 
-            from app.services.capex_sub_lines_integration import (
-                apply_user_sub_lines_replacing_base,
-            )
-            from app.services.opex_sub_lines_integration import (
-                apply_user_sub_lines_to_opex,
-            )
+        from app.services.capex_sub_lines_integration import (
+            apply_user_sub_lines_replacing_base,
+        )
+        from app.services.opex_sub_lines_integration import (
+            apply_user_sub_lines_to_opex,
+        )
 
-            folded_capex = apply_user_sub_lines_replacing_base(
-                project_inputs.capex,
-                project_id=project_record.project_id,
-                scenario_overrides=sc.overrides,
-            )
-            if folded_capex is not project_inputs.capex:
-                project_inputs = _dc.replace(project_inputs, capex=folded_capex)
-            folded_opex = apply_user_sub_lines_to_opex(
-                project_inputs.opex,
-                project_id=project_record.project_id,
-                scenario_overrides=sc.overrides,
-            )
-            if folded_opex is not project_inputs.opex:
-                project_inputs = _dc.replace(project_inputs, opex=folded_opex)
+        folded_capex = apply_user_sub_lines_replacing_base(
+            project_inputs.capex,
+            project_id=project_record.project_id,
+            scenario_overrides=sc.overrides,
+        )
+        if folded_capex is not project_inputs.capex:
+            project_inputs = _dc.replace(project_inputs, capex=folded_capex)
+        folded_opex = apply_user_sub_lines_to_opex(
+            project_inputs.opex,
+            project_id=project_record.project_id,
+            scenario_overrides=sc.overrides,
+        )
+        if folded_opex is not project_inputs.opex:
+            project_inputs = _dc.replace(project_inputs, opex=folded_opex)
     return project_inputs
 
 
