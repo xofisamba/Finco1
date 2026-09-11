@@ -159,6 +159,12 @@ class FieldSpec:
     # "technical.capacity_mw" or "capex.epc_contract.amount_keur".
     # None for display-only and template-locked fields with no direct engine binding.
 
+    engine_path_conditional: Optional[str] = None
+    # R4/F06: conditional engine binding, used ONLY when the unconditional
+    # engine_path is not the sole authority for every project state.
+    # Format: "<dotted path> (when <typed condition>; <unit note>)".
+    # None for fields whose engine_path is unconditional.
+
     scenario_policy: ScenarioPolicy = ScenarioPolicy.NOT_ALLOWED
 
     binding_status: BindingStatus = BindingStatus.BOUND
