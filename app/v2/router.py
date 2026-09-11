@@ -1779,57 +1779,21 @@ async def v2_workbook_run(
             status_code=303,
         )
 
-    pis_fresh = _build_pis_with_composite_identity(ws_fresh, project_record, workspace_owner)
-    ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
+    # R6/F07: ONE post-run UI projection authority — every runtime-dependent
+    # visible surface is rendered from this single ws_fresh read and one
+    # RuntimeProjectionBundle (run controls, status banner, toolbar,
+    # Overview KPIs, debt, tax, FS, scenario last-run statuses).  The
+    # previous hand-rolled assembly here omitted the Overview sheet, which
+    # left stale pre-Run KPIs presented as current after a new Run.
+    from app.v2.post_run_ui import build_post_run_ui_state
 
-    # #v2-run-controls OOB — refreshes the Run form with the new composite hash.
-    run_controls_html = _templates.get_template(
-        "partials/_v2_run_controls.html"
-    ).render(ctx)
-    run_controls_oob = (
-        '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+    combined = build_post_run_ui_state(
+        request=request,
+        ws_fresh=ws_fresh,
+        project_record=project_record,
+        project=project,
+        workspace_owner=workspace_owner,
     )
-
-    # #v2-status-banner OOB.
-    banner_html = _templates.get_template(
-        "partials/_v2_status_banner.html"
-    ).render(ctx)
-    banner_oob = (
-        '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
-    )
-
-    # Three sheet OOBs — attach hx-swap-oob="true" to the sheet root element
-    # (not a wrapper) to avoid nested duplicate DOM IDs.
-    ctx.update(_build_debt_ctx(pis_fresh, ws_fresh, projection=projection))
-    debt_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
-    debt_oob = debt_html.replace(
-        '<div id="v2-sheet-senior-debt"',
-        '<div id="v2-sheet-senior-debt" hx-swap-oob="true"',
-        1,
-    )
-
-    ctx.update(_build_tax_ctx(pis_fresh, ws_fresh, projection=projection))
-    tax_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
-    tax_oob = tax_html.replace(
-        '<div id="v2-sheet-tax"',
-        '<div id="v2-sheet-tax" hx-swap-oob="true"',
-        1,
-    )
-
-    ctx.update(_build_financial_statements_ctx(pis_fresh, ws_fresh, projection=projection))
-    fs_html = _templates.get_template(
-        "partials/sheet_financial_statements.html"
-    ).render(ctx)
-    fs_oob = fs_html.replace(
-        '<div id="v2-sheet-financial-statements"',
-        '<div id="v2-sheet-financial-statements" hx-swap-oob="true"',
-        1,
-    )
-
-    # Each full sheet OOB already includes its runtime bar; do not add standalone bar OOBs
-    # here — that would create duplicate DOM IDs (debt-runtime-bar, tax-runtime-bar, fs-runtime-bar).
-    toolbar_state_oob = _build_toolbar_state_oob(ctx)
-    combined = "\n".join([run_controls_oob, banner_oob, toolbar_state_oob, debt_oob, tax_oob, fs_oob])
     return HTMLResponse(content=combined)
 
 
