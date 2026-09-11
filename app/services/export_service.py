@@ -11,6 +11,29 @@ from typing import Any
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 
+# ── Single-read export authority ──────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class ResolvedExportAuthority:
+    """Immutable result of ONE workspace read for an export request.
+
+    R5/F04-C: the workspace is read ONCE per export.  Both the runtime
+    economics (project_inputs) and the workbook presentation context
+    (current_snapshot) are derived from that single read, so no save that
+    arrives between two reads can produce a workbook whose economics and
+    presentation come from different project versions.
+
+    ``project_inputs``   – effective ProjectInputs (scenario-folded); None
+                           for factory/reference projects (factory path).
+    ``current_snapshot`` – the raw draft_snapshot dict used to build
+                           project_inputs; None for factory/reference projects.
+    ``runtime_origin``   – provenance label ("saved_state" or None).
+    """
+    project_inputs: Any  # ProjectInputs | None
+    current_snapshot: dict[str, Any] | None
+    runtime_origin: str | None
+
+
 @dataclass(frozen=True)
 class ExportResponse:
     """Result of an export service function.
@@ -117,10 +140,124 @@ def build_values_only_export_for_project(
 
 # ── Runtime Summary CSV export ────────────────────────────────────────────────
 
+def resolve_export_authority(project_record, user_id) -> ResolvedExportAuthority:
+    """R5/F04-C — single-read export authority resolver.
+
+    Reads the workspace ONCE and returns a ResolvedExportAuthority containing
+    both the effective ProjectInputs (scenario-folded) and the raw
+    current_snapshot dict.  Both fields come from the same workspace read so
+    no concurrent save can produce a torn workbook.
+
+    Returns a factory-path authority (project_inputs=None, current_snapshot=None)
+    for factory/reference projects — callers keep the historical factory path.
+
+    Raises ValueError (fail-closed) when a user-owned project has no usable
+    persisted state.  No ``except Exception: pass`` anywhere in this path.
+    """
+    if project_record is None or user_id is None:
+        return ResolvedExportAuthority(
+            project_inputs=None, current_snapshot=None, runtime_origin=None,
+        )
+    origin = getattr(project_record, "project_origin", "") or ""
+    if origin != "user_created":
+        return ResolvedExportAuthority(
+            project_inputs=None, current_snapshot=None, runtime_origin=None,
+        )
+    from app.persistence.workspace_repository import get_workspace_state
+
+    ws = get_workspace_state(user_id, project_record.project_id)
+    if ws is None or not ws.draft_snapshot:
+        raise ValueError(
+            "No saved working-copy state exists for this project yet. "
+            "Open the workbook and save before exporting."
+        )
+    # Capture current_snapshot from this single read before any mutation.
+    current_snapshot: dict[str, Any] = dict(ws.draft_snapshot)
+
+    # ONE authority path: the exact materialization Workbook V2 Run uses
+    # (ProjectInputSet.from_snapshot on the draft -> to_projectinputs()).
+    from app.workbook.service import WorkbookService
+
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    project_inputs = pis.to_projectinputs()
+
+    # Scenario overlay — EXACT parity with the live /v2/workbook/run path
+    # (R5 Correction D): Run materialises the persisted pis_draft via
+    # WorkbookService.to_projectinputs, validates the active scenario
+    # (fail-closed on missing/archived/cross-project), and passes
+    # sc.overrides ONLY to the CAPEX replace-fold and OPEX additive-fold.
+    # select_scenario() does NOT rewrite draft_snapshot with scalar
+    # overrides, so the export must not invent scalar scenario economics
+    # that Run does not apply.  Scalar scenario overrides remain a separate,
+    # not-yet-supported remediation — out of R5 scope.
+    if ws.active_scenario_id:
+        from app.persistence.scenarios_repository import get_scenario
+
+        sc = get_scenario(scenario_id=ws.active_scenario_id, user_id=user_id)
+        if sc is None:
+            raise ValueError(
+                f"Active scenario {ws.active_scenario_id!r} cannot be found; "
+                "export aborted. Select a valid scenario or deselect the active scenario."
+            )
+        if getattr(sc, "archived", False):
+            raise ValueError(
+                f"Active scenario {getattr(sc, 'scenario_name', ws.active_scenario_id)!r} "
+                "is archived; export aborted. Select a valid scenario or deselect the active scenario."
+            )
+        if getattr(sc, "project_id", None) != project_record.project_id:
+            raise ValueError(
+                f"Active scenario {getattr(sc, 'scenario_name', ws.active_scenario_id)!r} "
+                "belongs to a different project; export aborted."
+            )
+
+        import dataclasses as _dc
+
+        from app.services.capex_sub_lines_integration import (
+            apply_user_sub_lines_replacing_base,
+        )
+        from app.services.opex_sub_lines_integration import (
+            apply_user_sub_lines_to_opex,
+        )
+
+        folded_capex = apply_user_sub_lines_replacing_base(
+            project_inputs.capex,
+            project_id=project_record.project_id,
+            scenario_overrides=sc.overrides,
+        )
+        if folded_capex is not project_inputs.capex:
+            project_inputs = _dc.replace(project_inputs, capex=folded_capex)
+        folded_opex = apply_user_sub_lines_to_opex(
+            project_inputs.opex,
+            project_id=project_record.project_id,
+            scenario_overrides=sc.overrides,
+        )
+        if folded_opex is not project_inputs.opex:
+            project_inputs = _dc.replace(project_inputs, opex=folded_opex)
+
+    return ResolvedExportAuthority(
+        project_inputs=project_inputs,
+        current_snapshot=current_snapshot,
+        runtime_origin="saved_state",
+    )
+
+
+def resolve_snapshot_authoritative_project_inputs(project_record, user_id):
+    """Backwards-compatible delegate — returns only project_inputs.
+
+    Non-export callers (tests, helpers) that need only the effective
+    ProjectInputs may continue to use this.  Export paths must use
+    resolve_export_authority() to obtain the single-read authority object.
+    """
+    authority = resolve_export_authority(project_record, user_id)
+    return authority.project_inputs
+
+
 def build_runtime_summary_csv_export(
     runtime_project_code: str,
     *,
     safe_project: str | None = None,
+    project_record=None,
+    user_id=None,
 ) -> ExportResponse:
     """Build runtime summary CSV bytes.
 
@@ -134,10 +271,15 @@ def build_runtime_summary_csv_export(
     from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 
     try:
-        # PR-8 single-calculation contract: ONE production execution → rows
-        # once → the SAME rows are serialized to CSV. The serialization layer
-        # is financial-calculation-free.
-        runtime_rows = build_runtime_summary_rows(runtime_project_code)
+        # R5/F04-C: ONE workspace read → authority → rows.
+        authority = resolve_export_authority(project_record, user_id)
+        if authority.project_inputs is not None:
+            runtime_rows = build_runtime_summary_rows(
+                runtime_project_code, _project_inputs=authority.project_inputs,
+                runtime_origin=authority.runtime_origin,
+            )
+        else:
+            runtime_rows = build_runtime_summary_rows(runtime_project_code)
         first_row = runtime_rows[0]
         csv_text = build_runtime_summary_csv(
             runtime_project_code,
@@ -181,6 +323,8 @@ def build_institutional_workbook_export(
     runtime_project_code: str,
     *,
     safe_project: str | None = None,
+    project_record=None,
+    user_id=None,
 ) -> ExportResponse:
     """Build institutional workbook bytes.
 
@@ -197,11 +341,17 @@ def build_institutional_workbook_export(
     )
 
     try:
-        # PR-8 single-calculation contract: ONE authority execution → ONE
-        # bundle (which already contains runtime_rows, runtime_result and
-        # authority metadata) → pure serialization to workbook bytes. No
-        # second model run, no separately rebuilt runtime rows.
-        bundle = _build_export_bundle(runtime_project_code)
+        # R5/F04-C: ONE workspace read → authority → bundle.
+        # The authority carries both project_inputs and current_snapshot from
+        # the same read, preventing torn-snapshot workbooks.
+        authority = resolve_export_authority(project_record, user_id)
+        bundle = _build_export_bundle(
+            runtime_project_code,
+            project_inputs=authority.project_inputs,
+            runtime_origin=authority.runtime_origin,
+            project_record=project_record,
+            current_snapshot=authority.current_snapshot,
+        )
         first_row = bundle.runtime_rows[0]
         workbook_bytes = export_institutional_workbook_from_bundle(bundle)
     except ValueError as exc:

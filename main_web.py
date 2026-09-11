@@ -3261,7 +3261,12 @@ async def runtime_summary_export(request: Request, project: str = "tuho"):
     if project_record is not None:
         runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    export = build_runtime_summary_csv_export(runtime_project_code, safe_project=safe_project)
+    export = build_runtime_summary_csv_export(
+        runtime_project_code,
+        safe_project=safe_project,
+        project_record=project_record,
+        user_id=user.user_id,
+    )
     if export.has_error():
         return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
@@ -3305,7 +3310,7 @@ async def institutional_workbook_export(request: Request, project: str = "tuho")
     if project_record is not None:
         runtime_project_code = _normalize_template_source(project_record.template_source or project_record.source_project_template, project_record.project_type)
 
-    export = build_institutional_workbook_export(runtime_project_code, safe_project=safe_project)
+    export = build_institutional_workbook_export(runtime_project_code, safe_project=safe_project, project_record=project_record, user_id=user.user_id)
     if export.has_error():
         return HTMLResponse(content=export.error_content, status_code=export.status_code)
 
