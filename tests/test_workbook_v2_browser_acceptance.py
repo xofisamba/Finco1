@@ -1576,8 +1576,10 @@ class TestSaveRunStaleCurrentFlow:
         inp.click()
         inp.select_text()
         inp.fill("202")
-        inp.dispatch_event("input")
-        p.wait_for_timeout(600)  # allow the debounced field save + OOB swap
+        with p.expect_response(lambda r: "/v2/workbook/update" in r.url,
+                               timeout=15_000):
+            inp.dispatch_event("input")
+        p.wait_for_timeout(300)  # allow the OOB swap to settle
 
         # 3. WITHOUT reload: every runtime-state surface agrees STALE
         assert self._toolbar_text(p) == "Stale"
@@ -1606,6 +1608,8 @@ class TestSaveRunStaleCurrentFlow:
         inp.click()
         inp.select_text()
         inp.fill("203")
-        inp.dispatch_event("input")
-        p.wait_for_timeout(600)
+        with p.expect_response(lambda r: "/v2/workbook/update" in r.url,
+                               timeout=15_000):
+            inp.dispatch_event("input")
+        p.wait_for_timeout(300)
         assert self._toolbar_text(p) == "Stale"
