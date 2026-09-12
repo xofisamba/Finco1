@@ -1555,9 +1555,12 @@ class TestSaveRunStaleCurrentFlow:
         p.wait_for_load_state("networkidle", timeout=30_000)
 
     def test_edit_stale_run_current_no_reload(self, authed_page, live_server,
-                                              oborovo_project):
+                                              runnable_v2_project):
+        # runnable_v2_project (generic_solar): the hybrid oborovo fixture
+        # fails engine validation by design, so the stale->current flow needs
+        # a project whose canonical Run succeeds.
         p = authed_page
-        p.goto(f"{live_server['base_url']}/v2/workbook?project={oborovo_project}")
+        p.goto(f"{live_server['base_url']}/v2/workbook?project={runnable_v2_project}")
         p.wait_for_load_state("networkidle")
 
         # 1. Run once -> toolbar Current, Overview KPI present
