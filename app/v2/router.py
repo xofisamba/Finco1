@@ -1363,6 +1363,19 @@ async def v2_workbook_update(
             resp = _render_opex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
+            # R6 Correction B: OPEX field forms swap hx-target="#panel-opex"
+            # with hx-swap="outerHTML" — the response must re-emit the PANEL
+            # wrapper, otherwise the swap destroys #panel-opex and the OPEX
+            # tab can never be shown again.  hx-swap-oob fragments in the
+            # body are extracted by htmx before the swap, so they are not
+            # nested into the panel.
+            panel_open = (
+                '<div class="v2-sheet-panel" role="tabpanel" id="panel-opex" '
+                'aria-labelledby="tab-opex">'
+                '<div class="v2-sheet-body">'
+            )
+            resp = HTMLResponse(
+                content=panel_open + resp.body.decode() + "</div></div>")
             # R6 Correction A: these sheets have no runtime-derived values,
             # but the save made the workspace dirty — toolbar, Overview and
             # scenario statuses must agree stale in this same response.
