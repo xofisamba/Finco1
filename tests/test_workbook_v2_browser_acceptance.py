@@ -1576,9 +1576,12 @@ class TestSaveRunStaleCurrentFlow:
         inp.click()
         inp.select_text()
         inp.fill("202")
+        # workbook_v2.js: the input event only MARKS the field pending; the
+        # Save fires on blur/Enter (v2FieldBlur -> form.requestSubmit()).
+        # Blur is the deterministic real-user save trigger.
         with p.expect_response(lambda r: "/v2/workbook/update" in r.url,
                                timeout=15_000):
-            inp.dispatch_event("input")
+            inp.blur()
         p.wait_for_timeout(300)  # allow the OOB swap to settle
 
         # 3. WITHOUT reload: every runtime-state surface agrees STALE
@@ -1610,6 +1613,6 @@ class TestSaveRunStaleCurrentFlow:
         inp.fill("203")
         with p.expect_response(lambda r: "/v2/workbook/update" in r.url,
                                timeout=15_000):
-            inp.dispatch_event("input")
+            inp.blur()
         p.wait_for_timeout(300)
         assert self._toolbar_text(p) == "Stale"

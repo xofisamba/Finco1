@@ -479,3 +479,48 @@ class TestPostSaveStaleAuthority:
                     'id="fs-runtime-bar"'):
             assert bar in out
         assert 'id="v2-sheet-scenarios" hx-swap-oob="true"' in out
+
+
+class TestPostSaveBannerControlsPath:
+    def test_banner_and_controls_path_has_no_latent_nameerror(self, wind_code):
+        """Correction B §5: the include_banner_and_controls=True path renders
+        the banner, toolbar AND run controls (the run-controls helper must be
+        imported in the authority — latent NameError guard)."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.v2.post_run_ui import build_post_save_ui_state
+
+        rec = get_project_by_code(USER_ID, wind_code)
+        ws = get_workspace_state(USER_ID, rec.project_id)
+        if ws.dirty is not True:
+            _edit(_client(), wind_code, "revenue.ppa.base_tariff", "73",
+                  "revenue")
+            ws = get_workspace_state(USER_ID, rec.project_id)
+        out = build_post_save_ui_state(
+            ws_fresh=ws, project_record=rec, project=wind_code,
+            workspace_owner=USER_ID, request={},  # truthy request enables path
+            include_banner_and_controls=True,
+        )
+        assert 'id="v2-status-banner" hx-swap-oob="true"' in out
+        assert 'id="v2-run-controls" hx-swap-oob="true"' in out
+        assert 'id="v2-toolbar-runtime-state" hx-swap-oob="true"' in out
+        assert "v2-state-stale" in out
+
+    def test_capex_opex_save_paths_pass_projection_no_double_bundle(
+            self, wind_code, monkeypatch):
+        """Correction B §6: the CAPEX/OPEX save paths pass their
+        already-built projection into the post-Save authority — one
+        RuntimeProjectionBundle per mutation response."""
+        import inspect
+        from app.v2 import capex_router, opex_router
+
+        for mod, helper_name in (
+            (capex_router, "_render_capex_sheet_with_oob"),
+            (opex_router, "_render_opex_sheet_with_oob"),
+        ):
+            helper = getattr(mod, helper_name)
+            source = inspect.getsource(helper)
+            # the routers build the bundle once and hand it to the post-Save
+            # authority — no second bundle in the mutation response
+            assert "build_runtime_projection_bundle" in source, mod.__name__
+            assert "projection=projection" in source, mod.__name__

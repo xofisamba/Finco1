@@ -172,6 +172,7 @@ def build_post_save_ui_state(
 
     from app.v2.router import (  # router owns the template helpers
         _build_pis_with_composite_identity,
+        _build_run_controls_oob,
         _build_toolbar_state_oob,
         _fmt_runtime_at,
         _scenario_list_html,
