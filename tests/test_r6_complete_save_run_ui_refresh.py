@@ -85,7 +85,9 @@ def _hash(client: TestClient, code: str) -> tuple[str, str]:
 
 
 def _edit(client: TestClient, code: str, field_id: str, value: str,
-          sheet: str) -> None:
+          sheet: str):
+    """Real V2 edit; returns the actual HTMX response so tests can assert on
+    the Save response itself (Correction D — no GET in between)."""
     ch, wv = _hash(client, code)
     resp = client.post(
         "/v2/workbook/update",
@@ -94,6 +96,7 @@ def _edit(client: TestClient, code: str, field_id: str, value: str,
         headers={"HX-Request": "true"},
     )
     assert resp.status_code == 200, f"edit {field_id}: {resp.status_code} {resp.text[:200]}"
+    return resp
 
 
 def _run_response(client: TestClient, code: str):
@@ -194,18 +197,43 @@ class TestDirtyCurrentContract:
         assert "v2-state-stale" not in resp.text
         assert "v2-banner-dirty" not in resp.text
 
-    def test_d_second_edit_marks_runtime_stale(self, wind_code):
-        """Test D: after a successful Run, another edit must flip every
-        runtime-status surface back to stale/not-current."""
+    def test_d_save_response_itself_marks_runtime_stale_no_reload(
+            self, wind_code):
+        """Test D (Correction D): Run -> toolbar Current -> edit a financially
+        causal field -> the EDIT response ITSELF must carry stale/not-current
+        OOB state for toolbar, status banner, Overview, debt/tax/FS bars and
+        scenario statuses — with NO GET in between.  Fails on reviewed HEAD
+        6daf6f51 where the Save response omitted toolbar/Overview/scenario
+        refreshes and the toolbar kept presenting Current until reload."""
         client = _client()
         _run_response(client, wind_code)
-        _edit(client, wind_code, "revenue.ppa.base_tariff", "76", "revenue")
+        # confirm Current before the edit (pristine GET)
         page = client.get(f"/v2/workbook?project={wind_code}").text
-        assert "v2-state-stale" in page or "v2-banner-dirty" in page
-        # and the next Run response carries the refreshed surfaces again
-        resp = _run_response(client, wind_code)
-        for oob in ALL_SHEET_OOBS:
-            assert oob in resp.text
+        assert "v2-state-clean" in page
+        assert "v2-state-stale" not in page
+
+        # financially causal edit — inspect the SAVE response, no GET
+        resp = _edit(client, wind_code, "revenue.ppa.base_tariff", "76",
+                     "revenue")
+        body = resp.text
+        assert 'id="v2-toolbar-runtime-state" hx-swap-oob="true"' in body
+        assert "v2-state-stale" in body
+        assert "v2-state-clean" not in body
+        assert 'id="v2-status-banner" hx-swap-oob="true"' in body
+        assert "v2-banner-dirty" in body
+        assert 'id="v2-sheet-overview" hx-swap-oob="true"' in body
+        assert "v2-kpi-tile--stale" in body
+        for bar in ('id="debt-runtime-bar" hx-swap-oob="true"',
+                    'id="tax-runtime-bar" hx-swap-oob="true"',
+                    'id="fs-runtime-bar" hx-swap-oob="true"'):
+            assert bar in body, bar
+        assert 'id="v2-sheet-scenarios" hx-swap-oob="true"' in body
+
+        # optional GET parity: fresh GET agrees with the post-Save stale state
+        page = client.get(f"/v2/workbook?project={wind_code}").text
+        assert "v2-state-stale" in page
+        assert "v2-banner-dirty" in page
+        assert "v2-kpi-tile--stale" in page
 
 
 class TestRuntimeSheetRefresh:
@@ -389,3 +417,65 @@ class TestFreshGetParity:
                        'id="v2-sheet-financial-statements"',
                        'id="v2-toolbar-runtime-state"'):
             assert marker in htmx and marker in fresh
+
+
+class TestOneProjectionPerRun:
+    def test_exactly_one_runtime_projection_bundle_per_run(self, wind_code,
+                                                           monkeypatch):
+        """Correction A/F: exactly ONE build_runtime_projection_bundle call
+        per successful HTMX Run response path — no duplicate projection."""
+        import app.workbook.runtime_projection as rp
+        calls = {"n": 0}
+        real = rp.build_runtime_projection_bundle
+
+        def _counting(*a, **k):
+            calls["n"] += 1
+            return real(*a, **k)
+
+        monkeypatch.setattr(rp, "build_runtime_projection_bundle", _counting)
+        client = _client()
+        # the pre-run GET (hash read) legitimately builds its own projection;
+        # count only the Run POST response path
+        ch, wv = _hash(client, wind_code)
+        calls["n"] = 0
+        resp = client.post(
+            "/v2/workbook/run",
+            data={"project": wind_code, "content_hash": ch,
+                  "workbook_version": wv},
+            headers={"HX-Request": "true"}, follow_redirects=False,
+        )
+        assert resp.status_code == 200
+        assert calls["n"] == 1, (
+            f"expected exactly one RuntimeProjectionBundle in the Run "
+            f"response path, got {calls['n']}")
+        for oob in ALL_SHEET_OOBS:
+            assert oob in resp.text
+
+
+class TestPostSaveStaleAuthority:
+    def test_post_save_helper_emits_full_stale_state(self, wind_code):
+        """Correction A/B: build_post_save_ui_state emits toolbar-stale,
+        stale-classified Overview, all three runtime bars and scenario
+        statuses from the dirty workspace — no engine call."""
+        from app.persistence.projects_repository import get_project_by_code
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.v2.post_run_ui import build_post_save_ui_state
+
+        rec = get_project_by_code(USER_ID, wind_code)
+        ws = get_workspace_state(USER_ID, rec.project_id)
+        if ws.dirty is not True:  # make the workspace dirty via a real edit
+            _edit(_client(), wind_code, "revenue.ppa.base_tariff", "74",
+                  "revenue")
+            ws = get_workspace_state(USER_ID, rec.project_id)
+        assert ws.dirty is True
+        out = build_post_save_ui_state(
+            ws_fresh=ws, project_record=rec, project=wind_code,
+            workspace_owner=USER_ID)
+        assert 'id="v2-toolbar-runtime-state" hx-swap-oob="true"' in out
+        assert "v2-state-stale" in out
+        assert 'id="v2-sheet-overview" hx-swap-oob="true"' in out
+        assert "v2-kpi-tile--stale" in out
+        for bar in ('id="debt-runtime-bar"', 'id="tax-runtime-bar"',
+                    'id="fs-runtime-bar"'):
+            assert bar in out
+        assert 'id="v2-sheet-scenarios" hx-swap-oob="true"' in out

@@ -103,9 +103,12 @@ def _stale_identity_response(
 
 
 def _render_opex_sheet_with_oob(
-    request: Request, project_record, pis, ws, project: str, field_error: str = ""
+    request: Request, project_record, pis, ws, project: str,
+    field_error: str = "", workspace_owner: str = "",
 ) -> HTMLResponse:
-    """Render OPEX sheet + append all three runtime bar OOBs + run controls OOB on success."""
+    """Render OPEX sheet + full post-Save stale-state refresh (R6/F07
+    Correction A: toolbar, stale Overview, runtime bars, scenario statuses)
+    + run controls OOB on success."""
     resp = _render_opex_sheet(request, project_record, pis, ws, project, field_error=field_error)
     if field_error:
         return resp
@@ -119,6 +122,14 @@ def _render_opex_sheet_with_oob(
     rr = WorkbookService.get_runtime_result(ws)
     projection = build_runtime_projection_bundle(rr, ws.dirty)
     oob = build_all_runtime_bar_oob(projection)
+    # R6 Correction A: the OPEX save made the workspace dirty — the prior
+    # runtime evidence must be visibly classified stale in the SAME response.
+    from app.v2.post_run_ui import build_post_save_ui_state
+
+    oob += chr(10) + build_post_save_ui_state(
+        ws_fresh=ws, project_record=project_record, project=project,
+        workspace_owner=workspace_owner, include_runtime_bars=False,
+    )
     run_controls_html = _tmpl.get_template("partials/_v2_run_controls.html").render({
         "project_code": project,
         "workbook_version": pis.workbook_version,
@@ -199,7 +210,7 @@ async def opex_line_add(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project)
+        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project, workspace_owner=user.user_id)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -263,7 +274,7 @@ async def opex_line_update(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project)
+        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project, workspace_owner=user.user_id)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -313,7 +324,7 @@ async def opex_line_deactivate(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project)
+        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project, workspace_owner=user.user_id)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -374,5 +385,5 @@ async def opex_line_reorder(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project)
+        return _render_opex_sheet_with_oob(request, project_record, pis, ws, project, workspace_owner=user.user_id)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)

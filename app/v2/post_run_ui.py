@@ -42,6 +42,7 @@ def build_post_run_ui_state(
     project_record,
     project: str,
     workspace_owner: str,
+    rr: Any = None,
 ) -> str:
     """Build the complete post-run HTMX response for one completed Run.
 
@@ -67,7 +68,11 @@ def build_post_run_ui_state(
 
     pis_fresh = _build_pis_with_composite_identity(
         ws_fresh, project_record, workspace_owner)
-    rr = WorkbookService.get_runtime_result(ws_fresh)
+    # R6 Correction A/F: the router validates that a persisted RuntimeResult
+    # exists and passes it in — exactly ONE RuntimeProjectionBundle is built
+    # here for the whole successful Run response.
+    if rr is None:
+        rr = WorkbookService.get_runtime_result(ws_fresh)
     projection = (
         build_runtime_projection_bundle(rr, ws_fresh.dirty) if rr is not None else None
     )
@@ -135,3 +140,127 @@ def _as_oob(html: str, dom_id: str) -> str:
     if marker not in html:
         return html
     return html.replace(marker, marker + ' hx-swap-oob="true"', 1)
+
+
+def build_post_save_ui_state(
+    *,
+    ws_fresh,
+    project_record=None,
+    project: str = "",
+    workspace_owner: str = "",
+    request: Any = None,
+    include_banner_and_controls: bool = False,
+    include_runtime_bars: bool = True,
+    projection=None,
+) -> str:
+    """R6 Correction A — ONE post-Save runtime-state refresh authority.
+
+    A financially causal successful Save (workspace now dirty) must make
+    every visible runtime-state surface consistently STALE in the SAME HTMX
+    response, without a GET reload.  Old runtime values may remain visible
+    for reference but are visibly classified stale.
+
+    Contract: NO engine call, NO ``run_project``, NO financial calculation —
+    reads only the freshly persisted dirty workspace state, reconstructs the
+    persisted RuntimeResult for reference classification, and builds ONE
+    RuntimeProjectionBundle.
+    """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.workbook.service import WorkbookService
+    from app.v2.overview_projection import build_overview_projection
+    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+
+    from app.v2.router import (  # router owns the template helpers
+        _build_pis_with_composite_identity,
+        _build_toolbar_state_oob,
+        _fmt_runtime_at,
+        _scenario_list_html,
+        _templates,
+    )
+
+    rr = WorkbookService.get_runtime_result(ws_fresh)
+    if projection is None:
+        projection = build_runtime_projection_bundle(rr, ws_fresh.dirty)
+    dirty = bool(getattr(ws_fresh, "dirty", True))
+    has_runtime = bool(getattr(ws_fresh, "last_runtime_snapshot_id", None))
+    fragments: list[str] = []
+
+    if include_banner_and_controls and request is not None:
+        pis_fresh = _build_pis_with_composite_identity(
+            ws_fresh, project_record, workspace_owner)
+        ctx = {
+            "request": request,
+            "project_code": project,
+            "workbook_version": pis_fresh.workbook_version,
+            "content_hash": pis_fresh.content_hash,
+            "template_source": pis_fresh.template_source,
+            "project_editable": True,
+            "ws_dirty": dirty,
+            "has_runtime": has_runtime,
+            "last_runtime_at": _fmt_runtime_at(
+                getattr(ws_fresh, "last_runtime_at", None) or ""),
+            "field_error": "",
+            "active_scenario_name": getattr(
+                ws_fresh, "active_scenario_name", None) or "",
+        }
+        banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html").render(ctx)
+        fragments.append(
+            '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>")
+        fragments.append(_build_toolbar_state_oob(ctx))
+        fragments.append(_build_run_controls_oob(ctx))
+    else:
+        # Toolbar-only OOB (banner/controls are already emitted by the sheet
+        # renderer on every mutation response).
+        toolbar_ctx = {
+            "has_runtime": has_runtime,
+            "ws_dirty": dirty,
+            "last_runtime_at": _fmt_runtime_at(
+                getattr(ws_fresh, "last_runtime_at", None) or ""),
+        }
+        fragments.append(_build_toolbar_state_oob(toolbar_ctx))
+
+    # Overview: KPI values stay visible for reference but are classified
+    # stale while the workspace is dirty (v2-kpi-tile--stale + is_stale).
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws_fresh)
+    ov = build_overview_projection(
+        rr, dirty, pis,
+        active_scenario_name=getattr(ws_fresh, "active_scenario_name", None) or "",
+    )
+    ov_ctx = {
+        "overview": ov,
+        "project_code": project,
+        "project_name": getattr(project_record, "project_name", "") or project,
+        "project_type": getattr(project_record, "project_type", "") or "",
+        "ws_dirty": dirty,
+        "has_runtime": has_runtime,
+    }
+    ov_html = _templates.get_template("partials/sheet_overview.html").render(ov_ctx)
+    fragments.append(_as_oob(ov_html, "v2-sheet-overview"))
+
+    # Debt / Tax / FS runtime bars — stale/current states from the SAME
+    # projection (never substituted zeros or old "current" labels).  Callers
+    # that already emitted the bars can suppress this section.
+    if include_runtime_bars:
+        fragments.append(build_all_runtime_bar_oob(projection))
+
+    # Scenario last-run statuses (persisted by the previous Run's step 12b).
+    if project_record is not None and workspace_owner:
+        scenarios_html = _scenario_list_html(
+            workspace_owner, project_record.project_id, project, ws_fresh)
+        fragments.append(_as_oob(scenarios_html, "v2-sheet-scenarios"))
+
+    return chr(10).join(fragments)
+
+
+def build_toolbar_state_oob(ws) -> str:
+    """Toolbar runtime-state chip only (Correction A: scenario-select path)."""
+    from app.v2.router import _build_toolbar_state_oob, _fmt_runtime_at
+
+    ctx = {
+        "has_runtime": bool(getattr(ws, "last_runtime_snapshot_id", None)),
+        "ws_dirty": bool(getattr(ws, "dirty", True)),
+        "last_runtime_at": _fmt_runtime_at(
+            getattr(ws, "last_runtime_at", None) or ""),
+    }
+    return _build_toolbar_state_oob(ctx)

@@ -1527,3 +1527,82 @@ class TestViewport:
     def test_viewport_1920x1080(self, playwright_browser, live_server, ran_project):
         self._run_viewport_test(playwright_browser, live_server, ran_project,
                                 1920, 1080, "1920x1080")
+
+
+# ---------------------------------------------------------------------------
+# R6/F07 Correction A — Save/Run stale->current DOM flow (no reload)
+# ---------------------------------------------------------------------------
+
+class TestSaveRunStaleCurrentFlow:
+    """Mandatory R6 browser sequence on the real DOM:
+
+    Run -> toolbar Current -> causal edit -> WITHOUT reload: toolbar Stale,
+    Overview tiles visibly stale, runtime bars not Current -> Run -> without
+    reload: Overview KPI updates, toolbar returns Current.
+    """
+
+    def _toolbar_text(self, p):
+        return p.locator('[data-testid="toolbar-runtime-state"]').inner_text()
+
+    def _overview_kpi(self, p):
+        return p.locator(
+            '[data-testid="kpi-project-irr"] .v2-kpi-value').inner_text()
+
+    def _click_run(self, p):
+        with p.expect_response(lambda r: "/v2/workbook/run" in r.url,
+                               timeout=90_000):
+            p.locator('[data-testid="v2-run-btn"]').click()
+        p.wait_for_load_state("networkidle", timeout=30_000)
+
+    def test_edit_stale_run_current_no_reload(self, authed_page, live_server,
+                                              oborovo_project):
+        p = authed_page
+        p.goto(f"{live_server['base_url']}/v2/workbook?project={oborovo_project}")
+        p.wait_for_load_state("networkidle")
+
+        # 1. Run once -> toolbar Current, Overview KPI present
+        self._click_run(p)
+        assert self._toolbar_text(p) == "Current"
+        kpi_a = self._overview_kpi(p)
+        assert kpi_a and kpi_a != "—"
+
+        # 2. causal edit (OPEX technical management) WITHOUT reload
+        _switch_tab(p, "opex")
+        _open_group(p, "B.01")
+        inp = _tm_input(p)
+        inp.click()
+        inp.select_text()
+        inp.fill("202")
+        inp.dispatch_event("input")
+        p.wait_for_timeout(600)  # allow the debounced field save + OOB swap
+
+        # 3. WITHOUT reload: every runtime-state surface agrees STALE
+        assert self._toolbar_text(p) == "Stale"
+        stale_tiles = p.locator(".v2-kpi-tile--stale")
+        assert stale_tiles.count() > 0, (
+            "Overview KPI tiles must be visibly stale after a causal save")
+        # visible runtime bars must not present Current
+        for bar_id in ("debt-runtime-bar", "tax-runtime-bar",
+                       "fs-runtime-bar"):
+            bar = p.locator(f"#{bar_id}")
+            if bar.count():
+                assert "current" not in bar.inner_text().lower(), bar_id
+
+        # 4. Run again -> WITHOUT reload: toolbar Current, Overview KPI updates
+        self._click_run(p)
+        assert self._toolbar_text(p) == "Current"
+        kpi_b = self._overview_kpi(p)
+        assert kpi_b != kpi_a, "Overview KPI must refresh to the new run"
+        # stale classification cleared
+        assert p.locator(".v2-kpi-tile--stale").count() == 0
+
+        # 5. edit again -> stale/dirty returns
+        _switch_tab(p, "opex")
+        _open_group(p, "B.01")
+        inp = _tm_input(p)
+        inp.click()
+        inp.select_text()
+        inp.fill("203")
+        inp.dispatch_event("input")
+        p.wait_for_timeout(600)
+        assert self._toolbar_text(p) == "Stale"
