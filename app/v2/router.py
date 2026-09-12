@@ -804,19 +804,23 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
     }
 
 
-def _build_all_oob(ws) -> str:
-    """Build combined OOB for debt, tax, and fs runtime bars after a mutation.
+def _build_all_oob(ws, *, request=None, project_record=None, project="",
+                   workspace_owner="") -> str:
+    """R6 Correction A: full post-Save stale-state refresh after a mutation.
 
-    Called from every HTMX success response that does NOT re-render one of
-    the three runtime-bar sheets directly.  Must NOT be appended on
-    validation-error responses — those never mutate state.
+    A financially causal successful Save (workspace now dirty, prior runtime
+    still persisted) must make every visible runtime-state surface agree
+    STALE in the same HTMX response: toolbar, Overview stale classification,
+    debt/tax/FS runtime bars, scenario last-run statuses.  No engine call,
+    no financial calculation.  Must NOT be appended on validation-error
+    responses — those never mutate state.
     """
-    from app.workbook.runtime_projection import build_runtime_projection_bundle
-    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
-    from app.workbook.service import WorkbookService
-    rr = WorkbookService.get_runtime_result(ws)
-    projection = build_runtime_projection_bundle(rr, ws.dirty)
-    return build_all_runtime_bar_oob(projection)
+    from app.v2.post_run_ui import build_post_save_ui_state
+
+    return build_post_save_ui_state(
+        ws_fresh=ws, project_record=project_record, project=project,
+        workspace_owner=workspace_owner, request=request,
+    )
 
 
 # Legacy alias so tests that imported the old helper continue to pass.
@@ -1168,7 +1172,13 @@ async def v2_inputs_slice1_update(
             pis_for_render=updated_pis,
             ws_for_render=updated_ws_after,
         )
-        all_bars_oob = _build_all_oob(updated_ws_after)
+        all_bars_oob = _build_all_oob(
+            updated_ws_after,
+            request=request,
+            project_record=project_record,
+            project=project,
+            workspace_owner=_workspace_owner,
+        )
         final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
         return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
 
@@ -1339,10 +1349,45 @@ async def v2_workbook_update(
                 request, updated_pis, updated_ws_after, project_record, project,
                 workspace_owner=_workspace_owner,
             )
+            # R6 Correction A: stale-state refresh (see opex branch).
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            _stale_refresh = build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+            )
+            resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
         elif sheet_id == "opex":
             resp = _render_opex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
+            # R6 Correction B: OPEX field forms swap hx-target="#panel-opex"
+            # with hx-swap="outerHTML" — the response must re-emit the PANEL
+            # wrapper, otherwise the swap destroys #panel-opex and the OPEX
+            # tab can never be shown again.  hx-swap-oob fragments in the
+            # body are extracted by htmx before the swap, so they are not
+            # nested into the panel.
+            panel_open = (
+                '<div class="v2-sheet-panel" role="tabpanel" id="panel-opex" '
+                'aria-labelledby="tab-opex">'
+                '<div class="v2-sheet-body">'
+            )
+            resp = HTMLResponse(
+                content=panel_open + resp.body.decode() + "</div></div>")
+            # R6 Correction A: these sheets have no runtime-derived values,
+            # but the save made the workspace dirty — toolbar, Overview and
+            # scenario statuses must agree stale in this same response.
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            _stale_refresh = build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+            )
+            resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
         elif sheet_id == "debt":
             # Build projection once — pass to both sheet renderer and OOB bars.
             from app.workbook.runtime_projection import build_runtime_projection_bundle
@@ -1355,6 +1400,18 @@ async def v2_workbook_update(
                 projection=_proj,
             )
             body = resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj)
+            # R6 Correction A: the save made the workspace dirty — toolbar,
+            # Overview and scenario statuses must agree stale in this response.
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            body += "\n" + build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+                include_runtime_bars=False,
+                projection=_proj,
+            )
             return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
         elif sheet_id == "tax":
             from app.workbook.runtime_projection import build_runtime_projection_bundle
@@ -1367,6 +1424,17 @@ async def v2_workbook_update(
                 projection=_proj,
             )
             body = resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj)
+            # R6 Correction A: stale-state refresh (see debt branch).
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            body += "\n" + build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+                include_runtime_bars=False,
+                projection=_proj,
+            )
             return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
         elif sheet_id == "financial_statements":
             # Full sheet re-render already contains #fs-runtime-bar; no OOB needed.
@@ -1381,7 +1449,13 @@ async def v2_workbook_update(
         # Append OOB refresh of all three runtime bars so that editing any
         # sheet immediately reflects the dirty/clean state on Debt, Tax, and
         # Financial Statements without a full page reload.
-        all_bars_oob = _build_all_oob(updated_ws_after)
+        all_bars_oob = _build_all_oob(
+            updated_ws_after,
+            request=request,
+            project_record=project_record,
+            project=project,
+            workspace_owner=_workspace_owner,
+        )
         final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
         return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
 
@@ -1770,7 +1844,6 @@ async def v2_workbook_run(
     if rr is None:
         msg = "Run committed but the persisted RuntimeResult could not be reconstructed."
         return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
-    projection = build_runtime_projection_bundle(rr, ws_fresh.dirty)
 
     # ── Step 15: HTMX response ────────────────────────────────────────────── #
     if not is_htmx:
@@ -1779,57 +1852,22 @@ async def v2_workbook_run(
             status_code=303,
         )
 
-    pis_fresh = _build_pis_with_composite_identity(ws_fresh, project_record, workspace_owner)
-    ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
+    # R6/F07: ONE post-run UI projection authority — every runtime-dependent
+    # visible surface is rendered from this single ws_fresh read and one
+    # RuntimeProjectionBundle (run controls, status banner, toolbar,
+    # Overview KPIs, debt, tax, FS, scenario last-run statuses).  The
+    # previous hand-rolled assembly here omitted the Overview sheet, which
+    # left stale pre-Run KPIs presented as current after a new Run.
+    from app.v2.post_run_ui import build_post_run_ui_state
 
-    # #v2-run-controls OOB — refreshes the Run form with the new composite hash.
-    run_controls_html = _templates.get_template(
-        "partials/_v2_run_controls.html"
-    ).render(ctx)
-    run_controls_oob = (
-        '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+    combined = build_post_run_ui_state(
+        request=request,
+        ws_fresh=ws_fresh,
+        project_record=project_record,
+        project=project,
+        workspace_owner=workspace_owner,
+        rr=rr,
     )
-
-    # #v2-status-banner OOB.
-    banner_html = _templates.get_template(
-        "partials/_v2_status_banner.html"
-    ).render(ctx)
-    banner_oob = (
-        '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
-    )
-
-    # Three sheet OOBs — attach hx-swap-oob="true" to the sheet root element
-    # (not a wrapper) to avoid nested duplicate DOM IDs.
-    ctx.update(_build_debt_ctx(pis_fresh, ws_fresh, projection=projection))
-    debt_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
-    debt_oob = debt_html.replace(
-        '<div id="v2-sheet-senior-debt"',
-        '<div id="v2-sheet-senior-debt" hx-swap-oob="true"',
-        1,
-    )
-
-    ctx.update(_build_tax_ctx(pis_fresh, ws_fresh, projection=projection))
-    tax_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
-    tax_oob = tax_html.replace(
-        '<div id="v2-sheet-tax"',
-        '<div id="v2-sheet-tax" hx-swap-oob="true"',
-        1,
-    )
-
-    ctx.update(_build_financial_statements_ctx(pis_fresh, ws_fresh, projection=projection))
-    fs_html = _templates.get_template(
-        "partials/sheet_financial_statements.html"
-    ).render(ctx)
-    fs_oob = fs_html.replace(
-        '<div id="v2-sheet-financial-statements"',
-        '<div id="v2-sheet-financial-statements" hx-swap-oob="true"',
-        1,
-    )
-
-    # Each full sheet OOB already includes its runtime bar; do not add standalone bar OOBs
-    # here — that would create duplicate DOM IDs (debt-runtime-bar, tax-runtime-bar, fs-runtime-bar).
-    toolbar_state_oob = _build_toolbar_state_oob(ctx)
-    combined = "\n".join([run_controls_oob, banner_oob, toolbar_state_oob, debt_oob, tax_oob, fs_oob])
     return HTMLResponse(content=combined)
 
 
@@ -1987,7 +2025,21 @@ async def v2_scenario_select(
             '<div id="v2-sheet-overview" hx-swap-oob="true"',
             1,
         )
-        return HTMLResponse(content=html + "\n" + ov_oob)
+        # R6 Correction A: selecting a scenario invalidates the prior runtime
+        # evidence — the toolbar and runtime bars must agree stale/not-current
+        # in the same response (the scenario list and Overview fragments are
+        # already emitted above).
+        from app.v2.post_run_ui import build_toolbar_state_oob
+        from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+
+        _rr_sel = WorkbookService.get_runtime_result(ws)
+        stale_state_oob = (
+            build_toolbar_state_oob(ws)
+            + "\n"
+            + build_all_runtime_bar_oob(
+                build_runtime_projection_bundle(_rr_sel, ws.dirty))
+        )
+        return HTMLResponse(content=html + "\n" + ov_oob + "\n" + stale_state_oob)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
