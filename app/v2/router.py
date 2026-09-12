@@ -1349,10 +1349,32 @@ async def v2_workbook_update(
                 request, updated_pis, updated_ws_after, project_record, project,
                 workspace_owner=_workspace_owner,
             )
+            # R6 Correction A: stale-state refresh (see opex branch).
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            _stale_refresh = build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+            )
+            resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
         elif sheet_id == "opex":
             resp = _render_opex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
+            # R6 Correction A: these sheets have no runtime-derived values,
+            # but the save made the workspace dirty — toolbar, Overview and
+            # scenario statuses must agree stale in this same response.
+            from app.v2.post_run_ui import build_post_save_ui_state
+
+            _stale_refresh = build_post_save_ui_state(
+                ws_fresh=updated_ws_after,
+                project_record=project_record,
+                project=project,
+                workspace_owner=_workspace_owner,
+            )
+            resp = HTMLResponse(content=resp.body.decode() + "\n" + _stale_refresh)
         elif sheet_id == "debt":
             # Build projection once — pass to both sheet renderer and OOB bars.
             from app.workbook.runtime_projection import build_runtime_projection_bundle
